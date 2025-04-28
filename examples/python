@@ -1,0 +1,155 @@
+#!/bin/python3
+
+import subprocess, json, signal
+
+sw = subprocess.Popen(["build/sw"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+)
+
+# default values will be used for omitted fields
+j = {
+	"userdata": 0, # any type, returned as-is in state events
+	"state_events": True,
+	"layers": {
+		"HDMI-A-1": [ # wl_output.name
+			{
+				# https://wayland.app/protocols/wlr-layer-shell-unstable-v1#zwlr_layer_surface_v1
+				"width": 0,
+				"height": -1, # negative for auto
+				"exclusive_zone": -2, # < -1 for auto
+				"anchor": 1 | 4 | 8,
+				"layer": 3,
+				"margin_top": 0,
+				"margin_right": 0,
+				"margin_bottom": 0,
+				"margin_left": 0,
+
+				"userdata": 1, # any type, returned as-is in state events
+
+				# https://wayland.app/protocols/cursor-shape-v1#wp_cursor_shape_device_v1:enum:shape
+				"cursor_shape": 1,
+
+				# https://wayland.app/protocols/wayland#wl_surface:request:set_input_region
+				"input_regions": [
+					#{
+					#	"x": ,
+					#	"y": ,
+					#	"width": ,
+					#	"height": ,
+					#},
+					# ...
+				],
+
+				"popups": [
+					# https://wayland.app/protocols/xdg-shell#xdg_popup
+					{
+						"x": 500,
+						"y": 50,
+						"gravity": 9,
+						"constraint_adjustment": 0,
+						#"grab": ,
+						"width": -1, # negative for auto
+						"height": -1,
+
+						"userdata": 2, # any type, returned as-is in state events
+
+						# https://wayland.app/protocols/cursor-shape-v1#wp_cursor_shape_device_v1:enum:shape
+						"cursor_shape": 1,
+
+						# https://wayland.app/protocols/wayland#wl_surface:request:set_input_region
+						#"input_regions": [],
+
+						# children
+						"popups": [
+							# ...
+						],
+
+						# layout tree (see example below)
+						"layout_root": {
+							"type": 2,
+							"text": "This is a popup surface",
+							"font_names": ["monospace:size=24"],
+							"text_color": 0xFFFFFFFF,
+							"color" : 0xFF404040,
+						},
+					},
+				],
+
+				# layout tree
+				"layout_root": {
+					# see include/sw.h
+					"type": 4,
+					"anchor": 4, # this also can be an object with "x" and "y" fields (anchor none)
+					"content_anchor": 5,
+					"content_transform": 1,
+					"expand": (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5),
+
+					"id": 1, # must be > 0. used to reference this block in "min_width", "min_height", "max_width", "max_height", "content_width", "content_height"
+					"color" : 0xFF808080, # bg color AARRGGBB
+					
+					# these are specified as math expressions with predefined constants:
+					# output_width, output_height
+					# surface_width, surface_height
+					# content_width, content_height
+					# block_<id>_content_width, block_<id>_content_height
+					"min_width": "",
+					"max_width": "",
+					"min_height": "output_height / 16",
+					"max_height": "",
+					"content_width": "", # scale
+					"content_height": "", # scale
+
+					"border_left": {
+						"width": "2", # same as above
+						"color": 0xFFFFFF00, # AARRGGBB
+					},
+					"border_right": {
+						"width": "2", # same as above
+						"color": 0xFFFF0000, # AARRGGBB
+					},
+					"border_bottom": {
+						"width": "2", # same as above
+						"color": 0xFF00FF00, # AARRGGBB
+					},
+					"border_top": {
+						"width": "2", # same as above
+						"color": 0xFF0000FF, # AARRGGBB
+					},
+
+					# only if "type" is text
+					#"text": "",
+					#"font_names": [""], # fontconfig formatted font names
+					#"text_color": 0xFFFFFFFF, # AARRGGBB
+
+					# only if "type" is image
+					#"path": "",
+					#"image_type": 2, # see include/sw.h
+
+					# only if "type" is composite
+					"layout": 1, # see include/sw.h
+					"children": [ # layout tree
+						{
+							"type": 2,
+							"text": "This is a layer surface with a text block anchored to the right",
+							"font_names": ["monospace:size=24"],
+							"text_color": 0xFFFFFFFF,
+							"anchor": 2,
+							"border_bottom": {
+								"width": "2",
+								"color": 0xFFFFFFFF,
+							}
+						},
+					],
+				},
+			},
+		],
+	},
+}
+
+sw.stdin.write((json.dumps(j).encode()))
+sw.stdin.flush()
+
+for e in sw.stdout:
+	print("Received state event:\n", e.decode())
+

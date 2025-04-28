@@ -1,0 +1,10 @@
+test/
+build/
+build-*/
+.cache/
+.vscode/
+subprojects/basu-*
+subprojects/resvg-*
+vgcore.*
+crash-*
+fuzz-*
