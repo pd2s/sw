@@ -30,7 +30,7 @@ add_project_arguments(
         '-Wno-disabled-macro-expansion',
         '-Wno-missing-variable-declarations',
 		'-Wno-inline',
-		'-Wdate-time',
+		'-Wno-date-time',
 
 		'-Wno-unused-command-line-argument',
 		'-Wno-unknown-warning-option',
