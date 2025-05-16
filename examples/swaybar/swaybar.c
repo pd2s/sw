@@ -3059,8 +3059,8 @@ static void handle_signal(int sig) {
 
 static void setup(int argc, char **argv) {
 	char *locale = setlocale(LC_ALL, "");
-	if ((locale == NULL) || (strstr(locale, "UTF-8") == NULL)) {
-		abort_(1, "failed to set UTF-8 locale");
+	if ((locale == NULL) && (strstr(locale, "utf-8") || strstr(locale, "UTF-8"))) {
+		abort_(1, "failed to set utf-8 locale");
 	}
 
 	char *sw_path = NULL;

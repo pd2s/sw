@@ -12,7 +12,13 @@
 #include <arpa/inet.h>
 #include <time.h>
 
+#include "util.h"
+
+#if HAS_INCLUDE(<sd-bus.h>)
 #include <sd-bus.h>
+#else
+#include <basu/sd-bus.h>
+#endif // HAS_INCLUDE
 
 #include "util.h"
 

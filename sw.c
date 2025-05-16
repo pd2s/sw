@@ -33,7 +33,11 @@
 #endif // HAVE_TEXT
 
 #if HAVE_SVG
+#if HAS_INCLUDE(<resvg.h>)
 #include <resvg.h>
+#else
+#include <resvg/resvg.h>
+#endif // HAS_INCLUDE
 #endif // HAVE_SVG
 
 #include "sw.h"
@@ -41,7 +45,12 @@
 
 #include "util.h"
 
+#if HAS_INCLUDE(<tinyexpr.h>)
 #include <tinyexpr.h>
+#else
+#include <tinyexpr/<tinyexpr.h>>
+#endif // HAS_INCLUDE
+
 ARRAY_DECLARE_DEFINE(te_variable)
 
 static void *malloc_stbi(size_t size);
@@ -3781,8 +3790,8 @@ static void setup(int argc, char **argv) {
 	argv = (char*[]){ "sw", NULL };
 #endif // FUZZ_TEST
 	char *locale = setlocale(LC_ALL, "");
-	if ((locale == NULL) || (strstr(locale, "UTF-8") == NULL)) {
-		abort_(1, "failed to set UTF-8 locale");
+	if ((locale == NULL) && (strstr(locale, "utf-8") || strstr(locale, "UTF-8"))) {
+		abort_(1, "failed to set utf-8 locale");
 	}
 
 	static const struct option long_options[] = {

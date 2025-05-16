@@ -56,10 +56,11 @@ static char *log_stderr_va_stbsp_vsprintfcb_callback(const char *buf, void *data
 }
 
 static ATTRIB_FORMAT_PRINTF(1, 0) void log_stderr_va(const char *fmt, va_list args) {
-	write(STDERR_FILENO, PREFIX ": ", STRING_LITERAL_LENGTH(PREFIX ": "));
+	ssize_t suppress_warn_unused_result = write(STDERR_FILENO, PREFIX ": ", STRING_LITERAL_LENGTH(PREFIX ": "));
 	char buf[STB_SPRINTF_MIN];
 	stbsp_vsprintfcb(log_stderr_va_stbsp_vsprintfcb_callback, NULL, buf, fmt, args);
-	write(STDERR_FILENO, "\n", 1);
+	suppress_warn_unused_result = write(STDERR_FILENO, "\n", 1);
+	(void)suppress_warn_unused_result;
 }
 
 static ATTRIB_FORMAT_PRINTF(1, 2) void log_stderr(const char *fmt, ...) {

@@ -18,6 +18,12 @@
 #define ALIGNOF _Alignof
 #endif
 
+#if defined(__has_include) && __has_include(<stddef.h>)
+#define HAS_INCLUDE(x) __has_include(x)
+#else
+#define HAS_INCLUDE(x) 0
+#endif
+
 #if !defined(__has_attribute)
 #define __has_attribute(attr) 0
 #endif
