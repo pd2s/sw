@@ -1,7 +1,7 @@
 #if !defined(CONFIG_H)
 #define CONFIG_H
 
-#define FONT "Cascadia Mono:size=24"
+#define FONT "Cascadia Mono:size=24" // default: monospace:size=16
 
 #define STATUS_MARGIN_LEFT 5 // default: 3
 #define STATUS_MARGIN_RIGHT 5 // default: 3

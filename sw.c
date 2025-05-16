@@ -2511,6 +2511,7 @@ static void surface_fini(struct surface *surface) {
 }
 
 static void popup_destroy(struct surface *popup) {
+	assert(popup->type == SW_SURFACE_TYPE_POPUP);
 	if (popup == NULL) {
 		return;
 	}
@@ -2986,6 +2987,7 @@ error:
 }
 
 static void layer_destroy(struct surface *layer) {
+	assert(layer->type == SW_SURFACE_TYPE_LAYER);
 	if (layer == NULL) {
 		return;
 	}
