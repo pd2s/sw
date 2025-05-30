@@ -7,7 +7,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <assert.h>
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -38,8 +37,8 @@ IGNORE_WARNING("-Wconversion")
 IGNORE_WARNINGS_END
 
 typedef uint32_t bool32_t;
-#define true 1
-#define false 0
+#define TRUE 1
+#define FALSE 0
 
 static char *log_stderr_va_stbsp_vsprintfcb_callback(const char *buf, void *data, int len) {
 	(void)data;
@@ -109,12 +108,12 @@ static type *array_##type##_put(array_##type##_t *, type item, size_t idx); \
 static type array_##type##_get(array_##type##_t *, size_t idx); \
 static type *array_##type##_get_ptr(array_##type##_t *, size_t idx); \
 static void array_##type##_clear(array_##type##_t *); \
-static void array_##type##_qsort(array_##type##_t *, int compare(const void *, const void *));
+static void array_##type##_qsort(array_##type##_t *, int compare(const void *, const void *))
 
 #define ARRAY_DEFINE(type) \
 static void array_##type##_init(array_##type##_t *array, size_t initial_size) { \
-    assert(initial_size > 0); \
-    array->items = malloc(sizeof(type) * initial_size); \
+    ASSERT(initial_size > 0); \
+    array->items = malloc(SIZEOF(type) * initial_size); \
 	array->size = initial_size; \
 	array->len = 0; \
 } \
@@ -126,8 +125,8 @@ static void array_##type##_fini(array_##type##_t *array) { \
 } \
 \
 static void array_##type##_resize(array_##type##_t *array, size_t new_size) { \
-    assert(new_size > 0); \
-    array->items = realloc(array->items, sizeof(type) * new_size); \
+    ASSERT(new_size > 0); \
+    array->items = realloc(array->items, SIZEOF(type) * new_size); \
     array->size = new_size; \
 } \
 \
@@ -146,42 +145,42 @@ static type *array_##type##_add_uninitialized(array_##type##_t *array) { \
 } \
 \
 static void array_##type##_remove(array_##type##_t *array, size_t n) { \
-	assert(array->len > 0); \
+	ASSERT(array->len > 0); \
     array->len -= n; \
 } \
 \
 static void array_##type##_swap(array_##type##_t *array, size_t idx1, size_t idx2) { \
-	assert(idx1 < array->len); \
-	assert(idx2 < array->len); \
+	ASSERT(idx1 < array->len); \
+	ASSERT(idx2 < array->len); \
 	type tmp = array->items[idx1]; \
 	array->items[idx1] = array->items[idx2]; \
 	array->items[idx2] = tmp; \
 } \
 \
 static void array_##type##_insert(array_##type##_t *array, type item, size_t idx) { \
-    assert(idx <= array->len); \
+    ASSERT(idx <= array->len); \
     if (array->size == array->len) { \
         array_##type##_resize(array, array->size * 2); \
     } \
-	memmove(&array->items[idx + 1], &array->items[idx], sizeof(type) * (array->len - idx)); \
+	memmove(&array->items[idx + 1], &array->items[idx], SIZEOF(type) * (array->len - idx)); \
 	array->len++; \
 	array->items[idx] = item; \
 } \
 \
 static void array_##type##_pop(array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	array->len--; \
-	memmove(&array->items[idx], &array->items[idx + 1], sizeof(type) * (array->len - idx)); \
+	memmove(&array->items[idx], &array->items[idx + 1], SIZEOF(type) * (array->len - idx)); \
 } \
 \
 static void array_##type##_pop_swapback(array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	array->len--; \
 	array->items[idx] = array->items[array->len]; \
 } \
 \
 static type *array_##type##_put(array_##type##_t *array, type item, size_t idx) { \
-    assert(idx <= array->len); \
+    ASSERT(idx <= array->len); \
     if (idx == array->len) { \
         if (array->size == array->len) { \
             array_##type##_resize(array, array->size * 2); \
@@ -193,25 +192,25 @@ static type *array_##type##_put(array_##type##_t *array, type item, size_t idx) 
 } \
 \
 static ATTRIB_PURE type array_##type##_get(array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	return array->items[idx]; \
 } \
 \
 static ATTRIB_PURE type *array_##type##_get_ptr(array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	return &array->items[idx]; \
 } \
 \
 static void array_##type##_clear(array_##type##_t *array) { \
-	memset(array->items, 0, array->len * sizeof(type)); \
+	memset(array->items, 0, array->len * SIZEOF(type)); \
 } \
 \
 static void array_##type##_qsort(array_##type##_t *array, int compare(const void *, const void *)) { \
-    qsort(array->items, array->len, sizeof(type), compare); \
+    qsort(array->items, array->len, SIZEOF(type), compare); \
 }
 
 #define ARRAY_DECLARE_DEFINE(type) \
-	ARRAY_DECLARE(type) \
+	ARRAY_DECLARE(type); \
 	ARRAY_DEFINE(type)
 
 typedef char* char_ptr;
@@ -219,7 +218,7 @@ ARRAY_DECLARE_DEFINE(char_ptr)
 
 #define STACK_DECLARE(type) \
 \
-ARRAY_DECLARE(type) \
+ARRAY_DECLARE(type); \
 \
 typedef struct { \
 	array_##type##_t data; \
@@ -229,7 +228,7 @@ static void stack_##type##_init(stack_##type##_t *stack, size_t initial_size); \
 static void stack_##type##_fini(stack_##type##_t *stack); \
 static type *stack_##type##_push(stack_##type##_t *stack, type item); \
 static type stack_##type##_pop(stack_##type##_t *stack); \
-static type stack_##type##_get(stack_##type##_t *stack);
+static type stack_##type##_get(stack_##type##_t *stack)
 
 #define STACK_DEFINE(type) \
 \
@@ -258,12 +257,12 @@ static ATTRIB_PURE type stack_##type##_get(stack_##type##_t *stack) { \
 }
 
 #define STACK_DECLARE_DEFINE(type) \
-	STACK_DECLARE(type) \
+	STACK_DECLARE(type); \
 	STACK_DEFINE(type)
 
 #define ARENA_STACK_DECLARE(type) \
 \
-ARENA_ARRAY_DECLARE(type) \
+ARENA_ARRAY_DECLARE(type); \
 \
 typedef struct { \
 	arena_array_##type##_t data; \
@@ -273,7 +272,7 @@ static void arena_stack_##type##_init(arena_stack_##type##_t *stack, arena_t *ar
 static void arena_stack_##type##_fini(arena_stack_##type##_t *stack); \
 static type *arena_stack_##type##_push(arena_stack_##type##_t *stack, arena_t *arena, type item); \
 static type arena_stack_##type##_pop(arena_stack_##type##_t *stack); \
-static type arena_stack_##type##_get(arena_stack_##type##_t *stack);
+static type arena_stack_##type##_get(arena_stack_##type##_t *stack)
 
 #define ARENA_STACK_DEFINE(type) \
 \
@@ -302,7 +301,7 @@ static ATTRIB_PURE type arena_stack_##type##_get(arena_stack_##type##_t *stack) 
 }
 
 #define ARENA_STACK_DECLARE_DEFINE(type) \
-	ARENA_STACK_DECLARE(type) \
+	ARENA_STACK_DECLARE(type); \
 	ARENA_STACK_DEFINE(type)
 
 typedef struct {
@@ -313,7 +312,7 @@ typedef struct {
 } string_t;
 
 ARRAY_DECLARE_DEFINE(string_t)
-#define STRING_LITERAL(str) ((string_t){ .s = (str), .len = STRING_LITERAL_LENGTH((str)), .free_contents = false, .nul_terminated = true })
+#define STRING_LITERAL(str) ((string_t){ .s = (str), .len = STRING_LITERAL_LENGTH((str)), .free_contents = FALSE, .nul_terminated = TRUE })
 
 #define STRING_FMT "%.*s"
 #define STRING_ARGS(str) (int)(str).len, (str).s
@@ -339,21 +338,21 @@ static ATTRIB_FORMAT_PRINTF(2, 3) void string_init_format(string_t *str, const c
 	str->len = 0;
 	str->s = malloc(STB_SPRINTF_MIN);
 	stbsp_vsprintfcb(string_init_format_stbsp_vsprintfcb_callback, str, str->s, fmt, args);
-	str->free_contents = true;
-	str->nul_terminated = true;
+	str->free_contents = TRUE;
+	str->nul_terminated = TRUE;
 
 	va_end(args);
 }
 
 static void string_init_len(string_t *str, const char *s, size_t len, bool32_t nul_terminate) {
-	assert((len > 0) || nul_terminate);
+	ASSERT((len > 0) || nul_terminate);
 	str->s = malloc(len + nul_terminate);
 	memcpy(str->s, s, len);
 	if (nul_terminate) {
 		str->s[len] = '\0';
 	}
 	str->len = len;
-	str->free_contents = true;
+	str->free_contents = TRUE;
 	str->nul_terminated = nul_terminate;
 }
 
@@ -365,8 +364,8 @@ static void string_init(string_t *str, const char *src) {
 	str->len = strlen(src);
 	str->s = malloc(str->len + 1);
 	memcpy(str->s, src, str->len);
-	str->free_contents = true;
-	str->nul_terminated = true;
+	str->free_contents = TRUE;
+	str->nul_terminated = TRUE;
 }
 
 static void string_fini(string_t *str) {
@@ -381,13 +380,13 @@ static string_t string_copy(string_t str) {
 		.s = str.s,
 		.len = str.len,
 		.nul_terminated = str.nul_terminated,
-		.free_contents = false,
+		.free_contents = FALSE,
 	};
 }
 
 static bool32_t string_equal(string_t str1, string_t str2) {
 	if (str1.len != str2.len) {
-		return false;
+		return FALSE;
 	}
 
 	return (memcmp(str1.s, str2.s, str1.len) == 0);
@@ -407,30 +406,30 @@ static int string_compare(string_t str1, string_t str2, size_t max) {
 static bool32_t string_find_char(string_t str, char c, string_t *slice_out) {
 	char *s = memchr(str.s, c, str.len);
 	if (!s) {
-		return false;
+		return FALSE;
 	}
 
 	*slice_out = (string_t){
 		.s = s,
 		.len = (size_t)((uintptr_t)&str.s[str.len] - (uintptr_t)s),
-		.free_contents = false,
+		.free_contents = FALSE,
 		.nul_terminated = str.nul_terminated,
 	};
 
-	return true;
+	return TRUE;
 }
 
 static bool32_t string_tok(string_t *str, char delim, string_t *token_out, string_t *saveptr) {
 	// TODO: simd
 
     if (str) {
-		assert(str->s != NULL);
-		assert(str->len > 0);
+		ASSERT(str->s != NULL);
+		ASSERT(str->len > 0);
 		*saveptr = (string_t){
 			.s = str->s,
 			.len = str->len,
-			.free_contents = false,
-			.nul_terminated = false, // TODO: return str->nul_terminated on last token
+			.free_contents = FALSE,
+			.nul_terminated = FALSE, // TODO: return str->nul_terminated on last token
 		};
 	}
 
@@ -439,7 +438,7 @@ static bool32_t string_tok(string_t *str, char delim, string_t *token_out, strin
         saveptr->len--;
     }
     if (saveptr->len == 0) {
-		return false;
+		return FALSE;
 	}
 
     *token_out = *saveptr;
@@ -449,7 +448,7 @@ static bool32_t string_tok(string_t *str, char delim, string_t *token_out, strin
     }
 
 	token_out->len -= saveptr->len;
-	return true;
+	return TRUE;
 }
 
 static bool32_t string_starts_with(string_t str, string_t prefix) {
@@ -457,12 +456,12 @@ static bool32_t string_starts_with(string_t str, string_t prefix) {
 		return string_equal(prefix, (string_t){
 			.s = str.s,
 			.len = prefix.len,
-			.free_contents = false,
-			.nul_terminated = false,
+			.free_contents = FALSE,
+			.nul_terminated = FALSE,
 		});
 	}
 
-	return false;
+	return FALSE;
 }
 
 static bool32_t string_ends_with(string_t str, string_t suffix) {
@@ -470,12 +469,12 @@ static bool32_t string_ends_with(string_t str, string_t suffix) {
 		return string_equal(suffix, (string_t){
 			.s = &str.s[str.len - suffix.len],
 			.len = suffix.len,
-			.free_contents = false,
+			.free_contents = FALSE,
 			.nul_terminated = str.nul_terminated,
 		});
 	}
 
-	return false;
+	return FALSE;
 }
 
 // TODO: remove
@@ -496,18 +495,18 @@ static bool32_t string_hex_to_uint32(uint32_t *out, string_t str) {
 			result *= 16;
 			result += (uint32_t)(c - '0');
 		} else {
-			return false;
+			return FALSE;
 		}
 	}
 
 	*out = result;
-	return true;
+	return TRUE;
 }
 
 // on success, returns u16 in lower bits of u32 result
 // on error, returns u32 with high bits set
 static ATTRIB_PURE uint32_t string_hex_16_to_uint16(string_t str) {
-	assert(str.len == 4);
+	ASSERT(str.len == 4);
 
 	static const uint32_t table[886] = {
 		0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -668,29 +667,29 @@ static ATTRIB_PURE uint32_t string_hex_16_to_uint16(string_t str) {
 
 static bool32_t string_to_uint64(string_t str, uint64_t *out) {
 	if (UNLIKELY((str.len == 0) || (str.len > 20) || ((str.s[0] == '0') && (str.len > 1)))) {
-		return false;
+		return FALSE;
 	}
 
 	uint64_t result = 0;
 	for (size_t i = 0; i < str.len; ++i) {
 		uint8_t d = (uint8_t)(str.s[i] - '0');
 		if (UNLIKELY(d > 9)) {
-			return false;
+			return FALSE;
 		}
 		result = 10 * result + d;
 	}
 
 	if (UNLIKELY((str.len == 20) && (str.s[0] == '1') && (result <= (uint64_t)INT64_MAX))) {
-		return false;
+		return FALSE;
 	}
 
 	*out = result;
-	return true;
+	return TRUE;
 }
 
 static bool32_t string_to_int64(string_t str, int64_t *out) {
 	if (UNLIKELY((str.len == 0) || (str.len > 20) || ((str.s[0] == '0') && (str.len > 1)))) {
-		return false;
+		return FALSE;
 	}
 
 	bool32_t negative = (str.s[0] == '-');
@@ -698,17 +697,17 @@ static bool32_t string_to_int64(string_t str, int64_t *out) {
 	for (size_t i = negative; i < str.len; ++i) {
 		uint8_t d = (uint8_t)(str.s[i] - '0');
 		if (UNLIKELY(d > 9)) {
-			return false;
+			return FALSE;
 		}
 		result = 10 * result + d;
 	}
 
 	if (UNLIKELY(result > ((uint64_t)INT64_MAX + negative))) {
-		return false;
+		return FALSE;
 	}
 
 	*out = negative ? (int64_t)(~result + 1) : (int64_t)result;
-	return true;
+	return TRUE;
 }
 
 #define LIST_DECLARE(type) \
@@ -720,7 +719,7 @@ typedef struct { \
 \
 static void list_##type##_insert_head(list_##type##_t *, type *node); \
 static void list_##type##_insert_tail(list_##type##_t *, type *node); \
-static void list_##type##_pop(list_##type##_t *, type *node);
+static void list_##type##_pop(list_##type##_t *, type *node)
 
 #define LIST_DEFINE(type) \
 static void list_##type##_insert_head(list_##type##_t *list, type *node) { \
@@ -765,17 +764,17 @@ static void list_##type##_pop(list_##type##_t *list, type *node) { \
 // TODO: insert_ list, after, before
 
 #define LIST_DECLARE_DEFINE(type) \
-	LIST_DECLARE(type) \
+	LIST_DECLARE(type); \
 	LIST_DEFINE(type)
 
 #define LIST_STRUCT_FIELDS(type) \
 	type *next; \
-	type *prev;
+	type *prev
 
 static void *aalloc(size_t alignment, size_t size) {
 	uint32_t *ptr = aligned_alloc(alignment, (size + alignment - 1) & ~(alignment - 1));
-	assert(ptr != NULL);
-	assert(((uintptr_t)ptr % alignment) == 0);
+	ASSERT(ptr != NULL);
+	ASSERT(((uintptr_t)ptr % alignment) == 0);
 	return ptr;
 }
 
@@ -803,7 +802,7 @@ static void arena_fini(arena_t *arena) {
 }
 
 static void *arena_alloc(arena_t *arena, size_t size) {
-	if (size == 0) { // ? TODO: assert
+	if (size == 0) { // ? TODO: ASSERT
 		return NULL;
 	}
 
@@ -834,7 +833,7 @@ out: {
 }
 
 static void arena_reset(arena_t *arena) {
-	if (arena->blocks.len == 0) { // ? TODO: assert
+	if (arena->blocks.len == 0) { // ? TODO: ASSERT
 		return;
 	}
 
@@ -875,11 +874,11 @@ static type *arena_array_##type##_put(arena_array_##type##_t *, arena_t *arena, 
 static type arena_array_##type##_get(arena_array_##type##_t *, size_t idx); \
 static type *arena_array_##type##_get_ptr(arena_array_##type##_t *, size_t idx); \
 static void arena_array_##type##_clear(arena_array_##type##_t *); \
-static void arena_array_##type##_qsort(arena_array_##type##_t *, int compare(const void *, const void *));
+static void arena_array_##type##_qsort(arena_array_##type##_t *, int compare(const void *, const void *))
 
 #define ARENA_ARRAY_DEFINE(type) \
 static void arena_array_##type##_init(arena_array_##type##_t *array, arena_t *arena, size_t initial_size) { \
-    array->items = arena_alloc(arena, sizeof(type) * initial_size); \
+    array->items = arena_alloc(arena, SIZEOF(type) * initial_size); \
 	array->size = initial_size; \
 	array->len = 0; \
 } \
@@ -889,9 +888,9 @@ static void arena_array_##type##_fini(arena_array_##type##_t *array) { \
 } \
 \
 static void arena_array_##type##_resize(arena_array_##type##_t *array, arena_t *arena, size_t new_size) { \
-	type *new_items = arena_alloc(arena, sizeof(type) * new_size); \
+	type *new_items = arena_alloc(arena, SIZEOF(type) * new_size); \
 	if (new_items && array->items) { \
-		memcpy(new_items, array->items, sizeof(type) * array->len); \
+		memcpy(new_items, array->items, SIZEOF(type) * array->len); \
 	} \
     array->items = new_items; \
     array->size = new_size; \
@@ -912,42 +911,42 @@ static type *arena_array_##type##_add_uninitialized(arena_array_##type##_t *arra
 } \
 \
 static void arena_array_##type##_remove(arena_array_##type##_t *array, size_t n) { \
-	assert(array->len > 0); \
+	ASSERT(array->len > 0); \
     array->len -= n; \
 } \
 \
 static void arena_array_##type##_swap(arena_array_##type##_t *array, size_t idx1, size_t idx2) { \
-	assert(idx1 < array->len); \
-	assert(idx2 < array->len); \
+	ASSERT(idx1 < array->len); \
+	ASSERT(idx2 < array->len); \
 	type tmp = array->items[idx1]; \
 	array->items[idx1] = array->items[idx2]; \
 	array->items[idx2] = tmp; \
 } \
 \
 static void arena_array_##type##_insert(arena_array_##type##_t *array, arena_t *arena, type item, size_t idx) { \
-    assert(idx <= array->len); \
+    ASSERT(idx <= array->len); \
     if (array->size == array->len) { \
         arena_array_##type##_resize(array, arena, array->size * 2); \
     } \
-	memmove(&array->items[idx + 1], &array->items[idx], sizeof(type) * (array->len - idx)); \
+	memmove(&array->items[idx + 1], &array->items[idx], SIZEOF(type) * (array->len - idx)); \
 	array->len++; \
 	array->items[idx] = item; \
 } \
 \
 static void arena_array_##type##_pop(arena_array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	array->len--; \
-	memmove(&array->items[idx], &array->items[idx + 1], sizeof(type) * (array->len - idx)); \
+	memmove(&array->items[idx], &array->items[idx + 1], SIZEOF(type) * (array->len - idx)); \
 } \
 \
 static void arena_array_##type##_pop_swapback(arena_array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	array->len--; \
 	array->items[idx] = array->items[array->len]; \
 } \
 \
 static type *arena_array_##type##_put(arena_array_##type##_t *array, arena_t *arena, type item, size_t idx) { \
-    assert(idx <= array->len); \
+    ASSERT(idx <= array->len); \
     if (idx == array->len) { \
         if (array->size == array->len) { \
             arena_array_##type##_resize(array, arena, array->size * 2); \
@@ -959,25 +958,25 @@ static type *arena_array_##type##_put(arena_array_##type##_t *array, arena_t *ar
 } \
 \
 static ATTRIB_PURE type arena_array_##type##_get(arena_array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	return array->items[idx]; \
 } \
 \
 static ATTRIB_PURE type *arena_array_##type##_get_ptr(arena_array_##type##_t *array, size_t idx) { \
-    assert(idx < array->len); \
+    ASSERT(idx < array->len); \
 	return &array->items[idx]; \
 } \
 \
 static void arena_array_##type##_clear(arena_array_##type##_t *array) { \
-	memset(array->items, 0, array->len * sizeof(type)); \
+	memset(array->items, 0, array->len * SIZEOF(type)); \
 } \
 \
 static void arena_array_##type##_qsort(arena_array_##type##_t *array, int compare(const void *, const void *)) { \
-    qsort(array->items, array->len, sizeof(type), compare); \
+    qsort(array->items, array->len, SIZEOF(type), compare); \
 }
 
 #define ARENA_ARRAY_DECLARE_DEFINE(type) \
-	ARENA_ARRAY_DECLARE(type) \
+	ARENA_ARRAY_DECLARE(type); \
 	ARENA_ARRAY_DEFINE(type)
 
 //static ATTRIB_PURE size_t sdbm_hash(string_t s) {
@@ -1000,8 +999,8 @@ static void arena_array_##type##_qsort(arena_array_##type##_t *array, int compar
 //}
 
 static ATTRIB_PURE size_t stbds_hash_string(string_t s) {
-#define ROTATE_LEFT(val, n)  (((val) << (n)) | ((val) >> (((sizeof(size_t)) * 8) - (n))))
-#define ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (((sizeof(size_t)) * 8) - (n))))
+#define ROTATE_LEFT(val, n)  (((val) << (n)) | ((val) >> (((SIZEOF(size_t)) * 8) - (n))))
+#define ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (((SIZEOF(size_t)) * 8) - (n))))
 
 	size_t hash = 0;
 	for (size_t i = 0; i < s.len; ++i) {
@@ -1023,7 +1022,7 @@ static ATTRIB_PURE size_t stbds_hash_string(string_t s) {
 
 #define HASH_TABLE_DECLARE(type, hash_key_func, keys_equal_func, collisions_to_resize) \
 \
-ARRAY_DECLARE(type) \
+ARRAY_DECLARE(type); \
 \
 typedef struct { \
 	array_##type##_t items; \
@@ -1034,7 +1033,7 @@ static void hash_table_##type##_fini(hash_table_##type##_t *); \
 static void hash_table_##type##_resize(hash_table_##type##_t *, size_t new_size); \
 static bool32_t hash_table_##type##_add(hash_table_##type##_t *, type in, type **out); \
 static bool32_t hash_table_##type##_get(hash_table_##type##_t *, type in, type **out); \
-static bool32_t hash_table_##type##_del(hash_table_##type##_t *, type in, type *out);
+static bool32_t hash_table_##type##_del(hash_table_##type##_t *, type in, type *out)
 
 #define HASH_TABLE_DEFINE(type, hash_key_func, keys_equal_func, collisions_to_resize) \
 \
@@ -1080,18 +1079,18 @@ static bool32_t hash_table_##type##_add(hash_table_##type##_t *ht, type in, type
 			if (out) { \
 				*out = it; \
 			} \
-			return false; \
+			return FALSE; \
 		} \
 		hash_table_##type##_resize(ht, ht->items.size * 2); \
 		hash_table_##type##_add(ht, in, out); \
 	} else { \
 		*it = in; \
-		it->occupied = true; \
+		it->occupied = TRUE; \
 		if (out) { \
 			*out = it; \
 		} \
 	} \
-	return true; \
+	return TRUE; \
 } \
 \
 static bool32_t hash_table_##type##_get(hash_table_##type##_t *ht, type in, type **out) { \
@@ -1105,9 +1104,9 @@ static bool32_t hash_table_##type##_get(hash_table_##type##_t *ht, type in, type
 	} \
 	if (it->occupied && keys_equal_func(it->key, in.key)) { \
 		*out = it; \
-		return true; \
+		return TRUE; \
 	} else { \
-		return false; \
+		return FALSE; \
 	} \
 } \
 \
@@ -1125,19 +1124,19 @@ static bool32_t hash_table_##type##_del(hash_table_##type##_t *ht, type in, type
 			*out = *it; \
 		} \
 		*it = (type){ \
-			.occupied = true, \
-			.tombstone = true, \
+			.occupied = TRUE, \
+			.tombstone = TRUE, \
 		}; \
-		return true; \
+		return TRUE; \
 	} else { \
-		return false; \
+		return FALSE; \
 	} \
 }
 
 // ? TODO: tombstone threshold, shrink
 
 #define HASH_TABLE_DECLARE_DEFINE(type, hash_key_func, keys_equal_func, collisions_to_resize) \
-	HASH_TABLE_DECLARE(type, hash_key_func, keys_equal_func, collisions_to_resize) \
+	HASH_TABLE_DECLARE(type, hash_key_func, keys_equal_func, collisions_to_resize); \
 	HASH_TABLE_DEFINE(type, hash_key_func, keys_equal_func, collisions_to_resize)
 
 #define HASH_TABLE_STRUCT_FIELDS(key_type) \
@@ -1146,8 +1145,8 @@ static bool32_t hash_table_##type##_del(hash_table_##type##_t *ht, type in, type
 	bool32_t tombstone;
 
 static void argb_premultiply_alpha(uint32_t *src, uint32_t *dest, size_t count) {
-	assert(((uintptr_t)src % 32) == 0);
-	assert(((uintptr_t)dest % 32) == 0);
+	ASSERT(((uintptr_t)src % 32) == 0);
+	ASSERT(((uintptr_t)dest % 32) == 0);
 
 	size_t i = 0;
 
@@ -1223,8 +1222,8 @@ static void argb_premultiply_alpha(uint32_t *src, uint32_t *dest, size_t count) 
 }
 
 static void abgr_to_argb_premultiply_alpha(uint32_t *src, uint32_t *dest, size_t count) {
-	assert(((uintptr_t)src % 32) == 0);
-	assert(((uintptr_t)dest % 32) == 0);
+	ASSERT(((uintptr_t)src % 32) == 0);
+	ASSERT(((uintptr_t)dest % 32) == 0);
 
 	size_t i = 0;
 
@@ -1311,8 +1310,8 @@ static void abgr_to_argb_premultiply_alpha(uint32_t *src, uint32_t *dest, size_t
 }
 
 static void abgr_to_argb(uint32_t *src, uint32_t *dest, size_t count) {
-	assert(((uintptr_t)src % 32) == 0);
-	assert(((uintptr_t)dest % 32) == 0);
+	ASSERT(((uintptr_t)src % 32) == 0);
+	ASSERT(((uintptr_t)dest % 32) == 0);
 
 	size_t i = 0;
 
@@ -1358,27 +1357,27 @@ static int trailing_zeros(uint32_t x, int fallback) {
 static bool32_t fd_set_nonblock(int fd) {
     int flags = fcntl(fd, F_GETFL);
     if (flags == -1) {
-        return false;
+        return FALSE;
     }
 
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        return false;
+        return FALSE;
     }
 
-	return true;
+	return TRUE;
 }
 
 static bool32_t fd_set_cloexec(int fd) {
     int flags = fcntl(fd, F_GETFD);
     if (flags == -1) {
-        return false;
+        return FALSE;
     }
 
     if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
-        return false;
+        return FALSE;
     }
 
-	return true;
+	return TRUE;
 }
 
 static int64_t timespec_to_ms(struct timespec timespec) {
@@ -1389,13 +1388,13 @@ static int64_t now_ms(void) {
 	struct timespec ts;
 	int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
 	(void)ret;
-	assert(ret == 0);
+	ASSERT(ret == 0);
 	return timespec_to_ms(ts);
 }
 
 static int data_to_shm(string_t *path_out, void *bytes, size_t nbytes) {
 	static const char template[] = "/dev/shm/" PREFIX "-XXXXXX";
-	string_init_len(path_out, template, STRING_LITERAL_LENGTH(template), true);
+	string_init_len(path_out, template, STRING_LITERAL_LENGTH(template), TRUE);
 	int fd = mkstemp(path_out->s);
 	if (fd == -1) {
 		goto error_1;

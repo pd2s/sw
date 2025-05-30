@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <assert.h>
 #include <sys/types.h>
 #include <poll.h>
 #include <uchar.h>
@@ -28,19 +27,18 @@
 
 #include "macros.h"
 
-#if HAVE_TEXT
+#if WITH_TEXT
 #include <fcft/fcft.h>
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 
-#if HAVE_SVG
+#if WITH_SVG
 #if HAS_INCLUDE(<resvg.h>)
 #include <resvg.h>
 #else
 #include <resvg/resvg.h>
 #endif // HAS_INCLUDE
-#endif // HAVE_SVG
+#endif // WITH_SVG
 
-#include "sw.h"
 #include "json.h"
 
 #include "util.h"
@@ -50,6 +48,10 @@
 #else
 #include <tinyexpr/<tinyexpr.h>>
 #endif // HAS_INCLUDE
+
+
+
+#include "sw.h"
 
 ARRAY_DECLARE_DEFINE(te_variable)
 
@@ -80,41 +82,41 @@ IGNORE_WARNING("-Wmissing-prototypes")
 #define STBI_FREE free
 #define STBI_REALLOC_SIZED realloc_sized_stbi
 
-#if !HAVE_PNG
+#if !WITH_PNG
 #define STBI_NO_PNG
-#endif // !HAVE_PNG
+#endif // !WITH_PNG
 
-#if !HAVE_JPG
+#if !WITH_JPG
 #define STBI_NO_JPEG
-#endif // !HAVE_JPG
+#endif // !WITH_JPG
 
-#if !HAVE_TGA
+#if !WITH_TGA
 #define STBI_NO_TGA
-#endif // !HAVE_TGA
+#endif // !WITH_TGA
 
-#if !HAVE_BMP
+#if !WITH_BMP
 #define STBI_NO_BMP
-#endif // !HAVE_BMP
+#endif // !WITH_BMP
 
-#if !HAVE_PSD
+#if !WITH_PSD
 #define STBI_NO_PSD
-#endif // !HAVE_PSD
+#endif // !WITH_PSD
 
-#if !HAVE_GIF
+#if !WITH_GIF
 #define STBI_NO_GIF
-#endif //  !HAVE_GIF
+#endif //  !WITH_GIF
 
-#if !HAVE_HDR
+#if !WITH_HDR
 #define STBI_NO_HDR
-#endif // !HAVE_HDR
+#endif // !WITH_HDR
 
-#if !HAVE_PIC
+#if !WITH_PIC
 #define STBI_NO_PIC
-#endif // !HAVE_PIC
+#endif // !WITH_PIC
 
-#if !HAVE_PNM
+#if !WITH_PNM
 #define STBI_NO_PNM
-#endif // !HAVE_PNM
+#endif // !WITH_PNM
 
 #include <stb_image.h>
 
@@ -170,7 +172,7 @@ struct surface_block_box {
 };
 
 typedef struct surface_block struct_surface_block;
-ARRAY_DECLARE(struct_surface_block)
+ARRAY_DECLARE(struct_surface_block);
 
 struct surface_block {
 	enum sw_surface_block_type type;
@@ -325,30 +327,30 @@ struct gif_frame_data {
 
 enum image_data_type {
 	IMAGE_DATA_TYPE_NONE,
-#if HAVE_SVG
+#if WITH_SVG
 	IMAGE_DATA_TYPE_SVG_TREE,
-#endif // HAVE_SVG
-#if HAVE_GIF
+#endif // WITH_SVG
+#if WITH_GIF
 	IMAGE_DATA_TYPE_MULTIFRAME_GIF,
-#endif // HAVE_GIF
+#endif // WITH_GIF
 };
 
 struct image_data {
 	uint32_t pad;
 	enum image_data_type type;
 	union {
-#if HAVE_SVG
+#if WITH_SVG
 		struct {
 			resvg_render_tree *tree;
 		} svg;
-#endif // HAVE_SVG
+#endif // WITH_SVG
 		struct gif_frame_data *gif;
 	};
 
 	uint32_t *pixels;
 };
 
-#if HAVE_TEXT
+#if WITH_TEXT
 struct text_run_cache_entry {
 	struct fcft_font *font;
 	struct fcft_text_run *text_run;
@@ -364,7 +366,7 @@ struct text_run_cache {
 
 typedef struct text_run_cache struct_text_run_cache;
 HASH_TABLE_DECLARE_DEFINE(struct_text_run_cache, stbds_hash_string, string_equal, 16)
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 
 struct image_cache {
 	HASH_TABLE_STRUCT_FIELDS(string_t)
@@ -415,9 +417,9 @@ static struct {
 	array_struct_output_ptr_t outputs;
 	array_struct_seat_ptr_t seats;
 
-#if HAVE_TEXT
+#if WITH_TEXT
 	hash_table_struct_text_run_cache_t text_run_cache;
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 	hash_table_struct_image_cache_t image_cache;
 
 	bool32_t events;
@@ -457,9 +459,9 @@ static void buffer_fini(struct buffer *buffer) {
 }
 
 static bool32_t surface_render(struct surface *surface);
-#if HAVE_SVG
+#if WITH_SVG
 static pixman_image_t *render_svg(resvg_render_tree *tree, int32_t target_width, int32_t target_height);
-#endif // HAVE_SVG
+#endif // WITH_SVG
 
 static void surface_handle_render(void *data) {
 	surface_render((struct surface *)data);
@@ -517,7 +519,7 @@ static void surface_block_render(struct surface_block *block, pixman_image_t *de
 	if (block->content_image) {
 		struct image_data *image_data = pixman_image_get_destroy_data(block->content_image);
 		(void)image_data;
-#if HAVE_GIF
+#if WITH_GIF
 		if (image_data && (image_data->type == IMAGE_DATA_TYPE_MULTIFRAME_GIF)) {
 			int64_t now_msec = now_ms();
 			struct gif_frame_data *data = image_data->gif;
@@ -536,9 +538,9 @@ static void surface_block_render(struct surface_block *block, pixman_image_t *de
 				data->image = frame.image;
 			}
 			block->content_image = data->image;
-			block->destroy_content_image = false;
+			block->destroy_content_image = FALSE;
 		}
-#endif // HAVE_GIF
+#endif // WITH_GIF
 
 		int content_image_width = pixman_image_get_width(block->content_image);
 		int content_image_height = pixman_image_get_height(block->content_image);
@@ -553,12 +555,12 @@ static void surface_block_render(struct surface_block *block, pixman_image_t *de
 
 		if ((box.content_width != content_image_width)
 				|| (box.content_height != content_image_height)) {
-#if HAVE_SVG
+#if WITH_SVG
 			if (image_data && (image_data->type == IMAGE_DATA_TYPE_SVG_TREE)) {
 				pixman_image_unref(block->content_image);
 				block->content_image = render_svg(image_data->svg.tree, box.content_width, box.content_height);
 			} else
-#endif // HAVE_SVG
+#endif // WITH_SVG
 				pixman_transform_scale(&transform, NULL,
 					pixman_int_to_fixed(content_image_width) / box.content_width,
 					pixman_int_to_fixed(content_image_height) / box.content_height);
@@ -656,7 +658,7 @@ static void surface_block_render(struct surface_block *block, pixman_image_t *de
 static int32_t eval_surface_block_te_expr(string_t expr, array_te_variable_t *vars) {
 	int32_t ret = 0;
 	if (expr.len > 0) {
-		assert(expr.nul_terminated);
+		ASSERT(expr.nul_terminated);
 		te_expr *e = te_compile(expr.s, vars->items, (int)vars->len, NULL);
 		if (e) {
 			double result = te_eval(e);
@@ -729,14 +731,14 @@ static void image_handle_destroy(pixman_image_t *image, void *data) {
 	switch (image_data->type) {
 	case IMAGE_DATA_TYPE_NONE:
 		break;
-#if HAVE_SVG
+#if WITH_SVG
 	case IMAGE_DATA_TYPE_SVG_TREE:
 		if (image_data->svg.tree) {
 			resvg_tree_destroy(image_data->svg.tree);
 		}
 		break;
-#endif // HAVE_SVG
-#if HAVE_GIF
+#endif // WITH_SVG
+#if WITH_GIF
 	case IMAGE_DATA_TYPE_MULTIFRAME_GIF: {
 		struct gif_frame_data *gif = image_data->gif;
 		for (size_t i = 0; i < gif->frames.len; ++i) {
@@ -749,7 +751,7 @@ static void image_handle_destroy(pixman_image_t *image, void *data) {
 		free(gif);
 		break;
 	}
-#endif // HAVE_GIF
+#endif // WITH_GIF
 	default:
 		ASSERT_UNREACHABLE;
 	}
@@ -760,10 +762,10 @@ static void image_handle_destroy(pixman_image_t *image, void *data) {
 }
 
 static pixman_image_t *image_create(int width, int height, struct image_data **data_out) {
-	assert(width > 0);
-	assert(height > 0);
+	ASSERT(width > 0);
+	ASSERT(height > 0);
 
-	struct image_data *data = malloc(sizeof(struct image_data));
+	struct image_data *data = malloc(SIZEOF(struct image_data));
 	data->type = IMAGE_DATA_TYPE_NONE;
 
 	int stride = width * 4;
@@ -831,11 +833,11 @@ static void surface_block_prepare(struct surface_block *block, array_te_variable
 				te_variable *v = array_te_variable_add(te_vars, (te_variable){
 					.address = (double[]){ b->content_image ? pixman_image_get_width(b->content_image) : 0.0 },
 				});
-				stbsp_snprintf(v->name, sizeof(v->name), "block_%lu_content_width", b->id);
+				stbsp_snprintf(v->name, SIZEOF(v->name), "block_%lu_content_width", b->id);
 				v = array_te_variable_add(te_vars, (te_variable){
 					.address = (double[]){ b->content_image ? pixman_image_get_height(b->content_image) : 0.0 },
 				});
-				stbsp_snprintf(v->name, sizeof(v->name), "block_%lu_content_height", b->id);
+				stbsp_snprintf(v->name, SIZEOF(v->name), "block_%lu_content_height", b->id);
 			}
 		}
 
@@ -1022,8 +1024,8 @@ static void surface_block_prepare(struct surface_block *block, array_te_variable
 static bool32_t surface_render(struct surface *surface) {
 	struct surface_buffer *buffer = surface->buffer;
 	if (buffer && buffer->busy) {
-		surface->dirty = true;
-		return true;
+		surface->dirty = TRUE;
+		return TRUE;
 	}
 
 	// TODO: rework
@@ -1051,7 +1053,7 @@ static bool32_t surface_render(struct surface *surface) {
 
 	te_vars.len = 4;
 
-	bool32_t ret = true;
+	bool32_t ret = TRUE;
 	int32_t surface_width, surface_height;
 	switch (surface->type) {
 	case SW_SURFACE_TYPE_LAYER: {
@@ -1059,7 +1061,7 @@ static bool32_t surface_render(struct surface *surface) {
 		if (surface->layer.anchor != SW_SURFACE_LAYER_ANCHOR_ALL) {
 			if (surface->desired_width < 0) {
 				if (surface->layout_root.box.width <= 0) {
-					ret = false;
+					ret = FALSE;
 					goto cleanup;
 				}
 				surface_width = surface->layout_root.box.width;
@@ -1068,7 +1070,7 @@ static bool32_t surface_render(struct surface *surface) {
 			}
 			if (surface->desired_height < 0) {
 				if (surface->layout_root.box.height <= 0) {
-					ret = false;
+					ret = FALSE;
 					goto cleanup;
 				}
 				surface_height = surface->layout_root.box.height;
@@ -1125,7 +1127,7 @@ static bool32_t surface_render(struct surface *surface) {
 		surface_width = (surface->desired_width <= 0) ? surface->layout_root.box.width : surface->desired_width;
 		surface_height = (surface->desired_height <= 0) ? surface->layout_root.box.height : surface->desired_height;
 		if ((surface_width <= 0) || (surface_height <= 0)) {
-			ret = false;
+			ret = FALSE;
 			goto cleanup;
 		}
 		if (!buffer || (surface->width != surface_width) || (surface->height != surface_height)) {
@@ -1141,7 +1143,7 @@ static bool32_t surface_render(struct surface *surface) {
 	}
 	default:
 		ASSERT_UNREACHABLE;
-		return false;
+		return FALSE;
 	}
 
 	surface_block_expand(&surface->layout_root, &te_vars,
@@ -1157,8 +1159,8 @@ static bool32_t surface_render(struct surface *surface) {
 		wl_surface_attach(surface->wl_surface, buffer->wl_buffer, 0, 0);
 		wl_surface_damage_buffer(surface->wl_surface, 0, 0, surface->width, surface->height);
 
-		buffer->busy = true;
-		surface->dirty = false;
+		buffer->busy = TRUE;
+		surface->dirty = FALSE;
 	}
 
 	wl_surface_commit(surface->wl_surface);
@@ -1217,7 +1219,7 @@ static pixman_color_t to_pixman_color(union sw_color color) {
 }
 
 static pixman_image_t *load_pixmap(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *f = fopen(path.s, "r");
 	if (f == NULL) {
@@ -1231,7 +1233,7 @@ static pixman_image_t *load_pixmap(string_t path) {
 	} pixmap;
 
 	pixman_image_t *image = NULL;
-	if (fread(&pixmap, 1, sizeof(pixmap), f) != sizeof(pixmap)) {
+	if (fread(&pixmap, 1, SIZEOF(pixmap), f) != SIZEOF(pixmap)) {
 		goto cleanup;
 	}
 
@@ -1256,7 +1258,7 @@ cleanup:
     return image;
 }
 
-#if HAVE_SVG
+#if WITH_SVG
 static pixman_image_t *render_svg(resvg_render_tree *tree, int32_t target_width, int32_t target_height) {
 	resvg_size image_size = resvg_get_image_size(tree); // ? TODO: resvg_get_image_bbox
 	int32_t width = (int32_t)image_size.width;
@@ -1272,8 +1274,8 @@ static pixman_image_t *render_svg(resvg_render_tree *tree, int32_t target_width,
 		transform.d = (float)target_height / image_size.height;
 	}
 
-	assert(width > 0);
-	assert(height > 0);
+	ASSERT(width > 0);
+	ASSERT(height > 0);
 
 	struct image_data *image_data;
 	pixman_image_t *image = image_create(width, height, &image_data);
@@ -1290,7 +1292,7 @@ static pixman_image_t *render_svg(resvg_render_tree *tree, int32_t target_width,
 }
 
 static pixman_image_t *load_svg(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	pixman_image_t *image = NULL;
 	resvg_render_tree *tree = NULL;
@@ -1317,11 +1319,11 @@ static pixman_image_t *load_svg(string_t path) {
 
 	return image;
 }
-#endif // HAVE_SVG
+#endif // WITH_SVG
 
-#if HAVE_PNG
+#if WITH_PNG
 static pixman_image_t *load_png(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1341,7 +1343,7 @@ static pixman_image_t *load_png(string_t path) {
 		uint32_t *src = stbi__png_load(&ctx, &width, &height, &unused, 4, &ri);
 		if (src && (width > 0) && (height > 0)) {
 			if (ri.bits_per_channel != 8) {
-				assert(ri.bits_per_channel == 16);
+				ASSERT(ri.bits_per_channel == 16);
 				src = (uint32_t *)(void *)stbi__convert_16_to_8((stbi__uint16 *)src, width, height, 4);
 			}
 			struct image_data *image_data;
@@ -1354,11 +1356,11 @@ static pixman_image_t *load_png(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_PNG
+#endif // WITH_PNG
 
-#if HAVE_JPG
+#if WITH_JPG
 static pixman_image_t *load_jpg(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1383,11 +1385,11 @@ static pixman_image_t *load_jpg(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_JPG
+#endif // WITH_JPG
 
-#if HAVE_TGA
+#if WITH_TGA
 static pixman_image_t *load_tga(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1412,11 +1414,11 @@ static pixman_image_t *load_tga(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_TGA
+#endif // WITH_TGA
 
-#if HAVE_BMP
+#if WITH_BMP
 static pixman_image_t *load_bmp(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1441,11 +1443,11 @@ static pixman_image_t *load_bmp(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_BMP
+#endif // WITH_BMP
 
-#if HAVE_PSD
+#if WITH_PSD
 static pixman_image_t *load_psd(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1465,7 +1467,7 @@ static pixman_image_t *load_psd(string_t path) {
 		uint32_t *src = stbi__psd_load(&ctx, &width, &height, &unused, 4, &ri, 8);
 		if (src && (width > 0) && (height > 0)) {
 			if (ri.bits_per_channel != 8) {
-				assert(ri.bits_per_channel == 16);
+				ASSERT(ri.bits_per_channel == 16);
 				src = (uint32_t *)(void *)stbi__convert_16_to_8((stbi__uint16 *)src, width, height, 4);
 			}
 			struct image_data *image_data;
@@ -1478,11 +1480,11 @@ static pixman_image_t *load_psd(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_PSD
+#endif // WITH_PSD
 
-#if HAVE_GIF
+#if WITH_GIF
 static pixman_image_t *load_gif(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1498,7 +1500,7 @@ static pixman_image_t *load_gif(string_t path) {
 		uint32_t *src = stbi__load_gif_main(&ctx, &frame_delays, &width, &height, &frame_count, &unused, 4);
 		if (src && (width > 0) && (height > 0)) {
 			if (frame_count > 1) {
-				struct gif_frame_data *gif_data = malloc(sizeof(struct gif_frame_data));
+				struct gif_frame_data *gif_data = malloc(SIZEOF(struct gif_frame_data));
 				gif_data->frame_idx = 0;
 				gif_data->frame_end = 0;
 				gif_data->image = NULL;
@@ -1534,11 +1536,11 @@ static pixman_image_t *load_gif(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_GIF
+#endif // WITH_GIF
 
-#if HAVE_HDR
+#if WITH_HDR
 static pixman_image_t *load_hdr(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1566,11 +1568,11 @@ static pixman_image_t *load_hdr(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_HDR
+#endif // WITH_HDR
 
-#if HAVE_PIC
+#if WITH_PIC
 static pixman_image_t *load_pic(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1595,11 +1597,11 @@ static pixman_image_t *load_pic(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_PIC
+#endif // WITH_PIC
 
-#if HAVE_PNM
+#if WITH_PNM
 static pixman_image_t *load_pnm(string_t path) {
-	assert(path.nul_terminated);
+	ASSERT(path.nul_terminated);
 
 	FILE *file = fopen(path.s, "rb");
 	if (!file) {
@@ -1619,7 +1621,7 @@ static pixman_image_t *load_pnm(string_t path) {
 		uint32_t *src = stbi__pnm_load(&ctx, &width, &height, &unused, 4, &ri);
 		if (src && (width > 0) && (height > 0)) {
 			if (ri.bits_per_channel != 8) {
-				assert(ri.bits_per_channel == 16);
+				ASSERT(ri.bits_per_channel == 16);
 				src = (uint32_t *)(void *)stbi__convert_16_to_8((stbi__uint16 *)src, width, height, 4);
 			}
 			struct image_data *image_data;
@@ -1632,7 +1634,7 @@ static pixman_image_t *load_pnm(string_t path) {
 	fclose(file);
 	return image;
 }
-#endif // HAVE_PNM
+#endif // WITH_PNM
 
 static void process_border(struct surface_block_border *border, struct json_ast_node *json) {
 	if (json->type != JSON_AST_NODE_TYPE_OBJECT) {
@@ -1660,19 +1662,19 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 	*block = (struct surface_block){ 0 };
 
 	if (!json || (json->type != JSON_AST_NODE_TYPE_OBJECT)) {
-		return false;
+		return FALSE;
 	}
 
 	block->type = SW_SURFACE_BLOCK_TYPE_SPACER;
 	block->anchor = SW_SURFACE_BLOCK_ANCHOR_LEFT;
 	block->content_anchor = SW_SURFACE_BLOCK_CONTENT_ANCHOR_LEFT_CENTER;
 	block->content_transform = SW_SURFACE_BLOCK_CONTENT_TRANSFORM_NORMAL;
-	block->destroy_content_image = true;
+	block->destroy_content_image = TRUE;
 
 	struct json_ast_node *composite_layout = NULL, *composite_children = NULL,
-#if HAVE_TEXT
+#if WITH_TEXT
 			*text_text = NULL, *text_font_names = NULL, *text_text_color = NULL,
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 			*image_path = NULL, *image_image_type = NULL;
 
 	for (size_t i = 0; i < json->object.len; ++i) {
@@ -1681,9 +1683,9 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 			if (key_value->value.type == JSON_AST_NODE_TYPE_UINT) {
 				switch ((enum sw_surface_block_type)key_value->value.u) {
 				case SW_SURFACE_BLOCK_TYPE_TEXT:
-#if !HAVE_TEXT
+#if !WITH_TEXT
 					goto error;
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 				case SW_SURFACE_BLOCK_TYPE_IMAGE:
 				case SW_SURFACE_BLOCK_TYPE_COMPOSITE:
 					block->type = (enum sw_surface_block_type)key_value->value.u;
@@ -1808,14 +1810,14 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 			process_border(&block->border_bottom, &key_value->value);
 		} else if (string_equal(key_value->key, STRING_LITERAL("border_top"))) {
 			process_border(&block->border_top, &key_value->value);
-#if HAVE_TEXT
+#if WITH_TEXT
 		} else if (string_equal(key_value->key, STRING_LITERAL("text"))) {
 			text_text = &key_value->value;
 		} else if (string_equal(key_value->key, STRING_LITERAL("font_names"))) {
 			text_font_names = &key_value->value;
 		} else if (string_equal(key_value->key, STRING_LITERAL("text_color"))) {
 			text_text_color = &key_value->value;
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 		} else if (string_equal(key_value->key, STRING_LITERAL("path"))) {
 			image_path = &key_value->value;
 		} else if (string_equal(key_value->key, STRING_LITERAL("image_type"))) {
@@ -1832,7 +1834,7 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 	case SW_SURFACE_BLOCK_TYPE_SPACER:
 		break;
 	case SW_SURFACE_BLOCK_TYPE_TEXT: {
-#if HAVE_TEXT
+#if WITH_TEXT
 		if (!text_text || (text_text->type != JSON_AST_NODE_TYPE_STRING) || (text_text->s.len == 0)) {
 			goto error;
 		}
@@ -1872,7 +1874,7 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 		}
 
 		if (text_run == NULL) {
-			char32_t *text = malloc(text_text->s.len * sizeof(char32_t) + 1);
+			char32_t *text = malloc(text_text->s.len * SIZEOF(char32_t) + 1);
 			size_t text_len = 0;
 			mbstate_t s = { 0 };
 			size_t consumed = 0;
@@ -1948,7 +1950,7 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 		}
 
 		pixman_image_unref(text_color);
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 		break;
 	}
 	case SW_SURFACE_BLOCK_TYPE_IMAGE: {
@@ -1957,7 +1959,7 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 		}
 
 		string_t path = image_path->s;
-		assert(path.nul_terminated);
+		ASSERT(path.nul_terminated);
 
 		char abspath_buf[PATH_MAX];
 		if (realpath(path.s, abspath_buf) == NULL) {
@@ -1968,8 +1970,8 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 		string_t abspath = {
 			.s = abspath_buf,
 			.len = strlen(abspath_buf),
-			.free_contents = false,
-			.nul_terminated = true,
+			.free_contents = FALSE,
+			.nul_terminated = TRUE,
 		};
 
 		struct stat sb;
@@ -2009,15 +2011,15 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 		struct image_cache *cache;
 		if (hash_table_struct_image_cache_get(&state.image_cache,
 				(struct image_cache){ .key = abspath }, &cache)) {
-			if ((memcmp(&sb.st_mtim, &cache->mtim_ts, sizeof(struct timespec)) == 0)
+			if ((memcmp(&sb.st_mtim, &cache->mtim_ts, SIZEOF(struct timespec)) == 0)
 					&& (cache->type == image_type)) {
-#if HAVE_GIF
+#if WITH_GIF
 				struct image_data *data = pixman_image_get_destroy_data(cache->image);
 				if (data && (data->type == IMAGE_DATA_TYPE_MULTIFRAME_GIF)) {
 					block->content_image = cache->image;
-					block->destroy_content_image = false;
+					block->destroy_content_image = FALSE;
 				} else
-#endif // HAVE_GIF
+#endif // WITH_GIF
 					block->content_image = pixman_image_ref(cache->image);
 			} else {
 				pixman_image_unref(cache->image);
@@ -2030,54 +2032,54 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 				block->content_image = load_pixmap(abspath);
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_SVG:
-#if HAVE_SVG
+#if WITH_SVG
 				block->content_image = load_svg(abspath);
-#endif // HAVE_SVG
+#endif // WITH_SVG
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_PNG:
-#if HAVE_PNG
+#if WITH_PNG
 				block->content_image = load_png(abspath);
-#endif // HAVE_PNG
+#endif // WITH_PNG
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_JPG:
-#if HAVE_JPG
+#if WITH_JPG
 				block->content_image = load_jpg(abspath);
-#endif // HAVE_JPG
+#endif // WITH_JPG
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_TGA:
-#if HAVE_TGA
+#if WITH_TGA
 				block->content_image = load_tga(abspath);
-#endif // HAVE_TGA
+#endif // WITH_TGA
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_BMP:
-#if HAVE_BMP
+#if WITH_BMP
 				block->content_image = load_bmp(abspath);
-#endif // HAVE_BMP
+#endif // WITH_BMP
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_PSD:
-#if HAVE_PSD
+#if WITH_PSD
 				block->content_image = load_psd(abspath);
-#endif // HAVE_PSD
+#endif // WITH_PSD
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_GIF:
-#if HAVE_GIF
+#if WITH_GIF
 				block->content_image = load_gif(abspath);
-#endif // HAVE_GIF
+#endif // WITH_GIF
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_HDR:
-#if HAVE_HDR
+#if WITH_HDR
 				block->content_image = load_hdr(abspath);
-#endif // HAVE_HDR
+#endif // WITH_HDR
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_PIC:
-#if HAVE_PIC
+#if WITH_PIC
 				block->content_image = load_pic(abspath);
-#endif // HAVE_PIC
+#endif // WITH_PIC
 				break;
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_PNM:
-#if HAVE_PNM
+#if WITH_PNM
 				block->content_image = load_pnm(abspath);
-#endif // HAVE_PNM
+#endif // WITH_PNM
 				break;
 			default:
 			case SW_SURFACE_BLOCK_TYPE_IMAGE_IMAGE_TYPE_DEFAULT:
@@ -2098,13 +2100,13 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 					(struct image_cache){ .key = abspath }, &cache)) {
 				string_init_string(&cache->key, cache->key);
 			}
-#if HAVE_GIF
+#if WITH_GIF
 			struct image_data *data = pixman_image_get_destroy_data(block->content_image);
 			if (data && (data->type == IMAGE_DATA_TYPE_MULTIFRAME_GIF)) {
-				block->destroy_content_image = false;
+				block->destroy_content_image = FALSE;
 				cache->image = block->content_image;
 			} else
-#endif // HAVE_GIF
+#endif // WITH_GIF
 				cache->image = pixman_image_ref(block->content_image);
 
 			cache->mtim_ts = sb.st_mtim;
@@ -2145,11 +2147,11 @@ static bool32_t surface_block_init(struct surface_block *block, struct surface *
 	}
 
 	block->surface = surface;
-	return true;
+	return TRUE;
 error:
 	surface_block_fini(block);
 	*block = (struct surface_block){ 0 };
-	return false;
+	return FALSE;
 }
 
 static void describe_surface_block(struct json_writer *writer, struct surface_block *block) {
@@ -2268,7 +2270,7 @@ static void describe_pointer(struct json_writer *writer, struct pointer *pointer
 		json_writer_int(writer, pointer->pos_y);
 
 		json_writer_object_end(writer);
-		pointer->pos_dirty = false;
+		pointer->pos_dirty = FALSE;
 	} else {
 		json_writer_null(writer);
 	}
@@ -2287,7 +2289,7 @@ static void describe_pointer(struct json_writer *writer, struct pointer *pointer
 		json_writer_uint(writer, pointer->btn_serial);
 
 		json_writer_object_end(writer);
-		pointer->btn_dirty = false;
+		pointer->btn_dirty = FALSE;
 	} else {
 		json_writer_null(writer);
 	}
@@ -2303,7 +2305,7 @@ static void describe_pointer(struct json_writer *writer, struct pointer *pointer
 		json_writer_double(writer, pointer->scroll_vector_length);
 
 		json_writer_object_end(writer);
-		pointer->scroll_dirty = false;
+		pointer->scroll_dirty = FALSE;
 	} else {
 		json_writer_null(writer);
 	}
@@ -2373,7 +2375,7 @@ static void state_update(bool32_t force) {
 
 	json_writer_raw(&state.writer, "\n", 1); // ? TODO: remove
 
-	state.dirty = false;
+	state.dirty = FALSE;
 }
 
 static void layer_destroy(struct surface *layer);
@@ -2382,7 +2384,7 @@ static void popup_destroy(struct surface *popup);
 static void surface_buffer_handle_release(void *data, struct wl_buffer *wl_buffer) {
 	(void)wl_buffer;
 	struct surface_buffer *buffer = data;
-	buffer->busy = false;
+	buffer->busy = FALSE;
 	if (buffer->surface->dirty) {
 		if (!surface_render(buffer->surface)) {
 			switch (buffer->surface->type) {
@@ -2396,7 +2398,7 @@ static void surface_buffer_handle_release(void *data, struct wl_buffer *wl_buffe
 				ASSERT_UNREACHABLE;
 			}
 		}
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
@@ -2406,7 +2408,7 @@ static const struct wl_buffer_listener surface_buffer_listener = {
 
 static struct surface_buffer *surface_buffer_create(int32_t width, int32_t height,
 		struct surface *surface) {
-	struct surface_buffer *buffer = malloc(sizeof(struct surface_buffer));
+	struct surface_buffer *buffer = malloc(SIZEOF(struct surface_buffer));
 
 	struct timespec ts = { 0 };
 	pid_t pid = getpid();
@@ -2414,7 +2416,7 @@ static struct surface_buffer *surface_buffer_create(int32_t width, int32_t heigh
 
 generate_shm_name:
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	stbsp_snprintf(shm_name, sizeof(shm_name),"/" PREFIX "-%d-%ld-%ld",
+	stbsp_snprintf(shm_name, SIZEOF(shm_name),"/" PREFIX "-%d-%ld-%ld",
 			pid, ts.tv_sec, ts.tv_nsec);
 
 	int shm_fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, 0600);
@@ -2455,7 +2457,7 @@ generate_shm_name:
 	close(shm_fd);
 
 	buffer->surface = surface;
-	buffer->busy = false;
+	buffer->busy = FALSE;
 
 	return buffer;
 }
@@ -2511,10 +2513,11 @@ static void surface_fini(struct surface *surface) {
 }
 
 static void popup_destroy(struct surface *popup) {
-	assert(popup->type == SW_SURFACE_TYPE_POPUP);
 	if (popup == NULL) {
 		return;
 	}
+
+	ASSERT(popup->type == SW_SURFACE_TYPE_POPUP);
 
 	surface_fini(popup);
 
@@ -2540,8 +2543,8 @@ static void popup_handle_configure(void *data, struct xdg_popup *xdg_popup,
 	(void)x;
 	(void)y;
 	struct surface *popup = data;
-	assert(width > 0);
-	assert(height > 0);
+	ASSERT(width > 0);
+	ASSERT(height > 0);
 
 	width *= popup->scale;
 	height *= popup->scale;
@@ -2550,7 +2553,7 @@ static void popup_handle_configure(void *data, struct xdg_popup *xdg_popup,
 		popup->buffer = surface_buffer_create(width, height, popup);
 		popup->width = width;
 		popup->height = height;
-		popup->dirty = true;
+		popup->dirty = TRUE;
 	}
 }
 
@@ -2561,7 +2564,7 @@ static void popup_handle_done(void *data, struct xdg_popup *xdg_popup) {
 		if (array_struct_surface_ptr_get(&popup->popup.parent->popups, i) == popup) {
 			array_struct_surface_ptr_put(&popup->popup.parent->popups, NULL, i);
 			popup_destroy(popup);
-			state.dirty = true;
+			state.dirty = TRUE;
 			return;
 		}
 	}
@@ -2591,7 +2594,7 @@ static void popup_xdg_surface_handle_configure(void *data, struct xdg_surface *x
 		if (!surface_render(popup)) {
 			popup_destroy(popup);
 		}
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
@@ -2729,7 +2732,7 @@ static void process_popups(struct surface *surface, struct json_ast_node *json);
 static bool32_t popup_update(struct surface *popup, struct json_ast_node *json,
 		struct json_ast_node **grab_out, struct json_ast_node **popups_out) {
 	if (json->type != JSON_AST_NODE_TYPE_OBJECT) {
-		return false;
+		return FALSE;
 	}
 
 	int64_t new_x = INT64_MIN;
@@ -2751,13 +2754,13 @@ static bool32_t popup_update(struct surface *popup, struct json_ast_node *json,
 			if ((key_value->value.type == JSON_AST_NODE_TYPE_UINT) || (key_value->value.type == JSON_AST_NODE_TYPE_INT)) {
 				new_x = (int32_t)key_value->value.i;
 			} else {
-				return false;
+				return FALSE;
 			}
 		} else if (string_equal(key_value->key, STRING_LITERAL("y"))) {
 			if ((key_value->value.type == JSON_AST_NODE_TYPE_UINT) || (key_value->value.type == JSON_AST_NODE_TYPE_INT)) {
 				new_y = (int32_t)key_value->value.i;
 			} else {
-				return false;
+				return FALSE;
 			}
 		} else if (string_equal(key_value->key, STRING_LITERAL("gravity"))) {
 			if (key_value->value.type == JSON_AST_NODE_TYPE_UINT) {
@@ -2806,7 +2809,7 @@ static bool32_t popup_update(struct surface *popup, struct json_ast_node *json,
 			new_grab = &key_value->value;
 		} else if (string_equal(key_value->key, STRING_LITERAL("userdata"))) {
 			json_writer_ast_node(&state.userdata_writer, &key_value->value);
-			string_init_len(&popup->userdata, state.userdata_writer.buf.data, state.userdata_writer.buf.idx, false);
+			string_init_len(&popup->userdata, state.userdata_writer.buf.data, state.userdata_writer.buf.idx, FALSE);
 			json_writer_reset(&state.userdata_writer);
 		} else if (string_equal(key_value->key, STRING_LITERAL("width"))) {
 			if ((key_value->value.type == JSON_AST_NODE_TYPE_UINT) || (key_value->value.type == JSON_AST_NODE_TYPE_INT)) {
@@ -2828,34 +2831,34 @@ static bool32_t popup_update(struct surface *popup, struct json_ast_node *json,
 	}
 
 	if ((new_x == INT64_MIN) || (new_y == INT64_MIN)) {
-		return false;
+		return FALSE;
 	}
 
 	surface_block_fini(&popup->layout_root);
 	if (!surface_block_init(&popup->layout_root, popup, new_layout_root)) {
-		return false;
+		return FALSE;
 	}
 
-	bool32_t reposition = false;
+	bool32_t reposition = FALSE;
 	if ((new_x != popup->popup.desired_x) || (new_y != popup->popup.desired_y)) {
 		xdg_positioner_set_anchor_rect(popup->popup.xdg_positioner,
 			(int32_t)new_x / popup->scale, (int32_t)new_y / popup->scale, 1, 1);
 		popup->popup.desired_x = (int32_t)new_x;
 		popup->popup.desired_y = (int32_t)new_y;
-		reposition = true;
+		reposition = TRUE;
 	}
 
 	if (popup->popup.gravity != new_gravity) {
 		xdg_positioner_set_gravity(popup->popup.xdg_positioner, new_gravity);
 		popup->popup.gravity = new_gravity;
-		reposition = true;
+		reposition = TRUE;
 	}
 
 	if (popup->popup.constraint_adjustment != new_constraint_adjustment) {
 		xdg_positioner_set_constraint_adjustment(
 			popup->popup.xdg_positioner, new_constraint_adjustment);
 		popup->popup.constraint_adjustment = new_constraint_adjustment;
-		reposition = true;
+		reposition = TRUE;
 	}
 
 	process_cursor_shape(popup, new_cursor_shape);
@@ -2899,11 +2902,11 @@ static void surface_handle_preferred_buffer_transform(void *data,
 
 static void popup_handle_preferred_buffer_scale(void *data, struct wl_surface *wl_surface, int32_t factor) {
 	(void)wl_surface;
-	assert(factor > 0);
+	ASSERT(factor > 0);
 	struct surface *popup = data;
 	if (popup->scale != factor) {
 		popup->scale = factor;
-		popup->dirty = true;
+		popup->dirty = TRUE;
 		xdg_positioner_set_size(popup->popup.xdg_positioner,
 			popup->width / factor, popup->height / factor);
 		xdg_positioner_set_anchor_rect(popup->popup.xdg_positioner,
@@ -2923,7 +2926,7 @@ static const struct wl_surface_listener popup_listener = {
 };
 
 static struct surface *popup_create(struct surface *parent, struct json_ast_node *json) {
-	struct surface *popup = calloc(1, sizeof(struct surface));
+	struct surface *popup = calloc(1, SIZEOF(struct surface));
 	popup->type = SW_SURFACE_TYPE_POPUP;
 	surface_init(popup, parent->output);
 	popup->popup.xdg_surface =
@@ -2987,10 +2990,11 @@ error:
 }
 
 static void layer_destroy(struct surface *layer) {
-	assert(layer->type == SW_SURFACE_TYPE_LAYER);
 	if (layer == NULL) {
 		return;
 	}
+
+	ASSERT(layer->type == SW_SURFACE_TYPE_LAYER);
 
 	surface_fini(layer);
 
@@ -3006,7 +3010,7 @@ static void layer_destroy(struct surface *layer) {
 
 static bool32_t layer_update(struct surface *layer, struct json_ast_node *json) {
 	if (json->type != JSON_AST_NODE_TYPE_OBJECT) {
-		return false;
+		return FALSE;
 	}
 
 	layer->desired_width = -1;
@@ -3073,7 +3077,7 @@ static bool32_t layer_update(struct surface *layer, struct json_ast_node *json) 
 			}
 		} else if (string_equal(key_value->key, STRING_LITERAL("userdata"))) {
 			json_writer_ast_node(&state.userdata_writer, &key_value->value);
-			string_init_len(&layer->userdata, state.userdata_writer.buf.data, state.userdata_writer.buf.idx, false);
+			string_init_len(&layer->userdata, state.userdata_writer.buf.data, state.userdata_writer.buf.idx, FALSE);
 			json_writer_reset(&state.userdata_writer);
 		} else if (string_equal(key_value->key, STRING_LITERAL("width"))) {
 			if ((key_value->value.type == JSON_AST_NODE_TYPE_INT)
@@ -3103,12 +3107,12 @@ static bool32_t layer_update(struct surface *layer, struct json_ast_node *json) 
 	if ((new_anchor != SW_SURFACE_LAYER_ANCHOR_ALL) &&
 			(((layer->desired_width == 0) && ((new_anchor & horiz) != horiz)) ||
 			((layer->desired_height == 0) && ((new_anchor & vert) != vert)))) {
-		return false;
+		return FALSE;
 	}
 
 	surface_block_fini(&layer->layout_root);
 	if (!surface_block_init(&layer->layout_root, layer, new_layout_root)) {
-		return false;
+		return FALSE;
 	}
 
 	if (layer->layer.anchor != new_anchor) {
@@ -3121,13 +3125,13 @@ static bool32_t layer_update(struct surface *layer, struct json_ast_node *json) 
 		layer->layer.layer = new_layer;
 	}
 
-	if (memcmp(layer->layer.margins, new_margins, sizeof(new_margins)) != 0) {
+	if (memcmp(layer->layer.margins, new_margins, SIZEOF(new_margins)) != 0) {
 		zwlr_layer_surface_v1_set_margin(layer->layer.layer_surface,
 			new_margins[0] / layer->scale,
 			new_margins[1] / layer->scale,
 			new_margins[2] / layer->scale,
 			new_margins[3] / layer->scale);
-		memcpy(layer->layer.margins, new_margins, sizeof(new_margins));
+		memcpy(layer->layer.margins, new_margins, SIZEOF(new_margins));
 	}
 
 	process_cursor_shape(layer, new_cursor_shape);
@@ -3152,14 +3156,14 @@ static void layer_handle_layer_surface_configure(void *data, struct zwlr_layer_s
 		layer->buffer = surface_buffer_create(width, height, layer);
 		layer->width = width;
 		layer->height = height;
-		layer->dirty = true;
+		layer->dirty = TRUE;
 	}
 
 	if (layer->dirty) {
 		if (!surface_render(layer)) {
 			layer_destroy(layer);
 		}
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
@@ -3171,7 +3175,7 @@ static void layer_handle_layer_surface_closed(void *data, struct zwlr_layer_surf
 		if (array_struct_surface_ptr_get(&output->layers, i) == layer) {
 			layer_destroy(layer);
 			array_struct_surface_ptr_put(&output->layers, NULL, i);
-			state.dirty = true;
+			state.dirty = TRUE;
 			return;
 		}
 	}
@@ -3184,11 +3188,11 @@ static const struct zwlr_layer_surface_v1_listener layer_layer_surface_listener 
 
 static void layer_handle_preferred_buffer_scale(void *data, struct wl_surface *wl_surface, int32_t factor) {
 	(void)wl_surface;
-	assert(factor > 0);
+	ASSERT(factor > 0);
 	struct surface *layer = data;
 	if (layer->scale != factor) {
 		layer->scale = factor;
-		layer->dirty = true;
+		layer->dirty = TRUE;
 		if (layer->layer.anchor != SW_SURFACE_LAYER_ANCHOR_ALL) {
 			zwlr_layer_surface_v1_set_size(layer->layer.layer_surface,
 				(layer->desired_width == 0) ? 0 : (uint32_t)(layer->width / factor),
@@ -3215,7 +3219,7 @@ static const struct wl_surface_listener layer_listener = {
 };
 
 static struct surface *layer_create(struct output *output, struct json_ast_node *json) {
-	struct surface *layer = calloc(1, sizeof(struct surface));
+	struct surface *layer = calloc(1, SIZEOF(struct surface));
 	layer->type = SW_SURFACE_TYPE_LAYER;
 	surface_init(layer, output);
 	layer->layer.layer_surface =
@@ -3260,11 +3264,11 @@ static void process_popups(struct surface *surface, struct json_ast_node *json) 
 }
 
 static void process_json_ast(void) {
-	state.dirty = true;
+	state.dirty = TRUE;
 
 	string_fini(&state.userdata);
 	state.userdata = (string_t){ 0 };
-	state.events = false;
+	state.events = FALSE;
 
 	struct json_ast_node *layers = NULL;
 	if (state.json_ast.root.type == JSON_AST_NODE_TYPE_OBJECT) {
@@ -3273,7 +3277,7 @@ static void process_json_ast(void) {
 				&state.json_ast.root.object, i);
 			if (string_equal(key_value->key, STRING_LITERAL("userdata"))) {
 				json_writer_ast_node(&state.userdata_writer, &key_value->value);
-				string_init_len(&state.userdata, state.userdata_writer.buf.data, state.userdata_writer.buf.idx, false);
+				string_init_len(&state.userdata, state.userdata_writer.buf.data, state.userdata_writer.buf.idx, FALSE);
 				json_writer_reset(&state.userdata_writer);
 			} else if (string_equal(key_value->key, STRING_LITERAL("state_events"))) {
 				if (key_value->value.type == JSON_AST_NODE_TYPE_BOOL) {
@@ -3363,7 +3367,7 @@ static void stdin_process(void) {
 		json_tokener_set_string(&state.tokener, str);
 
 		for (;;) {
-			enum json_tokener_state_ s = json_tokener_ast(&state.tokener, &state.json_ast, 0, true);
+			enum json_tokener_state_ s = json_tokener_ast(&state.tokener, &state.json_ast, 0, TRUE);
 			switch (s) {
 			case JSON_TOKENER_STATE_SUCCESS:
 				process_json_ast();
@@ -3434,9 +3438,9 @@ static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
 
 	pointer->pos_x = (int32_t)(wl_fixed_to_double(surface_x) * (double)surface->scale);
 	pointer->pos_y = (int32_t)(wl_fixed_to_double(surface_y) * (double)surface->scale);
-	pointer->pos_dirty = true;
+	pointer->pos_dirty = TRUE;
 
-	state_update(true);
+	state_update(TRUE);
 }
 
 static void pointer_handle_leave(void *data, struct wl_pointer *wl_pointer,
@@ -3447,7 +3451,7 @@ static void pointer_handle_leave(void *data, struct wl_pointer *wl_pointer,
 	struct pointer *pointer = data;
 	pointer->surface = NULL;
 
-	state_update(true);
+	state_update(TRUE);
 }
 
 static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
@@ -3469,9 +3473,9 @@ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
 
 	pointer->pos_x = x;
 	pointer->pos_y = y;
-	pointer->pos_dirty = true;
+	pointer->pos_dirty = TRUE;
 
-	state_update(true);
+	state_update(TRUE);
 }
 
 static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
@@ -3482,9 +3486,9 @@ static void pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
 	pointer->btn_code = button;
 	pointer->btn_state = state_;
 	pointer->btn_serial = serial;
-	pointer->btn_dirty = true;
+	pointer->btn_dirty = TRUE;
 
-	state_update(true);
+	state_update(TRUE);
 
 	struct seat *seat = pointer->seat;
 	array_uint32_t_put(&seat->popup_grab.serials, serial, seat->popup_grab.index++);
@@ -3497,9 +3501,9 @@ static void pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
 	struct pointer *pointer = data;
 	pointer->scroll_axis = axis;
 	pointer->scroll_vector_length = wl_fixed_to_double(value);
-	pointer->scroll_dirty = true;
+	pointer->scroll_dirty = TRUE;
 
-	state_update(true);
+	state_update(TRUE);
 }
 
 static const struct wl_pointer_listener pointer_listener = {
@@ -3533,11 +3537,11 @@ static void output_handle_geometry(void *data, struct wl_output *wl_output,
 	(void)subpixel;
 	(void)make;
 	(void)model;
-	assert((transform >= 0) && (transform <= 7));
+	ASSERT((transform >= 0) && (transform <= 7));
 	struct output *output = data;
 	if (output->transform != (enum wl_output_transform)transform) {
 		output->transform = (enum wl_output_transform)transform;
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
@@ -3550,7 +3554,7 @@ static void output_handle_mode(void *data, struct wl_output *wl_output,
 	if ((output->width != width) || (output->height != height)) {
 		output->width = width;
 		output->height = height;
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
@@ -3561,25 +3565,25 @@ static void output_handle_done(void *data, struct wl_output *wl_output) {
 
 static void output_handle_scale(void *data, struct wl_output *wl_output, int32_t factor) {
 	(void)wl_output;
-	assert(factor > 0);
+	ASSERT(factor > 0);
 	struct output *output = data;
 	if (output->scale != factor) {
 		output->scale = factor;
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
 static void output_handle_name(void *data, struct wl_output *wl_output, const char *name) {
 	(void)wl_output;
 	struct output *output = data;
-	assert(output->name.s == NULL);
+	ASSERT(output->name.s == NULL);
 
 	size_t len = strlen(name);
 	if (len > 0) {
-		string_init_len(&output->name, name, len, true);
+		string_init_len(&output->name, name, len, TRUE);
 	}
 
-	state.dirty = true;
+	state.dirty = TRUE;
 }
 
 static void output_handle_description(void *data, struct wl_output *wl_output, const char *description) {
@@ -3598,7 +3602,7 @@ static const struct wl_output_listener output_listener = {
 };
 
 static struct pointer *pointer_create(struct seat *seat) {
-	struct pointer *pointer = calloc(1, sizeof(struct pointer));
+	struct pointer *pointer = calloc(1, SIZEOF(struct pointer));
 	pointer->seat = seat;
 	pointer->wl_pointer = wl_seat_get_pointer(seat->wl_seat);
 
@@ -3637,25 +3641,25 @@ static void seat_handle_capabilities(void *data, struct wl_seat *wl_seat, uint32
 
 	if (have_pointer && !seat->pointer) {
 		seat->pointer = pointer_create(seat);
-		state.dirty = true;
+		state.dirty = TRUE;
 	} else if (!have_pointer && seat->pointer) {
 		pointer_destroy(seat->pointer);
 		seat->pointer = NULL;
-		state.dirty = true;
+		state.dirty = TRUE;
 	}
 }
 
 static void seat_handle_name(void *data, struct wl_seat *wl_seat, const char *name) {
 	(void)wl_seat;
 	struct seat *seat = data;
-	assert(seat->name.s == NULL);
+	ASSERT(seat->name.s == NULL);
 
 	size_t len = strlen(name);
 	if (len > 0) {
-		string_init_len(&seat->name, name, len, true);
+		string_init_len(&seat->name, name, len, TRUE);
 	}
 
-	state.dirty = true;
+	state.dirty = TRUE;
 }
 
 static const struct wl_seat_listener seat_listener = {
@@ -3664,7 +3668,7 @@ static const struct wl_seat_listener seat_listener = {
 };
 
 static struct output *output_create(uint32_t wl_name) {
-	struct output *output = calloc(1, sizeof(struct output));
+	struct output *output = calloc(1, SIZEOF(struct output));
 	output->wl_output = wl_registry_bind(state.registry, wl_name, &wl_output_interface, 4);
 	output->wl_name = wl_name;
 	output->scale = 1;
@@ -3693,7 +3697,7 @@ static void output_destroy(struct output *output) {
 }
 
 static struct seat *seat_create(uint32_t wl_name) {
-	struct seat *seat = calloc(1, sizeof(struct seat));
+	struct seat *seat = calloc(1, SIZEOF(struct seat));
 	seat->wl_seat = wl_registry_bind(state.registry, wl_name, &wl_seat_interface, 2);
 	seat->wl_name = wl_name;
 	array_uint32_t_init(&seat->popup_grab.serials, 256);
@@ -3756,7 +3760,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *wl_reg
 		if (output->wl_name == name) {
 			output_destroy(output);
 			array_struct_output_ptr_pop_swapback(&state.outputs, i);
-			state.dirty = true;
+			state.dirty = TRUE;
 			return;
 		}
 	}
@@ -3766,7 +3770,7 @@ static void registry_handle_global_remove(void *data, struct wl_registry *wl_reg
 		if (seat->wl_name == name) {
 			seat_destroy(seat);
 			array_struct_seat_ptr_pop_swapback(&state.seats, i);
-			state.dirty = true;
+			state.dirty = TRUE;
 			return;
 		}
 	}
@@ -3779,7 +3783,7 @@ static const struct wl_registry_listener registry_listener = {
 
 static void handle_signal(int sig) {
 	(void)sig;
-	state.running = false;
+	state.running = FALSE;
 }
 
 static const struct sigaction sigact = {
@@ -3824,8 +3828,8 @@ static void setup(int argc, char **argv) {
 		abort_(1, "wl_display_roundtrip: %s", strerror(errno));
 	}
 
-	assert(state.compositor != NULL);
-	assert(state.shm != NULL);
+	ASSERT(state.compositor != NULL);
+	ASSERT(state.shm != NULL);
 	if (state.layer_shell == NULL) {
 		abort_(EPROTONOSUPPORT, "zwlr_layer_shell_v1: %s", strerror(EPROTONOSUPPORT));
 	}
@@ -3848,19 +3852,19 @@ static void setup(int argc, char **argv) {
 		abort_(errno, "STDIN_FILENO O_NONBLOCK fcntl: %s", strerror(errno));
 	}
 
-#if HAVE_TEXT
-	if (!fcft_init(FCFT_LOG_COLORIZE_NEVER, false, FCFT_LOG_CLASS_ERROR)) {
+#if WITH_TEXT
+	if (!fcft_init(FCFT_LOG_COLORIZE_NEVER, FALSE, FCFT_LOG_CLASS_ERROR)) {
 		abort_(1, "fcft_init failed");
 	}
 
 	hash_table_struct_text_run_cache_init(&state.text_run_cache, 1024);
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 
 	hash_table_struct_image_cache_init(&state.image_cache, 512);
 
-#if HAVE_SVG
+#if WITH_SVG
 	resvg_init_log();
-#endif // HAVE_SVG
+#endif // WITH_SVG
 
 	json_tokener_init(&state.tokener);
 	json_ast_reset(&state.json_ast);
@@ -3878,14 +3882,14 @@ static void setup(int argc, char **argv) {
 	state.poll_fds[POLL_FD_STDOUT] = (struct pollfd){ .fd = -1, .events = POLLOUT };
 	state.poll_fds[POLL_FD_WAYLAND] = (struct pollfd){ .fd = wl_display_get_fd(state.display), .events = POLLIN };
 
-	state.running = true;
+	state.running = TRUE;
 }
 
 static void cleanup(void);
 
 static void run(void) {
 	while (state.running) {
-		state_update(false);
+		state_update(FALSE);
 		stdout_flush();
 
 		if (wl_display_flush(state.display) == -1) {
@@ -4005,7 +4009,7 @@ static void cleanup(void) {
 
 
 #if DEBUG
-#if HAVE_TEXT
+#if WITH_TEXT
 	if (state.text_run_cache.items.len > 0) {
 		for (size_t i = 0; i < state.text_run_cache.items.len; ++i) {
 			struct text_run_cache cache = array_struct_text_run_cache_get(&state.text_run_cache.items, i);
@@ -4021,7 +4025,7 @@ static void cleanup(void) {
 
 		fcft_fini();
 	}
-#endif // HAVE_TEXT
+#endif // WITH_TEXT
 
 	for (size_t i = 0; i < state.image_cache.items.len; ++i) {
 		struct image_cache cache = array_struct_image_cache_get(&state.image_cache.items, i);
@@ -4043,7 +4047,7 @@ static void cleanup(void) {
 	array_struct_poll_timer_fini(&state.poll_timers);
 
 #if FUZZ_TEST
-	memset(&state, 0, sizeof(state));
+	memset(&state, 0, SIZEOF(state));
 #endif // FUZZ_TEST
 #endif // DEBUG
 }
@@ -4053,10 +4057,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 #if 0
-	static bool32_t initialized = false;
+	static bool32_t initialized = FALSE;
 	if (!initialized) {
 		setup(0, NULL);
-		initialized = true;
+		initialized = TRUE;
 	}
 
 	if (!state.running) {
@@ -4079,14 +4083,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
 	return 0;
 #else
-	static bool32_t initialized = false;
+	static bool32_t initialized = FALSE;
 	if (!initialized) {
 		json_tokener_init(&state.tokener);
 		json_ast_reset(&state.json_ast);
 		sigaction(SIGINT, &sigact, NULL);
 		sigaction(SIGTERM, &sigact, NULL);
-		state.running = true;
-		initialized = true;
+		state.running = TRUE;
+		initialized = TRUE;
 	}
 
 	if (!state.running) {
@@ -4102,7 +4106,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	});
 
 	for (;;) {
-		switch (json_tokener_ast(&state.tokener, &state.json_ast, 0, true)) {
+		switch (json_tokener_ast(&state.tokener, &state.json_ast, 0, TRUE)) {
 		case JSON_TOKENER_STATE_SUCCESS:
 			json_ast_reset(&state.json_ast);
 			if (state.tokener.pos == size) {

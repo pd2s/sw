@@ -69,13 +69,13 @@ static void sway_ipc_response_free(struct sway_ipc_response *);
 
 static const char sway_ipc__magic[] = {'i', '3', '-', 'i', 'p', 'c'};
 
-#define SWAY_IPC__HEADER_SIZE (sizeof(sway_ipc__magic) + sizeof(uint32_t) + sizeof(uint32_t))
+#define SWAY_IPC__HEADER_SIZE (SIZEOF(sway_ipc__magic) + SIZEOF(uint32_t) + SIZEOF(uint32_t))
 
 static bool32_t sway_ipc_get_socket_path(string_t *dest) {
 	const char *swaysock = getenv("SWAYSOCK");
 	if (swaysock && *swaysock) {
 		string_init(dest, swaysock);
-		return true;
+		return TRUE;
 	}
 	char *line = NULL;
 	size_t line_size = 0;
@@ -91,10 +91,10 @@ static bool32_t sway_ipc_get_socket_path(string_t *dest) {
 				*dest = (string_t){
 					.s = line,
 					.len = (size_t)len,
-					.free_contents = true,
-					.nul_terminated = true,
+					.free_contents = TRUE,
+					.nul_terminated = TRUE,
 				};
-				return true;
+				return TRUE;
 			}
 		}
 	}
@@ -102,7 +102,7 @@ static bool32_t sway_ipc_get_socket_path(string_t *dest) {
 	if (i3sock) {
 		free(line);
 		string_init(dest, i3sock);
-		return true;
+		return TRUE;
 	}
 	fp = popen("i3 --get-socketpath 2>/dev/null", "r");
 	if (fp) {
@@ -116,15 +116,15 @@ static bool32_t sway_ipc_get_socket_path(string_t *dest) {
 				*dest = (string_t){
 					.s = line,
 					.len = (size_t)len,
-					.free_contents = true,
-					.nul_terminated = true,
+					.free_contents = TRUE,
+					.nul_terminated = TRUE,
 				};
-				return true;
+				return TRUE;
 			}
 		}
 	}
 	free(line);
-	return false;
+	return FALSE;
 }
 
 static int sway_ipc_connect(string_t socket_path) {
@@ -134,10 +134,10 @@ static int sway_ipc_connect(string_t socket_path) {
 	}
 	struct sockaddr_un addr;
 	addr.sun_family = AF_UNIX;
-	size_t len = MIN((sizeof(addr.sun_path) - 1), socket_path.len);
+	size_t len = MIN((SIZEOF(addr.sun_path) - 1), socket_path.len);
 	strncpy(addr.sun_path, socket_path.s, len);
 	addr.sun_path[len] = '\0';
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
+	if (connect(fd, (struct sockaddr *)&addr, SIZEOF(struct sockaddr_un)) == -1) {
 		return -1;
 	}
 	fd_set_cloexec(fd);
@@ -148,13 +148,13 @@ static int sway_ipc_send(int fd, enum sway_ipc_message_type type, string_t *payl
 	char header[SWAY_IPC__HEADER_SIZE];
 	uint32_t len = payload ? (uint32_t)payload->len : 0;
 
-	memcpy(header, sway_ipc__magic, sizeof(sway_ipc__magic));
-	memcpy(header + sizeof(sway_ipc__magic), &len, sizeof(len));
-	memcpy(header + sizeof(sway_ipc__magic) + sizeof(len), &type, sizeof(type));
+	memcpy(header, sway_ipc__magic, SIZEOF(sway_ipc__magic));
+	memcpy(header + SIZEOF(sway_ipc__magic), &len, SIZEOF(len));
+	memcpy(header + SIZEOF(sway_ipc__magic) + SIZEOF(len), &type, SIZEOF(type));
 
 	size_t total = 0;
-	while (total < sizeof(header)) {
-		ssize_t written_bytes = write(fd, &header[total], sizeof(header) - total);
+	while (total < SIZEOF(header)) {
+		ssize_t written_bytes = write(fd, &header[total], SIZEOF(header) - total);
 		if (written_bytes == -1) {
 			return -1;
 		}
@@ -186,8 +186,8 @@ static void sway_ipc_response_free(struct sway_ipc_response *response) {
 static struct sway_ipc_response *sway_ipc_receive(int fd) {
 	char header[SWAY_IPC__HEADER_SIZE];
 	size_t total = 0;
-	while (total < sizeof(header)) {
-		ssize_t read_bytes = read(fd, &header[total], sizeof(header) - total);
+	while (total < SIZEOF(header)) {
+		ssize_t read_bytes = read(fd, &header[total], SIZEOF(header) - total);
 		switch (read_bytes) {
 		case 0:
 			errno = EPIPE;
@@ -202,16 +202,16 @@ static struct sway_ipc_response *sway_ipc_receive(int fd) {
 		}
 	}
 
-	struct sway_ipc_response *response = malloc(sizeof(struct sway_ipc_response));
+	struct sway_ipc_response *response = malloc(SIZEOF(struct sway_ipc_response));
 	uint32_t len;
-	memcpy(&len, header + sizeof(sway_ipc__magic), sizeof(uint32_t));
-	memcpy(&response->type, header + sizeof(sway_ipc__magic) + sizeof(uint32_t), sizeof(uint32_t));
+	memcpy(&len, header + SIZEOF(sway_ipc__magic), SIZEOF(uint32_t));
+	memcpy(&response->type, header + SIZEOF(sway_ipc__magic) + SIZEOF(uint32_t), SIZEOF(uint32_t));
 
 	response->payload.s = malloc(len + 1);
 	response->payload.s[len] = '\0';
 	response->payload.len = len;
-	response->payload.free_contents = true;
-	response->payload.nul_terminated = true;
+	response->payload.free_contents = TRUE;
+	response->payload.nul_terminated = TRUE;
 
 	total = 0;
 	while (total < len) {

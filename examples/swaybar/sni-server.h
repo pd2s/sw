@@ -8,7 +8,6 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <unistd.h>
-#include <assert.h>
 #include <arpa/inet.h>
 #include <time.h>
 
@@ -20,7 +19,15 @@
 #include <basu/sd-bus.h>
 #endif // HAS_INCLUDE
 
-#include "util.h"
+typedef struct sni_item *sni_item_create_func_t(string_t id);
+typedef void sni_item_destroy_func_t(struct sni_item *);
+typedef void sni_item_properties_updated_func_t(struct sni_item *);
+typedef void sni_item_dbusmenu_menu_updated_func_t(struct sni_item *);
+
+STATIC_ASSERT(TYPES_COMPATIBLE(TYPEOF(SNI_ITEM_CREATE_FUNC), sni_item_create_func_t));
+STATIC_ASSERT(TYPES_COMPATIBLE(TYPEOF(SNI_ITEM_DESTROY_FUNC), sni_item_destroy_func_t));
+STATIC_ASSERT(TYPES_COMPATIBLE(TYPEOF(SNI_ITEM_PROPERTIES_UPDATED_FUNC), sni_item_properties_updated_func_t));
+STATIC_ASSERT(TYPES_COMPATIBLE(TYPEOF(SNI_ITEM_DBUSMENU_MENU_UPDATED_FUNC), sni_item_dbusmenu_menu_updated_func_t));
 
 enum sni_dbusmenu_menu_item_type {
     SNI_DBUSMENU_MENU_ITEM_TYPE_STANDARD,
@@ -156,17 +163,11 @@ enum sni_item_scroll_orientation {
     SNI_ITEM_SCROLL_ORIENTATION_HORIZONTAL,
 };
 
-typedef struct sni_item *(*sni_item_create_func_t)(string_t id);
-typedef void (*sni_item_destroy_func_t)(struct sni_item *);
-
-typedef void (*sni_item_properties_updated_func_t)(struct sni_item *, struct sni_item_properties *old);
-typedef void (*sni_item_dbusmenu_menu_updated_func_t)(struct sni_item *, struct sni_dbusmenu_menu *old);
-
 typedef struct sni__slot struct_sni__slot;
 struct sni__slot {
 	struct sni_item *item;
 	sd_bus_slot *slot;
-	LIST_STRUCT_FIELDS(struct_sni__slot)
+	LIST_STRUCT_FIELDS(struct_sni__slot);
 };
 
 LIST_DECLARE_DEFINE(struct_sni__slot)
@@ -181,10 +182,6 @@ struct sni_item {
     string_t path;
 
 	list_struct_sni__slot_t slots;
-
-	sni_item_destroy_func_t destroy;
-	sni_item_properties_updated_func_t properties_updated;
-	sni_item_dbusmenu_menu_updated_func_t dbusmenu_menu_updated;
 };
 
 typedef struct sni_item* struct_sni_item_ptr;
@@ -192,7 +189,6 @@ ARRAY_DECLARE_DEFINE(struct_sni_item_ptr)
 
 struct sni_server {
     sd_bus *bus;
-	sni_item_create_func_t item_create;
     struct {
         string_t interface;
         array_struct_sni_item_ptr_t items;
@@ -203,12 +199,12 @@ struct sni_server {
     } watcher;
 };
 
-static int sni_server_init(sni_item_create_func_t item_create);
+static int sni_server_init(void);
 static void sni_server_fini(void);
 static int sni_server_get_poll_info(int *fd, int *events, uint64_t *timeout);
 static int sni_server_process(void);
 
-static bool32_t sni_item_init(struct sni_item *, string_t id, sni_item_destroy_func_t);
+static bool32_t sni_item_init(struct sni_item *, string_t id);
 static void sni_item_fini(struct sni_item *);
 static int sni_item_context_menu(struct sni_item *, int x, int y);
 static int sni_item_context_menu_async(struct sni_item *, int x, int y);
@@ -253,7 +249,7 @@ static void sni__item_read_pixmap(sd_bus_message *msg, array_struct_sni_item_pix
 		sd_bus_message_read_array(msg, 'y', &bytes, &nbytes);
 		if (((size_t)width * (size_t)height * 4) == nbytes) {
 			struct sni_item_pixmap *pixmap = malloc(
-				sizeof(struct sni_item_pixmap) + nbytes);
+				SIZEOF(struct sni_item_pixmap) + nbytes);
 			pixmap->width = width;
 			pixmap->height = height;
 			for (int i = 0; i < (width * height); ++i) {
@@ -354,7 +350,7 @@ static void sni__dbusmenu_destroy(struct sni_dbusmenu *dbusmenu) {
 
 static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 		struct sni_dbusmenu *dbusmenu, struct sni_dbusmenu_menu_item *parent_menu_item) {
-	struct sni_dbusmenu_menu *menu = calloc(1, sizeof(struct sni_dbusmenu_menu));
+	struct sni_dbusmenu_menu *menu = calloc(1, SIZEOF(struct sni_dbusmenu_menu));
 	menu->dbusmenu = dbusmenu;
 	menu->parent_menu_item = parent_menu_item;
 	if (parent_menu_item) {
@@ -377,7 +373,7 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 		//menu_item.disposition = SNI_DBUSMENU_MENU_ITEM_DISPOSITION_NORNAL;
 		sd_bus_message_read_basic(msg, 'i', &menu_item.id);
 
-		bool32_t children = false;
+		bool32_t children = FALSE;
 		sd_bus_message_enter_container(msg, 'a', "{sv}");
 		while (sd_bus_message_enter_container(msg, 'e', "sv") == 1) {
 			const char *key;
@@ -389,8 +385,8 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 			string_t key_str = {
 				.s = (char *)key,
 				.len = len,
-				.free_contents = false,
-				.nul_terminated = true,
+				.free_contents = FALSE,
+				.nul_terminated = TRUE,
 			};
 			sd_bus_message_enter_container(msg, 'v', NULL);
 			if (string_equal(key_str, STRING_LITERAL("type"))) {
@@ -399,8 +395,8 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				if (((len = strlen(type)) > 0) && string_equal(STRING_LITERAL("separator"), (string_t){
 						.s = (char *)type,
 						.len = len,
-						.free_contents = false,
-						.nul_terminated = true,
+						.free_contents = FALSE,
+						.nul_terminated = TRUE,
 				})) {
 					menu_item.type = SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR;
 				}
@@ -417,8 +413,8 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				}
 				menu_item.label.s[l] = '\0';
 				menu_item.label.len = l;
-				menu_item.label.free_contents = true;
-				menu_item.label.nul_terminated = true;
+				menu_item.label.free_contents = TRUE;
+				menu_item.label.nul_terminated = TRUE;
 				// TODO: handle '_', '__' properly
 			} else if (string_equal(key_str, STRING_LITERAL("enabled"))) {
 				sd_bus_message_read_basic(msg, 'b', &menu_item.enabled);
@@ -428,7 +424,7 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				const char *icon_name;
 				sd_bus_message_read_basic(msg, 's', &icon_name);
 				if ((len = strlen(icon_name)) > 0) {
-					string_init_len(&menu_item.icon_name, icon_name, len, true);
+					string_init_len(&menu_item.icon_name, icon_name, len, TRUE);
 				}
 			} else if (string_equal(key_str, STRING_LITERAL("icon-data"))) {
 				const void *bytes;
@@ -443,8 +439,8 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 					string_t toggle_type_str = {
 						.s = (char *)toggle_type,
 						.len = len,
-						.free_contents = false,
-						.nul_terminated = true,
+						.free_contents = FALSE,
+						.nul_terminated = TRUE,
 					};
 					if (string_equal(toggle_type_str, STRING_LITERAL("checkmark"))) {
 						menu_item.toggle_type = SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_CHECKMARK;
@@ -460,10 +456,10 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				if (((len = strlen(children_display)) > 0) && string_equal(STRING_LITERAL("submenu"), (string_t){
 						.s = (char *)children_display,
 						.len = len,
-						.free_contents = false,
-						.nul_terminated = true,
+						.free_contents = FALSE,
+						.nul_terminated = TRUE,
 				})) {
-					children = true;
+					children = TRUE;
 				}
 			} else if (string_equal(key_str, STRING_LITERAL("disposition"))) {
 				const char *disposition;
@@ -472,8 +468,8 @@ static struct sni_dbusmenu_menu *sni__dbusmenu_menu_create(sd_bus_message *msg,
 					string_t disposition_str = {
 						.s = (char *)disposition,
 						.len = len,
-						.free_contents = false,
-						.nul_terminated = true,
+						.free_contents = FALSE,
+						.nul_terminated = TRUE,
 					};
 					if (string_equal(disposition_str, STRING_LITERAL("normal"))) {
 						menu_item.disposition = SNI_DBUSMENU_MENU_ITEM_DISPOSITION_NORNAL;
@@ -529,9 +525,7 @@ static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
 		ret = 1;
 	}
 
-	if (item->dbusmenu_menu_updated) {
-		item->dbusmenu_menu_updated(item, old_menu);
-	}
+	SNI_ITEM_DBUSMENU_MENU_UPDATED_FUNC(item);
 
 	sni__dbusmenu_menu_destroy(old_menu);
 
@@ -540,7 +534,7 @@ static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
 
 static int sni__dbusmenu_get_layout(struct sni_dbusmenu *dbusmenu) {
 	struct sni_item *item = dbusmenu->item;
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 			item->properties->menu.s, sni__dbusmenu_interface, "GetLayout",
 			sni__dbusmenu_handle_get_layout, slot, "iias", 0, -1, NULL);
@@ -581,7 +575,7 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 		return ret;
 	}
 
-	struct sni_dbusmenu_properties *props = calloc(1, sizeof(struct sni_dbusmenu_properties));
+	struct sni_dbusmenu_properties *props = calloc(1, SIZEOF(struct sni_dbusmenu_properties));
 	while (sd_bus_message_enter_container(msg, 'e', "sv") == 1) {
 		const char *key;
 		sd_bus_message_read_basic(msg, 's', &key);
@@ -592,8 +586,8 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 		string_t key_str = {
 			.s = (char *)key,
 			.len = len,
-			.free_contents = false,
-			.nul_terminated = true,
+			.free_contents = FALSE,
+			.nul_terminated = TRUE,
 		};
 		sd_bus_message_enter_container(msg, 'v', NULL);
 		if (string_equal(key_str, STRING_LITERAL("IconThemePath"))) {
@@ -604,7 +598,7 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 				for (char **p = icon_theme_path; *p != NULL; ++p) {
 					char *path = *p;
 					if ((len = strlen(path)) > 0) {
-						string_init_len(array_string_t_add_uninitialized(&props->icon_theme_path), path, len, true);
+						string_init_len(array_string_t_add_uninitialized(&props->icon_theme_path), path, len, TRUE);
 					} else {
 						free(path);
 					}
@@ -618,8 +612,8 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 				string_t status_str = {
 					.s = (char *)status,
 					.len = len,
-					.free_contents = false,
-					.nul_terminated = true,
+					.free_contents = FALSE,
+					.nul_terminated = TRUE,
 				};
 				if (string_equal(status_str, STRING_LITERAL("normal"))) {
 					props->status = SNI_DBUSMENU_STATUS_NORMAL;
@@ -634,8 +628,8 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 				string_t text_direction_str = {
 					.s = (char *)text_direction,
 					.len = len,
-					.free_contents = false,
-					.nul_terminated = true,
+					.free_contents = FALSE,
+					.nul_terminated = TRUE,
 				};
 				if (string_equal(text_direction_str, STRING_LITERAL("ltr"))) {
 					props->text_direction = SNI_DBUSMENU_TEXT_DIRECTION_LEFT_TO_RIGHT;
@@ -662,9 +656,9 @@ static struct sni_dbusmenu *sni__dbusmenu_create(struct sni_item *item) {
 		return NULL;
 	}
 
-	struct sni_dbusmenu *dbusmenu = calloc(1, sizeof(struct sni_dbusmenu));
+	struct sni_dbusmenu *dbusmenu = calloc(1, SIZEOF(struct sni_dbusmenu));
 
-	struct sni__slot *slot1 = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot1 = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot1->slot, item->service.s,
 			item->properties->menu.s, "org.freedesktop.DBus.Properties", "GetAll",
 			sni__dbusmenu_handle_get_properties, slot1, "s", sni__dbusmenu_interface);
@@ -672,7 +666,7 @@ static struct sni_dbusmenu *sni__dbusmenu_create(struct sni_item *item) {
 		goto error_1;
 	}
 
-	struct sni__slot *slot2 = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot2 = malloc(SIZEOF(struct sni__slot));
 	ret = sd_bus_match_signal_async(sni_server->bus, &slot2->slot, item->service.s,
 			item->properties->menu.s, sni__dbusmenu_interface, NULL,
 			sni__dbusmenu_handle_signal, sni__dbusmenu_handle_signal, slot2);
@@ -711,7 +705,7 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 		item->properties = NULL;
 		goto out;
 	} else {
-		item->properties = calloc(1, sizeof(struct sni_item_properties));
+		item->properties = calloc(1, SIZEOF(struct sni_item_properties));
 		ret = 1;
 	}
 
@@ -726,21 +720,21 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 		string_t key_str = {
 			.s = (char *)key,
 			.len = len,
-			.free_contents = false,
-			.nul_terminated = true,
+			.free_contents = FALSE,
+			.nul_terminated = TRUE,
 		};
 		sd_bus_message_enter_container(msg, 'v', NULL);
 		if (string_equal(key_str, STRING_LITERAL("IconName"))) {
 			const char *icon_name;
 			sd_bus_message_read_basic(msg, 's', &icon_name);
 			if ((len = strlen(icon_name)) > 0) {
-				string_init_len(&props->icon_name, icon_name, len, true);
+				string_init_len(&props->icon_name, icon_name, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("IconThemePath"))) {
 			const char *icon_theme_path;
 			sd_bus_message_read_basic(msg, 's', &icon_theme_path);
 			if ((len = strlen(icon_theme_path)) > 0) {
-				string_init_len(&props->icon_theme_path, icon_theme_path, len, true);
+				string_init_len(&props->icon_theme_path, icon_theme_path, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("IconPixmap"))) {
 			sni__item_read_pixmap(msg, &props->icon_pixmap);
@@ -751,8 +745,8 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 				string_t status_str = {
 					.s = (char *)status,
 					.len = len,
-					.free_contents = false,
-					.nul_terminated = true,
+					.free_contents = FALSE,
+					.nul_terminated = TRUE,
 				};
 				if (string_equal(status_str, STRING_LITERAL("Active"))) {
 					props->status = SNI_ITEM_STATUS_ACTIVE;
@@ -769,8 +763,8 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 				string_t category_str = {
 					.s = (char *)category,
 					.len = len,
-					.free_contents = false,
-					.nul_terminated = true,
+					.free_contents = FALSE,
+					.nul_terminated = TRUE,
 				};
 				if (string_equal(category_str, STRING_LITERAL("ApplicationStatus"))) {
 					props->category = SNI_ITEM_CATEGORY_APPLICATION_STATUS;
@@ -786,13 +780,13 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 			const char *menu;
 			sd_bus_message_read_basic(msg, 'o', &menu);
 			if ((len = strlen(menu)) > 0) {
-				string_init_len(&props->menu, menu, len, true);
+				string_init_len(&props->menu, menu, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("AttentionIconName"))) {
 			const char *attention_icon_name;
 			sd_bus_message_read_basic(msg, 's', &attention_icon_name);
 			if ((len = strlen(attention_icon_name)) > 0) {
-				string_init_len(&props->attention_icon_name, attention_icon_name, len, true);
+				string_init_len(&props->attention_icon_name, attention_icon_name, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("AttentionIconPixmap"))) {
 			sni__item_read_pixmap(msg, &props->attention_icon_pixmap);
@@ -804,25 +798,25 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 			const char *id;
 			sd_bus_message_read_basic(msg, 's', &id);
 			if ((len = strlen(id)) > 0) {
-				string_init_len(&props->id, id, len, true);
+				string_init_len(&props->id, id, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("Title"))) {
 			const char *title;
 			sd_bus_message_read_basic(msg, 's', &title);
 			if ((len = strlen(title)) > 0) {
-				string_init_len(&props->title, title, len, true);
+				string_init_len(&props->title, title, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("AttentionMovieName"))) {
 			const char *attention_movie_name;
 			sd_bus_message_read_basic(msg, 's', &attention_movie_name);
 			if ((len = strlen(attention_movie_name)) > 0) {
-				string_init_len(&props->attention_movie_name, attention_movie_name, len, true);
+				string_init_len(&props->attention_movie_name, attention_movie_name, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("OverlayIconName"))) {
 			const char *overlay_icon_name;
 			sd_bus_message_read_basic(msg, 's', &overlay_icon_name);
 			if ((len = strlen(overlay_icon_name)) > 0) {
-				string_init_len(&props->overlay_icon_name, overlay_icon_name, len, true);
+				string_init_len(&props->overlay_icon_name, overlay_icon_name, len, TRUE);
 			}
 		} else if (string_equal(key_str, STRING_LITERAL("OverlayIconPixmap"))) {
 			sni__item_read_pixmap(msg, &props->overlay_icon_pixmap);
@@ -831,18 +825,18 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 			const char *icon_name;
 			sd_bus_message_read_basic(msg, 's', &icon_name);
 			if ((len = strlen(icon_name)) > 0) {
-				string_init_len(&props->tooltip.icon_name, icon_name, len, true);
+				string_init_len(&props->tooltip.icon_name, icon_name, len, TRUE);
 			}
 			sni__item_read_pixmap(msg, &props->tooltip.icon_pixmap);
 			const char *title;
 			sd_bus_message_read_basic(msg, 's', &title);
 			if ((len = strlen(title)) > 0) {
-				string_init_len(&props->tooltip.title, title, len, true);
+				string_init_len(&props->tooltip.title, title, len, TRUE);
 			}
 			const char *text;
 			sd_bus_message_read_basic(msg, 's', &text);
 			if ((len = strlen(text)) > 0) {
-				string_init_len(&props->tooltip.text, text, len, true);
+				string_init_len(&props->tooltip.text, text, len, TRUE);
 			}
 			sd_bus_message_exit_container(msg);
 		} else {
@@ -859,9 +853,7 @@ exit_con:
 	}
 
 out:
-	if (item->properties_updated) {
-		item->properties_updated(item, old_properties);
-	}
+	SNI_ITEM_PROPERTIES_UPDATED_FUNC(item);
 
 	sni__item_properties_destroy(old_properties);
 
@@ -875,7 +867,7 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
 	// ? TODO: error check
 	struct sni_item *item = data;
 
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 			item->path.s, "org.freedesktop.DBus.Properties", "GetAll",
 			sni__item_handle_get_properties, slot, "s", sni__item_interface);
@@ -889,17 +881,17 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
 	return 1;
 }
 
-static bool32_t sni_item_init(struct sni_item *item, string_t id, sni_item_destroy_func_t destroy) {
+static bool32_t sni_item_init(struct sni_item *item, string_t id) {
 	string_t path;
 	if (!string_find_char(id, '/', &path)) {
-		return false;
+		return FALSE;
 	}
 
 	string_t service = {
 		.s = strndup(id.s, (id.len - path.len)),
 		.len = (id.len - path.len),
-		.free_contents = true,
-		.nul_terminated = true,
+		.free_contents = TRUE,
+		.nul_terminated = TRUE,
 	};
 
 	sd_bus_slot *slot_;
@@ -908,12 +900,12 @@ static bool32_t sni_item_init(struct sni_item *item, string_t id, sni_item_destr
 			sni__item_handle_signal, sni__item_handle_signal, item);
 	if (ret < 0) {
 		string_fini(&service);
-		return false;
+		return FALSE;
 	}
 
 	*item = (struct sni_item){ 0 };
 
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	slot->item = item;
 	slot->slot = slot_;
 	list_struct_sni__slot_insert_head(&item->slots, slot);
@@ -926,9 +918,8 @@ static bool32_t sni_item_init(struct sni_item *item, string_t id, sni_item_destr
 		string_init_string(&item->path, path);
 	}
 	item->service = service;
-	item->destroy = destroy;
 
-    return true;
+    return TRUE;
 }
 
 static void sni_item_fini(struct sni_item *item) {
@@ -1018,8 +1009,8 @@ static int sni__watcher_handle_register_host(sd_bus_message *msg, void *data,
 	string_t service_str = {
 		.s = (char *)service,
 		.len = strlen(service),
-		.nul_terminated = true,
-		.free_contents = false,
+		.nul_terminated = TRUE,
+		.free_contents = FALSE,
 	};
 
     for (size_t i = 0; i < sni_server->watcher.hosts.len; ++i) {
@@ -1131,8 +1122,8 @@ static int sni__watcher_handle_lost_service(sd_bus_message *msg, void *data,
     string_t service_str = {
 		.s = (char *)service,
 		.len = strlen(service),
-		.free_contents = false,
-		.nul_terminated = true,
+		.free_contents = FALSE,
+		.nul_terminated = TRUE,
 	};
 
     for (size_t i = 0; i < sni_server->watcher.items.len; ++i) {
@@ -1189,9 +1180,9 @@ static int sni__host_add_item(string_t id) {
 		}
 	}
 
-	struct sni_item *item = sni_server->item_create(id);
+	struct sni_item *item = SNI_ITEM_CREATE_FUNC(id);
 	if (item) {
-		assert(string_equal(item->watcher_id, id));
+		ASSERT(string_equal(item->watcher_id, id));
 		array_struct_sni_item_ptr_add(&sni_server->host.items, item);
 		return 1;
 	} else {
@@ -1222,8 +1213,8 @@ static int sni__host_handle_get_registered_items(sd_bus_message *msg, void *data
 			if ((len == 0) || (0 > sni__host_add_item((string_t){
 					.s = id,
 					.len = len,
-					.free_contents = true,
-					.nul_terminated = true,
+					.free_contents = TRUE,
+					.nul_terminated = TRUE,
 			}))) {
 				free(id);
 			}
@@ -1271,8 +1262,8 @@ static int sni__host_handle_item_registered(sd_bus_message *msg, void *data,
 		return sni__host_add_item((string_t){
 			.s = (char *)id,
 			.len = len,
-			.free_contents = false,
-			.nul_terminated = true,
+			.free_contents = FALSE,
+			.nul_terminated = TRUE,
 		});
 	} else {
 		return -EINVAL;
@@ -1296,11 +1287,11 @@ static int sni__host_handle_item_unregistered(sd_bus_message *msg, void *data,
 			if (string_equal(item->watcher_id, (string_t){
 					.s = (char *)id,
 					.len = len,
-					.free_contents = false,
-					.nul_terminated = true,
+					.free_contents = FALSE,
+					.nul_terminated = TRUE,
 			})) {
 				array_struct_sni_item_ptr_pop(&sni_server->host.items, i);
-				item->destroy(item);
+				SNI_ITEM_DESTROY_FUNC(item);
 				break;
 			}
 		}
@@ -1327,7 +1318,7 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
 		for (size_t i = sni_server->host.items.len - 1; i != SIZE_MAX; --i) {
 			struct sni_item *item = array_struct_sni_item_ptr_get(&sni_server->host.items, i);
 			sni_server->host.items.len--;
-			item->destroy(item);
+			SNI_ITEM_DESTROY_FUNC(item);
 		}
 	}
 
@@ -1335,12 +1326,12 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
 }
 
 static void sni_server_fini(void) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	for (size_t i = sni_server->host.items.len - 1; i != SIZE_MAX; --i) {
 		struct sni_item *item = array_struct_sni_item_ptr_get(&sni_server->host.items, i);
 		sni_server->host.items.len--;
-		item->destroy(item);
+		SNI_ITEM_DESTROY_FUNC(item);
 	}
 	array_struct_sni_item_ptr_fini(&sni_server->host.items);
 
@@ -1360,8 +1351,8 @@ static void sni_server_fini(void) {
 	sni_server = NULL;
 }
 
-static int sni_server_init(sni_item_create_func_t item_create) {
-	assert(sni_server == NULL);
+static int sni_server_init(void) {
+	ASSERT(sni_server == NULL);
 
 	sd_bus *bus;
     int ret = sd_bus_open_user(&bus);
@@ -1369,7 +1360,7 @@ static int sni_server_init(sni_item_create_func_t item_create) {
 		return ret;
     }
 
-	sni_server = malloc(sizeof(struct sni_server));
+	sni_server = malloc(SIZEOF(struct sni_server));
 	sni_server->bus = bus;
 
 	ret = sd_bus_request_name(sni_server->bus, sni__watcher_interface, SD_BUS_NAME_QUEUE);
@@ -1427,7 +1418,6 @@ static int sni_server_init(sni_item_create_func_t item_create) {
 	}
 
     array_struct_sni_item_ptr_init(&sni_server->host.items, 10);
-	sni_server->item_create = item_create;
 
 	return 1;
 error:
@@ -1436,7 +1426,7 @@ error:
 }
 
 static int sni_server_get_poll_info(int *fd_, int *events_, uint64_t *timeout_) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	int fd = sd_bus_get_fd(sni_server->bus);
 	if (fd < 0) {
@@ -1461,7 +1451,7 @@ static int sni_server_get_poll_info(int *fd_, int *events_, uint64_t *timeout_) 
 }
 
 static int sni_server_process(void) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	int ret;
     while ((ret = sd_bus_process(sni_server->bus, NULL)) > 0)
@@ -1484,7 +1474,7 @@ static int sni__item_handle_method(sd_bus_message *msg, void *data,
 }
 
 static int sni_item_context_menu(struct sni_item *item, int x, int y) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	int ret = sd_bus_call_method(sni_server->bus, item->service.s,
 		item->path.s, sni__item_interface, "ContextMenu",
@@ -1497,9 +1487,9 @@ static int sni_item_context_menu(struct sni_item *item, int x, int y) {
 }
 
 static int sni_item_context_menu_async(struct sni_item *item, int x, int y) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 			item->path.s, sni__item_interface, "ContextMenu",
 			sni__item_handle_method, slot, "ii", x, y);
@@ -1516,7 +1506,7 @@ static int sni_item_context_menu_async(struct sni_item *item, int x, int y) {
 }
 
 static int sni_item_activate(struct sni_item *item, int x, int y) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	int ret = sd_bus_call_method(sni_server->bus, item->service.s,
 		item->path.s, sni__item_interface, "Activate",
@@ -1529,9 +1519,9 @@ static int sni_item_activate(struct sni_item *item, int x, int y) {
 }
 
 static int sni_item_activate_async(struct sni_item *item, int x, int y) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 			item->path.s, sni__item_interface, "Activate",
 			sni__item_handle_method, slot, "ii", x, y);
@@ -1548,7 +1538,7 @@ static int sni_item_activate_async(struct sni_item *item, int x, int y) {
 }
 
 static int sni_item_secondary_activate(struct sni_item *item, int x, int y) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	int ret = sd_bus_call_method(sni_server->bus, item->service.s,
 		item->path.s, sni__item_interface, "SecondaryActivate",
@@ -1561,9 +1551,9 @@ static int sni_item_secondary_activate(struct sni_item *item, int x, int y) {
 }
 
 static int sni_item_secondary_activate_async(struct sni_item *item, int x, int y) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 			item->path.s, sni__item_interface, "SecondaryActivate",
 			sni__item_handle_method, slot, "ii", x, y);
@@ -1580,7 +1570,7 @@ static int sni_item_secondary_activate_async(struct sni_item *item, int x, int y
 }
 
 static int sni_item_scroll(struct sni_item *item, int delta, enum sni_item_scroll_orientation orientation) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
 	int ret = sd_bus_call_method(sni_server->bus, item->service.s,
 		item->path.s, sni__item_interface, "Scroll", NULL, NULL,
@@ -1593,9 +1583,9 @@ static int sni_item_scroll(struct sni_item *item, int delta, enum sni_item_scrol
 }
 
 static int sni_item_scroll_async(struct sni_item *item, int delta, enum sni_item_scroll_orientation orientation) {
-	assert(sni_server != NULL);
+	ASSERT(sni_server != NULL);
 
-	struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+	struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 	int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 			item->path.s, sni__item_interface, "Scroll", sni__item_handle_method, slot,
 			"is", delta, (orientation == SNI_ITEM_SCROLL_ORIENTATION_VERTICAL) ? "vertical" : "horizontal");
@@ -1613,8 +1603,8 @@ static int sni_item_scroll_async(struct sni_item *item, int delta, enum sni_item
 
 static int sni_dbusmenu_menu_item_event(struct sni_dbusmenu_menu_item *menu_item,
 		enum sni_dbusmenu_menu_item_event_type type, bool32_t async) {
-	assert(sni_server != NULL);
-	assert(((type == SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_OPENED)
+	ASSERT(sni_server != NULL);
+	ASSERT(((type == SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_OPENED)
 				|| (type == SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLOSED))
 			? (menu_item->submenu != NULL) : 1);
 
@@ -1632,7 +1622,7 @@ static int sni_dbusmenu_menu_item_event(struct sni_dbusmenu_menu_item *menu_item
 	};
 
 	if (async) {
-		struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+		struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 		int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 				item->properties->menu.s, sni__dbusmenu_interface, "Event",
 				sni__item_handle_method, slot, "isvu",
@@ -1677,8 +1667,8 @@ static int sni__dbusmenu_menu_handle_about_to_show(sd_bus_message *msg, void *da
 }
 
 static int sni_dbusmenu_menu_about_to_show(struct sni_dbusmenu_menu *menu, bool32_t async) {
-	assert(sni_server != NULL);
-	assert(menu->parent_menu_item != NULL);
+	ASSERT(sni_server != NULL);
+	ASSERT(menu->parent_menu_item != NULL);
 
 	struct sni_item *item = menu->dbusmenu->item;
 	if ((item->properties == NULL) || (item->properties->menu.len == 0)) {
@@ -1686,7 +1676,7 @@ static int sni_dbusmenu_menu_about_to_show(struct sni_dbusmenu_menu *menu, bool3
 	}
 
 	if (async) {
-		struct sni__slot *slot = malloc(sizeof(struct sni__slot));
+		struct sni__slot *slot = malloc(SIZEOF(struct sni__slot));
 		int ret = sd_bus_call_method_async(sni_server->bus, &slot->slot, item->service.s,
 				item->properties->menu.s, sni__dbusmenu_interface, "AboutToShow",
 				sni__dbusmenu_menu_handle_about_to_show, slot, "i", menu->parent_menu_item->id);

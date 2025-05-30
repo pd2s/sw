@@ -21,7 +21,7 @@ executable(
 	include_directories: [inc, inc_examples_common],
 	c_args: [
 		'-DPREFIX="sw-swaybar"',
-		'-DHAVE_TRAY=@0@'.format(basu_dep.found() ? 1 : 0),
+		'-DWITH_TRAY=@0@'.format(basu_dep.found() ? 1 : 0),
 	],
 	dependencies: [basu_dep, threads_dep],
 	install: true,

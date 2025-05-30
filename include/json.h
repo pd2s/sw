@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <assert.h>
 #include <inttypes.h>
 #include <errno.h>
 
@@ -108,13 +107,13 @@ struct json_token {
 	do { \
 		enum json_tokener_state_ json_tokener_state__ = json_tokener_next(&(tokener), &(token)); \
 		(void)json_tokener_state__; \
-		assert(json_tokener_state__ == JSON_TOKENER_STATE_SUCCESS); \
+		ASSERT(json_tokener_state__ == JSON_TOKENER_STATE_SUCCESS); \
 	} while (0)
 
 #define JSON_TOKENER_ADVANCE_ASSERT_TYPE(tokener, token, expected_type) \
 	do { \
 		JSON_TOKENER_ADVANCE_ASSERT(tokener, token); \
-		assert(token.type == (expected_type)); \
+		ASSERT(token.type == (expected_type)); \
 	} while (0)
 
 enum json_ast_node_type {
@@ -130,10 +129,10 @@ enum json_ast_node_type {
 };
 
 typedef struct json_ast_node struct_json_ast_node;
-ARENA_ARRAY_DECLARE(struct_json_ast_node)
+ARENA_ARRAY_DECLARE(struct_json_ast_node);
 
 typedef struct json_ast_key_value struct_json_ast_key_value;
-ARENA_ARRAY_DECLARE(struct_json_ast_key_value)
+ARENA_ARRAY_DECLARE(struct_json_ast_key_value);
 
 struct json_ast_node {
 	struct json_ast_node *parent;
@@ -244,7 +243,7 @@ static ATTRIB_FORMAT_PRINTF(2, 3) void json_buffer_add_format(struct json_buffer
     va_start(args, fmt);
 
 	char buf[512];
-	size_t len = (size_t)stbsp_vsnprintf(buf, sizeof(buf), fmt, args);
+	size_t len = (size_t)stbsp_vsnprintf(buf, SIZEOF(buf), fmt, args);
 	if ((buffer->idx + len) > buffer->size) {
 		buffer->size = (buffer->size + len) * 2;
 		buffer->data = realloc(buffer->data, buffer->size);
@@ -349,7 +348,7 @@ static void json_writer_reset(struct json_writer *writer) {
 static void json_writer_object_begin(struct json_writer *writer) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_char(&writer->buf, '{');
 	stack_enum_json_writer_state_push(&writer->state, JSON_WRITER_STATE_OBJECT);
@@ -358,7 +357,7 @@ static void json_writer_object_begin(struct json_writer *writer) {
 static void json_writer_object_end(struct json_writer *writer) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state == JSON_WRITER_STATE_OBJECT) || (state == JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state == JSON_WRITER_STATE_OBJECT) || (state == JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_buffer_add_char(&writer->buf, '}');
 	stack_enum_json_writer_state_pop(&writer->state);
 }
@@ -366,7 +365,7 @@ static void json_writer_object_end(struct json_writer *writer) {
 static void json_writer_object_key_escape(struct json_writer *writer, string_t key) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state == JSON_WRITER_STATE_OBJECT) || (state == JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state == JSON_WRITER_STATE_OBJECT) || (state == JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_char(&writer->buf, '"');
 	json_buffer_add_string_escaped(&writer->buf, key);
@@ -378,7 +377,7 @@ static void json_writer_object_key_escape(struct json_writer *writer, string_t k
 static void json_writer_object_key(struct json_writer *writer, string_t key) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state == JSON_WRITER_STATE_OBJECT) || (state == JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state == JSON_WRITER_STATE_OBJECT) || (state == JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_char(&writer->buf, '"');
 	json_buffer_add_string(&writer->buf, key);
@@ -390,7 +389,7 @@ static void json_writer_object_key(struct json_writer *writer, string_t key) {
 static void json_writer_array_begin(struct json_writer *writer) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_char(&writer->buf, '[');
 	stack_enum_json_writer_state_push(&writer->state, JSON_WRITER_STATE_ARRAY);
@@ -399,7 +398,7 @@ static void json_writer_array_begin(struct json_writer *writer) {
 static void json_writer_array_end(struct json_writer *writer) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state == JSON_WRITER_STATE_ARRAY) || (state == JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA));
+	ASSERT((state == JSON_WRITER_STATE_ARRAY) || (state == JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA));
 	json_buffer_add_char(&writer->buf, ']');
 	stack_enum_json_writer_state_pop(&writer->state);
 }
@@ -407,7 +406,7 @@ static void json_writer_array_end(struct json_writer *writer) {
 static void json_writer_null(struct json_writer *writer) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_string(&writer->buf, STRING_LITERAL("null"));
 }
@@ -415,7 +414,7 @@ static void json_writer_null(struct json_writer *writer) {
 static void json_writer_bool(struct json_writer *writer, bool32_t b) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	if (b) {
 		json_buffer_add_string(&writer->buf, STRING_LITERAL("true"));
@@ -427,7 +426,7 @@ static void json_writer_bool(struct json_writer *writer, bool32_t b) {
 static void json_writer_int(struct json_writer *writer, int64_t i) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_format(&writer->buf, "%"PRId64, i);
 }
@@ -435,7 +434,7 @@ static void json_writer_int(struct json_writer *writer, int64_t i) {
 static void json_writer_uint(struct json_writer *writer, uint64_t u) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_format(&writer->buf, "%"PRIu64, u);
 }
@@ -443,7 +442,7 @@ static void json_writer_uint(struct json_writer *writer, uint64_t u) {
 static void json_writer_double(struct json_writer *writer, double d) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	// TODO: isnan(d) || isinf(d) -> null
 	if ((d > 0) && (d < 0)) {
@@ -456,7 +455,7 @@ static void json_writer_double(struct json_writer *writer, double d) {
 static void json_writer_string_escape(struct json_writer *writer, string_t str) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_char(&writer->buf, '"');
 	json_buffer_add_string_escaped(&writer->buf, str);
@@ -466,7 +465,7 @@ static void json_writer_string_escape(struct json_writer *writer, string_t str) 
 static void json_writer_string(struct json_writer *writer, string_t str) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_char(&writer->buf, '"');
 	json_buffer_add_string(&writer->buf, str);
@@ -476,13 +475,13 @@ static void json_writer_string(struct json_writer *writer, string_t str) {
 static void json_writer_raw(struct json_writer *writer, void *data, size_t len) {
 	enum json_writer_state state = json_writer_get_current_state(writer);
 	(void)state;
-	assert((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
+	ASSERT((state != JSON_WRITER_STATE_OBJECT) && (state != JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	json_writer_element(writer);
 	json_buffer_add_string(&writer->buf, (string_t){
 		.s = data,
 		.len = len,
-		.free_contents = false,
-		.nul_terminated = false,
+		.free_contents = FALSE,
+		.nul_terminated = FALSE,
 	});
 }
 
@@ -574,8 +573,8 @@ static enum json_tokener_state_ json_tokener_buffer_to_string(struct json_tokene
 	*out = (string_t){
 		.s = arena_alloc(&tokener->allocator, tokener->buf.idx + 32),
 		.len = tokener->buf.idx,
-		.free_contents = false,
-		.nul_terminated = true, // TODO: remove
+		.free_contents = FALSE,
+		.nul_terminated = TRUE, // TODO: remove
 	};
 
 	size_t buf_idx = 0, str_idx = 0; // ? TODO: idx -> ptr
@@ -1076,7 +1075,7 @@ _true: {
 
 		*out = (struct json_token){
 			.type = JSON_TOKEN_TYPE_BOOL,
-			.b = true,
+			.b = TRUE,
 			.depth = tokener->depth,
 		};
 		return JSON_TOKENER_STATE_SUCCESS;
@@ -1105,7 +1104,7 @@ _false: {
 
 		*out = (struct json_token){
 			.type = JSON_TOKEN_TYPE_BOOL,
-			.b = false,
+			.b = FALSE,
 			.depth = tokener->depth,
 		};
 		return JSON_TOKENER_STATE_SUCCESS;
@@ -1419,12 +1418,12 @@ static enum json_tokener_state_ json_tokener_ast(struct json_tokener *tokener, s
 			break;
 		case JSON_TOKEN_TYPE_OBJECT_END:
 		case JSON_TOKEN_TYPE_ARRAY_END:
-			assert((ast->current->type == JSON_AST_NODE_TYPE_OBJECT)
+			ASSERT((ast->current->type == JSON_AST_NODE_TYPE_OBJECT)
 				|| (ast->current->type == JSON_AST_NODE_TYPE_ARRAY));
 			ast->current = ast->current->parent;
 			continue;
 		case JSON_TOKEN_TYPE_KEY:
-			assert(ast->current->type == JSON_AST_NODE_TYPE_OBJECT);
+			ASSERT(ast->current->type == JSON_AST_NODE_TYPE_OBJECT);
 			if (check_for_repeating_keys) {
 				for (size_t i = 0; i < ast->current->object.len; ++i) {
 					struct json_ast_key_value *key_value = arena_array_struct_json_ast_key_value_get_ptr(
@@ -1484,7 +1483,7 @@ static enum json_tokener_state_ json_tokener_ast(struct json_tokener *tokener, s
 			ast->current = current;
 		}
 	}
-	assert(state != JSON_TOKENER_STATE_SUCCESS);
+	ASSERT(state != JSON_TOKENER_STATE_SUCCESS);
 	return state;
 }
 

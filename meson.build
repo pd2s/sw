@@ -17,6 +17,7 @@ add_project_arguments(
         #'-D_XOPEN_SOURCE=700',
 		'-D_DEFAULT_SOURCE',
 
+		'-Wno-pre-c11-compat',
         '-Wno-c++-compat',
 		'-Wno-unused-function',
         '-Wno-unsafe-buffer-usage',
@@ -105,17 +106,17 @@ endif
 
 add_project_arguments(
 	[
-		'-DHAVE_TEXT=@0@'.format(fcft_dep.found() ? 1 : 0),
-		'-DHAVE_PNG=@0@'.format(get_option('png_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_SVG=@0@'.format(svg_dep.found() ? 1 : 0),
-		'-DHAVE_JPG=@0@'.format(get_option('jpg_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_TGA=@0@'.format(get_option('tga_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_BMP=@0@'.format(get_option('bmp_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_PSD=@0@'.format(get_option('psd_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_GIF=@0@'.format(get_option('gif_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_HDR=@0@'.format(get_option('hdr_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_PIC=@0@'.format(get_option('pic_image_blocks').enabled() ? 1 : 0),
-		'-DHAVE_PNM=@0@'.format(get_option('pnm_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_TEXT=@0@'.format(fcft_dep.found() ? 1 : 0),
+		'-DWITH_PNG=@0@'.format(get_option('png_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_SVG=@0@'.format(svg_dep.found() ? 1 : 0),
+		'-DWITH_JPG=@0@'.format(get_option('jpg_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_TGA=@0@'.format(get_option('tga_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_BMP=@0@'.format(get_option('bmp_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_PSD=@0@'.format(get_option('psd_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_GIF=@0@'.format(get_option('gif_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_HDR=@0@'.format(get_option('hdr_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_PIC=@0@'.format(get_option('pic_image_blocks').enabled() ? 1 : 0),
+		'-DWITH_PNM=@0@'.format(get_option('pnm_image_blocks').enabled() ? 1 : 0),
 
 		'-DDEBUG=@0@'.format(get_option('buildtype').startswith('debug') ? 1 : 0),
 		'-DFUZZ_TEST=@0@'.format(get_option('fuzz_test')),
