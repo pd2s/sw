@@ -1,10 +1,8 @@
 test/
 build/
-build-*/
 .cache/
 .vscode/
-subprojects/basu-*
-subprojects/resvg-*
 vgcore.*
 crash-*
-fuzz-*
+core
+compile_commands.json
