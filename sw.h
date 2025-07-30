@@ -485,7 +485,7 @@ typedef enum sw_layout_block_composite_children_layout {
 typedef struct sw_layout_block_dimensions {
 	int32_t x, y, width, height;
 	int32_t content_width, content_height;
-	int32_t borders[4]; /* left right bottom top */
+	int32_t borders[4]; /* left right bottom top */ /* ? TODO: union/#define sides */
 } sw_layout_block_dimensions_t;
 
 #if SW_WITH_TEXT

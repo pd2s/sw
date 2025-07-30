@@ -2,6 +2,14 @@
 
 This project is currently in early alpha state.
 
+# Plans for near future
+* More examples
+* user-provided buffer backend
+* user-provided renderer
+* replace fcft with freetype+harfbuzz
+* replace pixman
+* rebrand this project to "simple utils", make sw a part of it
+
 # Interfaces
 * header-only
 * shared
@@ -9,7 +17,7 @@ This project is currently in early alpha state.
 
 # Backends
 * user-provided buffer (NOT IMPLEMENTED YET)
-* generic window (cross platform) (NOT IMPLEMENTED YET)
+* generic window (cross-platform) (NOT IMPLEMENTED YET)
 * all windowing systems (ONLY WAYLAND IS PARTIALLY IMPLEMENTED)
 
 # Renderers
@@ -44,6 +52,7 @@ HEADER_INSTALL_PATH      # /usr/include
 LIBRARY_INSTALL_PATH     # /usr/lib64
 PKGCONFIG_INSTALL_PATH   # /usr/lib64/pkgconfig
 PKGCONFIG_FLAGS
+RESVG_PATH               # ${BUILD_PATH}/resvg   path to resvg dependency(required if SW_WITH_SVG=1), if left at default, git clone is used
 ```
 
 To enable/disable specific feature, add `-D FEATURE=1|0` to `CFLAGS`.

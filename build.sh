@@ -65,6 +65,8 @@ AR="${AR:-ar}"
 PKGCONFIG_FLAGS="${PKGCONFIG_FLAGS:-}"
 DEPS_FLAGS=$(pkg-config $PKGCONFIG_FLAGS --cflags --libs ${DEPS})
 
+RESVG_PATH="${RESVG_PATH:-${BUILD_PATH}/resvg}"
+
 [ ! -d "${BUILD_PATH}" ] && mkdir "${BUILD_PATH}"
 rm -f ${BUILD_PATH}/*.o
 
@@ -97,11 +99,11 @@ case "$CFLAGS" in
   *-D*SW_WITH_SVG=0*) ;;
   *)
     # TODO: use pkg-config
-    [ ! -d "${BUILD_PATH}/resvg" ] && git clone --quiet https://github.com/linebender/resvg "${BUILD_PATH}/resvg"
-    cargo build --quiet --manifest-path="${BUILD_PATH}/resvg/Cargo.toml" --workspace --release
-    cp -f "${BUILD_PATH}/resvg/crates/c-api/resvg.h" "${BUILD_PATH}/resvg.h"
+    [ ! -d "${RESVG_PATH}" ] && git clone --quiet https://github.com/linebender/resvg "${RESVG_PATH}"
+    cargo build --quiet --manifest-path="${RESVG_PATH}/Cargo.toml" --workspace --release
+    cp -f "${RESVG_PATH}/crates/c-api/resvg.h" "${BUILD_PATH}/resvg.h"
     cd "${BUILD_PATH}"
-    $AR x "${BUILD_PATH}/resvg/target/release/libresvg.a"
+    $AR x "${RESVG_PATH}/target/release/libresvg.a"
     ;;
 esac
 
