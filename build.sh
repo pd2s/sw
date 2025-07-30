@@ -32,7 +32,6 @@ case "$1" in
     cp -f ${ROOT_PATH}/su.h ${HEADER_INSTALL_PATH}/su.h
     [ -e "${BUILD_PATH}/libsw.so" ] && cp -f ${BUILD_PATH}/libsw.so ${LIBRARY_INSTALL_PATH}/libsw.so
     [ -e "${BUILD_PATH}/libsw.a" ] && cp -f ${BUILD_PATH}/libsw.a ${LIBRARY_INSTALL_PATH}/libsw.a
-    # TODO: when both static and shared libs are installed, pkg-config emits flags for dynamic linking even when --static is provided
     echo "
 Name: sw
 Description: simple widgets
@@ -53,14 +52,18 @@ Cflags: -I${HEADER_INSTALL_PATH} -DSW_EXPORT=extern
       ${PKGCONFIG_INSTALL_PATH}/sw.pc
     exit 0
     ;;
-  header|shared|static) : ;;
+  shared)
+    CFLAGS="${CFLAGS} -fPIC"
+    ;;
+  header|static) : ;;
   *) echo "Usage: $0 {header|shared|static|clean|install|uninstall}" >&2; exit 1 ;;
 esac
 
 CC="${CC:-cc}"
 AR="${AR:-ar}"
 
-DEPS_FLAGS=$(pkg-config --cflags --libs ${DEPS})
+PKGCONFIG_FLAGS="${PKGCONFIG_FLAGS:-}"
+DEPS_FLAGS=$(pkg-config $PKGCONFIG_FLAGS --cflags --libs ${DEPS})
 
 [ ! -d "${BUILD_PATH}" ] && mkdir "${BUILD_PATH}"
 rm -f ${BUILD_PATH}/*.o
@@ -73,8 +76,8 @@ ln -sf ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/stb_image.h
 case "$CFLAGS" in
   *-D*SW_WITH_WAYLAND=0*) ;;
   *)
-    WAYLAND_SCANNER=$(pkg-config --variable=wayland_scanner wayland-scanner)
-    WAYLAND_PROTOCOLS_DIR=$(pkg-config --variable=pkgdatadir wayland-protocols)
+    WAYLAND_SCANNER=$(pkg-config $PKGCONFIG_FLAGS --variable=wayland_scanner wayland-scanner)
+    WAYLAND_PROTOCOLS_DIR=$(pkg-config $PKGCONFIG_FLAGS --variable=pkgdatadir wayland-protocols)
     # TODO: parallel
     $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/xdg-shell.c"
     $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/cursor-shape-v1.c"
@@ -83,10 +86,10 @@ case "$CFLAGS" in
     $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/cursor-shape-v1.h"
     $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/xdg-shell.h"
     $WAYLAND_SCANNER client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/wlr-layer-shell-unstable-v1.h"
-    $CC $CFLAGS -c ${BUILD_PATH}/wlr-layer-shell-unstable-v1.c -o ${BUILD_PATH}/wlr-layer-shell-unstable-v1.o
-    $CC $CFLAGS -c ${BUILD_PATH}/xdg-shell.c -o ${BUILD_PATH}/xdg-shell.o
-    $CC $CFLAGS -c ${BUILD_PATH}/cursor-shape-v1.c -o ${BUILD_PATH}/cursor-shape-v1.o
-    $CC $CFLAGS -c ${BUILD_PATH}/tablet-unstable-v2.c -o ${BUILD_PATH}/tablet-unstable-v2.o
+    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/wlr-layer-shell-unstable-v1.c -o ${BUILD_PATH}/wlr-layer-shell-unstable-v1.o
+    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/xdg-shell.c -o ${BUILD_PATH}/xdg-shell.o
+    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/cursor-shape-v1.c -o ${BUILD_PATH}/cursor-shape-v1.o
+    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/tablet-unstable-v2.c -o ${BUILD_PATH}/tablet-unstable-v2.o
     ;;
 esac
 
@@ -108,7 +111,7 @@ case "$1" in
     ;;
   shared)
     $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/sw.h -o ${BUILD_PATH}/sw.o
-    $CC -shared $CFLAGS $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
+    $CC $CFLAGS -shared $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
     echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -I${BUILD_PATH} -DSW_EXPORT=extern"
     ;;
   static)

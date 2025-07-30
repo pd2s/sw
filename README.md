@@ -10,13 +10,11 @@ This project is currently in early alpha state.
 # Backends
 * user-provided buffer (NOT IMPLEMENTED YET)
 * generic window (cross platform) (NOT IMPLEMENTED YET)
-* wayland (NOT FULLY IMPLEMENTED)
-* windows (NOT IMPLEMENTED YET)
-* macos (NOT IMPLEMENTED YET)
+* all windowing systems (ONLY WAYLAND IS PARTIALLY IMPLEMENTED)
 
 # Renderers
 * software (NOT FULLY IMPLEMENTED)
-* user (NOT IMPLEMENTED YET)
+* user-provided (NOT IMPLEMENTED YET)
 
 # External dependencies
 * libc
@@ -45,6 +43,7 @@ BUILD_PATH               # ./build
 HEADER_INSTALL_PATH      # /usr/include
 LIBRARY_INSTALL_PATH     # /usr/lib64
 PKGCONFIG_INSTALL_PATH   # /usr/lib64/pkgconfig
+PKGCONFIG_FLAGS
 ```
 
 To enable/disable specific feature, add `-D FEATURE=1|0` to `CFLAGS`.

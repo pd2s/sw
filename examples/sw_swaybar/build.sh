@@ -9,7 +9,16 @@ DEPS_FLAGS=""
 case "$CFLAGS" in
   *-D*WITH_TRAY=0*) ;;
   *)
-    DEPS_FLAGS="`pkg-config --cflags --libs basu` -lpthread"
+    if pkg-config --exists basu; then
+      DEPS_FLAGS="$(pkg-config --cflags --libs basu) -lpthread"
+    elif pkg-config --exists libelogind; then
+      DEPS_FLAGS="$(pkg-config --cflags --libs libelogind) -lpthread"
+    elif pkg-config --exists libsystemd; then
+      DEPS_FLAGS="$(pkg-config --cflags --libs libsystemd) -lpthread"
+    else
+      echo "neither basu, libelogind, nor libsystemd found via pkg-config (add -DWITH_TRAY=0 to CFLAGS to disable system tray feature)" >&2
+      exit 1
+    fi
     ;;
 esac
 

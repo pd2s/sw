@@ -3,52 +3,56 @@
 
 #if !defined(SW_WITH_DEBUG)
 #define SW_WITH_DEBUG 0
-#endif // !defined(SW_WITH_DEBUG)
+#endif /* !defined(SW_WITH_DEBUG) */
 #if !defined(SW_WITH_WAYLAND)
 #define SW_WITH_WAYLAND 1
-#endif // !defined(SW_WITH_WAYLAND)
+#endif /* !defined(SW_WITH_WAYLAND) */
 #if !defined(SW_WITH_TEXT)
 #define SW_WITH_TEXT 1
-#endif // !defined(SW_WITH_TEXT)
+#endif /* !defined(SW_WITH_TEXT) */
 #if !defined(SW_WITH_PNG)
 #define SW_WITH_PNG 1
-#endif // !defined(SW_WITH_PNG)
+#endif /* !defined(SW_WITH_PNG) */
 #if !defined(SW_WITH_SVG)
 #define SW_WITH_SVG 1
-#endif // !defined(SW_WITH_SVG)
+#endif /* !defined(SW_WITH_SVG) */
 #if !defined(SW_WITH_JPG)
 #define SW_WITH_JPG 1
-#endif // !defined(SW_WITH_JPG)
+#endif /* !defined(SW_WITH_JPG) */
 #if !defined(SW_WITH_TGA)
 #define SW_WITH_TGA 1
-#endif // !defined(SW_WITH_TGA)
+#endif /* !defined(SW_WITH_TGA) */
 #if !defined(SW_WITH_BMP)
 #define SW_WITH_BMP 1
-#endif // !defined(SW_WITH_BMP)
+#endif /* !defined(SW_WITH_BMP) */
 #if !defined(SW_WITH_PSD)
 #define SW_WITH_PSD 1
-#endif // !defined(SW_WITH_PSD)
+#endif /* !defined(SW_WITH_PSD) */
 #if !defined(SW_WITH_GIF)
 #define SW_WITH_GIF 1
-#endif // !defined(SW_WITH_GIF)
+#endif /* !defined(SW_WITH_GIF) */
 #if !defined(SW_WITH_HDR)
 #define SW_WITH_HDR 1
-#endif // !defined(SW_WITH_HDR)
+#endif /* !defined(SW_WITH_HDR) */
 #if !defined(SW_WITH_PIC)
 #define SW_WITH_PIC 1
-#endif // !defined(SW_WITH_PIC)
+#endif /* !defined(SW_WITH_PIC) */
 #if !defined(SW_WITH_PNM)
 #define SW_WITH_PNM 1
-#endif // !defined(SW_WITH_PNM)
+#endif /* !defined(SW_WITH_PNM) */
 
-// TODO: remove
-//#define SW_IMPLEMENTATION
+#if !defined(SW_EXPORT)
+#define SW_EXPORT static
+#endif
+
+/* TODO: remove */
+/*#define SW_IMPLEMENTATION*/
+/*#define SW_STRIP_PREFIXES*/
 #if defined(_XOPEN_SOURCE)
 #define SW__USER_XOPEN_SOURCE _XOPEN_SOURCE
 #undef _XOPEN_SOURCE
-#endif // defined(_XOPEN_SOURCE)
+#endif /* defined(_XOPEN_SOURCE) */
 #define _XOPEN_SOURCE 700
-#include <stdio.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -62,36 +66,50 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#if !defined(SW_EXPORT)
-#define SW_EXPORT static
-#endif
+#define SW__PRIVATE_FIELDS(size) size_t sw__private[size / sizeof(size_t)]
 
-#if !defined(SU_DEBUG)
-#define SU_DEBUG SW_WITH_DEBUG
-#endif // !defined(SU_DEBUG)
+#if !defined(SU_WITH_DEBUG)
+#define SU_WITH_DEBUG SW_WITH_DEBUG
+#endif /* !defined(SU_WITH_DEBUG) */
 #include "su.h"
 
-SU_STATIC_ASSERT(SW_WITH_WAYLAND); // TODO
+SU_STATIC_ASSERT(SW_WITH_WAYLAND); /* TODO */
 
-typedef struct sw_state sw_state_t;
+#if defined(__cplusplus)
+extern "C" {
+#endif /* defined(__cplusplus) */
 
-SW_EXPORT su_bool32_t sw_init(sw_state_t *);
-SW_EXPORT void sw_fini(sw_state_t *);
-SW_EXPORT void sw_set(sw_state_t *);
+typedef struct sw_context sw_context_t;
 
-SW_EXPORT su_bool32_t sw_flush(sw_state_t *);
-SW_EXPORT su_bool32_t sw_process(sw_state_t *);
+SW_EXPORT su_bool32_t sw_init(sw_context_t *);
+SW_EXPORT void sw_fini(sw_context_t *);
+SW_EXPORT void sw_set(sw_context_t *);
+
+SW_EXPORT su_bool32_t sw_flush(sw_context_t *);
+SW_EXPORT su_bool32_t sw_process(sw_context_t *);
+
+typedef enum sw_status {
+	SW_STATUS_SUCCESS = 0,
+	SW_STATUS_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER = 1,
+	SW_STATUS_SURFACE_ERROR_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK = 2,
+	SW_STATUS_SURFACE_ERROR_LAYOUT_FAILED = 3,
+	SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE = 4
+#if SW_WITH_TEXT
+	,SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_FONT = 5
+	,SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_TEXT = 6
+#endif /* SW_WITH_TEXT */
+} sw_status_t;
 
 #if SW_WITH_WAYLAND
 
 typedef enum sw_wayland_pointer_button_state {
 	SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED = 0,
-	SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED = 1,
+	SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED = 1
 } sw_wayland_pointer_button_state_t;
 
 typedef enum sw_wayland_pointer_scroll_axis {
 	SW_WAYLAND_POINTER_AXIS_VERTICAL_SCROLL,
-	SW_WAYLAND_POINTER_AXIS_HORIZONTAL_SCROLL,
+	SW_WAYLAND_POINTER_AXIS_HORIZONTAL_SCROLL
 } sw_wayland_pointer_scroll_axis_t;
 
 typedef enum sw_wayland_output_transform {
@@ -102,83 +120,80 @@ typedef enum sw_wayland_output_transform {
 	SW_WAYLAND_OUTPUT_TRANSFORM_FLIPPED,
 	SW_WAYLAND_OUTPUT_TRANSFORM_FLIPPED_90,
 	SW_WAYLAND_OUTPUT_TRANSFORM_FLIPPED_180,
-	SW_WAYLAND_OUTPUT_TRANSFORM_FLIPPED_270,
+	SW_WAYLAND_OUTPUT_TRANSFORM_FLIPPED_270
 } sw_wayland_output_transform_t;
 
 typedef struct sw_wayland_output sw_wayland_output_t;
-typedef void (*sw_wayland_output_func_t)(sw_wayland_output_t *, sw_state_t *);
-typedef sw_wayland_output_t *(*sw_wayland_output_create_func_t)(sw_state_t *);
+typedef void (*sw_wayland_output_func_t)(sw_wayland_output_t *, sw_context_t *);
+typedef sw_wayland_output_t *(*sw_wayland_output_create_func_t)(sw_context_t *);
+
+typedef struct sw_wayland_output_in {
+	sw_wayland_output_func_t destroy; /* may be NULL */
+} sw_wayland_output_in_t;
+
+typedef struct sw_wayland_output_out {
+	su_string_t name;
+	int32_t scale, width, height;
+	sw_wayland_output_transform_t transform;
+} sw_wayland_output_out_t;
 
 SU_LLIST_DECLARE(sw_wayland_output_t);
 
 struct sw_wayland_output {
-    struct {
-		sw_wayland_output_func_t destroy;
-	} in;
-	struct {
-    	su_string_t name;
-		int32_t scale, width, height;
-		sw_wayland_output_transform_t transform;
-	} out;
-	struct {
-		sw_state_t *sw;
-		uint32_t wl_name;
-		SU_PAD32;
-		struct wl_output *wl_output;
-	} private;
-	SU_LLIST_STRUCT_FIELDS(sw_wayland_output_t);
+    sw_wayland_output_in_t in;
+	sw_wayland_output_out_t out;
+	SW__PRIVATE_FIELDS(16);
+	SU_LLIST_FIELDS(sw_wayland_output_t);
 };
 
 typedef struct sw_wayland_pointer sw_wayland_pointer_t;
-typedef void (*sw_wayland_pointer_func_t)(sw_wayland_pointer_t *, sw_state_t *);
-typedef sw_wayland_pointer_t *(*sw_wayland_pointer_create_func_t)(sw_state_t *);
+typedef void (*sw_wayland_pointer_func_t)(sw_wayland_pointer_t *, sw_context_t *);
+typedef sw_wayland_pointer_t *(*sw_wayland_pointer_create_func_t)(sw_context_t *);
 
 typedef struct sw_wayland_seat sw_wayland_seat_t;
 typedef struct sw_wayland_surface sw_wayland_surface_t;
 
+typedef struct sw_wayland_pointer_in {
+	sw_wayland_pointer_func_t destroy; /* may be NULL */
+} sw_wayland_pointer_in_t;
+
+typedef struct sw_wayland_pointer_out {
+	sw_wayland_seat_t *seat;
+	sw_wayland_surface_t *focused_surface;
+	int32_t pos_x, pos_y;
+	uint32_t btn_code;
+	sw_wayland_pointer_button_state_t btn_state;
+	SU_PAD32;
+	sw_wayland_pointer_scroll_axis_t scroll_axis;
+	double scroll_vector_length;
+} sw_wayland_pointer_out_t;
+
 struct sw_wayland_pointer {
-	struct {
-		sw_wayland_pointer_func_t destroy;
-	} in;
-	struct {
-		sw_wayland_seat_t *seat;
-		sw_wayland_surface_t *focused_surface;
-		int32_t pos_x, pos_y;
-		uint32_t btn_code;
-		sw_wayland_pointer_button_state_t btn_state;
-		SU_PAD32;
-		sw_wayland_pointer_scroll_axis_t scroll_axis;
-		double scroll_vector_length;
-	} out;
-	struct {
-		sw_state_t *sw;
-		struct wl_pointer *wl_pointer;
-		struct wp_cursor_shape_device_v1 *cursor_shape_device;
-		uint32_t enter_serial, button_serial;
-	} private;
+	sw_wayland_pointer_in_t in;
+	sw_wayland_pointer_out_t out;
+	SW__PRIVATE_FIELDS(24);
 };
 
 SU_LLIST_DECLARE(sw_wayland_seat_t);
 
-typedef void (*sw_wayland_seat_func_t)(sw_wayland_seat_t *, sw_state_t *);
-typedef sw_wayland_seat_t *(*sw_wayland_seat_create_func_t)(sw_state_t *);
+typedef void (*sw_wayland_seat_func_t)(sw_wayland_seat_t *, sw_context_t *);
+typedef sw_wayland_seat_t *(*sw_wayland_seat_create_func_t)(sw_context_t *);
+
+typedef struct sw_wayland_seat_in {
+	sw_wayland_seat_func_t destroy; /* may be NULL */
+	sw_wayland_pointer_create_func_t pointer_create; /* may be NULL */
+} sw_wayland_seat_in_t;
+
+typedef struct sw_wayland_seat_out {
+	su_string_t name;
+	sw_wayland_pointer_t *pointer;
+} sw_wayland_seat_out_t;
 
 struct sw_wayland_seat {
-    struct {
-		sw_wayland_seat_func_t destroy;
-		sw_wayland_pointer_create_func_t pointer_create;
-	} in;
-	struct {
-		su_string_t name;
-		sw_wayland_pointer_t *pointer;
-	} out;
-	struct {
-		sw_state_t *sw;
-		struct wl_seat *wl_seat;
-		uint32_t wl_name;
-		SU_PAD32;
-	} private;
-	SU_LLIST_STRUCT_FIELDS(sw_wayland_seat_t);
+    sw_wayland_seat_in_t in;
+	sw_wayland_seat_out_t out;
+	SW__PRIVATE_FIELDS(16);
+	SU_LLIST_FIELDS(sw_wayland_seat_t);
 };
 
 typedef enum sw_wayland_surface_layer_anchor {
@@ -186,9 +201,9 @@ typedef enum sw_wayland_surface_layer_anchor {
 	SW_WAYLAND_SURFACE_LAYER_ANCHOR_TOP = 1,
 	SW_WAYLAND_SURFACE_LAYER_ANCHOR_BOTTOM = 2,
 	SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT = 4,
-	SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT = 8,
+	SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT = 8
 
-#define SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL (SW_WAYLAND_SURFACE_LAYER_ANCHOR_TOP | \
+#define SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL (SW_WAYLAND_SURFACE_LAYER_ANCHOR_TOP |  \
 	SW_WAYLAND_SURFACE_LAYER_ANCHOR_BOTTOM | SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT | \
 	SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT)
 
@@ -198,11 +213,11 @@ typedef enum sw_wayland_surface_layer_layer {
 	SW_WAYLAND_SURFACE_LAYER_LAYER_BACKGROUND,
 	SW_WAYLAND_SURFACE_LAYER_LAYER_BOTTOM,
 	SW_WAYLAND_SURFACE_LAYER_LAYER_TOP,
-	SW_WAYLAND_SURFACE_LAYER_LAYER_OVERLAY,
+	SW_WAYLAND_SURFACE_LAYER_LAYER_OVERLAY
 } sw_wayland_surface_layer_layer_t;
 
 typedef enum sw_wayland_cursor_shape {
-	SW_WAYLAND_CURSOR_SHAPE_DEFAULT = 0, // SW_WAYLAND_CURSOR_SHAPE_DEFAULT_
+	SW_WAYLAND_CURSOR_SHAPE_DEFAULT = 0, /* SW_WAYLAND_CURSOR_SHAPE_DEFAULT_ */
 	SW_WAYLAND_CURSOR_SHAPE_DEFAULT_ = 1,
 	SW_WAYLAND_CURSOR_SHAPE_CONTEXT_MENU = 2,
 	SW_WAYLAND_CURSOR_SHAPE_HELP = 3,
@@ -236,21 +251,17 @@ typedef enum sw_wayland_cursor_shape {
 	SW_WAYLAND_CURSOR_SHAPE_ROW_RESIZE = 31,
 	SW_WAYLAND_CURSOR_SHAPE_ALL_SCROLL = 32,
 	SW_WAYLAND_CURSOR_SHAPE_ZOOM_IN = 33,
-	SW_WAYLAND_CURSOR_SHAPE_ZOOM_OUT = 34,
-	//SW_WAYLAND_CURSOR_SHAPE_DND_ASK = 35,
-	//SW_WAYLAND_CURSOR_SHAPE_ALL_RESIZE = 36,
+	SW_WAYLAND_CURSOR_SHAPE_ZOOM_OUT = 34
+	/*SW_WAYLAND_CURSOR_SHAPE_DND_ASK = 35, */
+	/*SW_WAYLAND_CURSOR_SHAPE_ALL_RESIZE = 36 */
 } sw_wayland_cursor_shape_t;
 
-typedef struct sw_wayland_region sw_wayland_region_t;
-SU_LLIST_DECLARE(sw_wayland_region_t);
+typedef struct sw_wayland_region {
+	int32_t x, y;
+	int32_t width, height;
+} sw_wayland_region_t;
 
-struct sw_wayland_region {
-    struct {
-		int32_t x, y;
-		int32_t width, height;
-	} in;
-	SU_LLIST_STRUCT_FIELDS(sw_wayland_region_t);
-};
+SU_ARRAY_DECLARE(sw_wayland_region_t);
 
 typedef enum sw_wayland_surface_popup_gravity {
 	SW_WAYLAND_SURFACE_POPUP_GRAVITY_NONE = 0,
@@ -261,7 +272,7 @@ typedef enum sw_wayland_surface_popup_gravity {
 	SW_WAYLAND_SURFACE_POPUP_GRAVITY_TOP_LEFT = 5,
 	SW_WAYLAND_SURFACE_POPUP_GRAVITY_BOTTOM_LEFT = 6,
 	SW_WAYLAND_SURFACE_POPUP_GRAVITY_TOP_RIGHT = 7,
-	SW_WAYLAND_SURFACE_POPUP_GRAVITY_BOTTOM_RIGHT = 8,
+	SW_WAYLAND_SURFACE_POPUP_GRAVITY_BOTTOM_RIGHT = 8
 } sw_wayland_surface_popup_gravity_t;
 
 typedef enum sw_wayland_surface_popup_constraint_adjustment {
@@ -271,155 +282,151 @@ typedef enum sw_wayland_surface_popup_constraint_adjustment {
 	SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_FLIP_X = 4,
 	SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_FLIP_Y = 8,
 	SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_RESIZE_X = 16,
-	SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_RESIZE_Y = 32,
+	SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_RESIZE_Y = 32
 } sw_wayland_surface_popup_constraint_adjustment_t;
 
 typedef enum sw_wayland_surface_type {
 	SW_WAYLAND_SURFACE_TYPE_LAYER,
-	SW_WAYLAND_SURFACE_TYPE_POPUP,
+	SW_WAYLAND_SURFACE_TYPE_POPUP
 } sw_wayland_surface_type_t;
-
-typedef enum sw_wayland_surface_status {
-	SW_WAYLAND_SURFACE_STATUS_ALIVE,
-	SW_WAYLAND_SURFACE_STATUS_CLOSED,
-	SW_WAYLAND_SURFACE_STATUS_ERROR,
-} sw_wayland_surface_status_t;
-
-typedef union pixman_image pixman_image_t;
-
-struct sw__wayland_surface_buffer {
-	struct wl_buffer *wl_buffer;
-	pixman_image_t *image; // bits
-	uint32_t *pixels;
-	uint32_t size;
-	su_bool32_t busy;
-};
 
 typedef struct sw_layout_block sw_layout_block_t;
 
-typedef void (*sw_wayland_surface_func_t)(sw_wayland_surface_t *, sw_state_t *);
+typedef void (*sw_wayland_surface_destroy_func_t)(sw_wayland_surface_t *, sw_context_t *);
+typedef void (*sw_wayland_surface_error_func_t)(sw_wayland_surface_t *, sw_context_t *, sw_status_t status);
+
+typedef struct sw_wayland_surface_layer {
+	sw_wayland_output_t *output;
+	int32_t exclusive_zone;
+	uint32_t anchor; /* sw_wayland_surface_layer_anchor_t | */
+	sw_wayland_surface_layer_layer_t layer;
+	int32_t margins[4]; /* top right bottom left */
+	SU_PAD32;
+} sw_wayland_surface_layer_t;
+
+typedef struct sw_wayland_surface_popup {
+	int32_t x, y;
+	sw_wayland_surface_popup_gravity_t gravity;
+	uint32_t constraint_adjustment; /* sw_wayland_surface_popup_constraint_adjustment_t | */
+	sw_wayland_pointer_t *grab;
+} sw_wayland_surface_popup_t;
+
+typedef union sw_wayland_surface_ {
+	sw_wayland_surface_layer_t layer;
+	sw_wayland_surface_popup_t popup;
+} sw_wayland_surface__t;
 
 SU_LLIST_DECLARE(sw_wayland_surface_t);
 
+typedef struct sw_wayland_surface_in {
+	sw_wayland_surface__t _;
+	sw_wayland_surface_type_t type;
+    sw_wayland_cursor_shape_t cursor_shape;
+	int32_t width, height;
+	/* ? TODO: prepare, prepared cbs */
+	sw_wayland_surface_error_func_t error; /* may be NULL */
+	sw_wayland_surface_destroy_func_t destroy; /* must call out.fini */
+	sw_wayland_pointer_func_t enter; /* may be NULL */
+	sw_wayland_pointer_func_t leave; /* may be NULL */
+	sw_wayland_pointer_func_t motion; /* may be NULL */
+	sw_wayland_pointer_func_t button; /* may be NULL */
+	sw_wayland_pointer_func_t scroll; /* may be NULL */
+    su_array__sw_wayland_region_t__t input_regions;
+    su_llist__sw_wayland_surface_t__t popups;
+    sw_layout_block_t *root;
+} sw_wayland_surface_in_t;
+
+typedef struct sw_wayland_surface_out {
+	int32_t width, height, scale;
+	SU_PAD32;
+	sw_wayland_surface_destroy_func_t fini;
+} sw_wayland_surface_out_t;
+
 struct sw_wayland_surface {
-	struct {
-		sw_wayland_surface_status_t status;
-		int32_t width, height, scale;
-		sw_wayland_surface_func_t fini;
-	} out;
-    struct {
-		union {
-			struct {
-				sw_wayland_output_t *output;
-    			int32_t exclusive_zone;
-    			uint32_t anchor; // sw_wayland_surface_layer_anchor_t |
-    			sw_wayland_surface_layer_layer_t layer;
-				union {
-					struct {
-						int32_t margin_top;
-						int32_t margin_right;
-						int32_t margin_bottom;
-						int32_t margin_left;
-					};
-					struct {
-						int32_t margins[4]; // top, right, bottom, left
-					};
-				};
-				SU_PAD32;
-			} layer;
-			struct {
-    			int32_t x, y;
-    			sw_wayland_surface_popup_gravity_t gravity;
-    			uint32_t constraint_adjustment; // sw_wayland_surface_popup_constraint_adjustment_t |
-				sw_wayland_pointer_t *grab;
-			} popup;
-		};
-		sw_wayland_surface_type_t type;
-    	sw_wayland_cursor_shape_t cursor_shape;
-		int32_t width, height;
-		// ? TODO: prepare, prepared cbs
-		sw_wayland_surface_func_t error;
-		sw_wayland_surface_func_t destroy; // must call out.fini, if not NULL
-		sw_wayland_pointer_func_t enter;
-		sw_wayland_pointer_func_t leave;
-		sw_wayland_pointer_func_t motion;
-		sw_wayland_pointer_func_t button;
-		sw_wayland_pointer_func_t scroll;
-    	su_llist__sw_wayland_region_t__t input_regions;
-    	su_llist__sw_wayland_surface_t__t popups;
-    	sw_layout_block_t *root;
-	} in;
-	struct {
-		sw_state_t *sw;
-		struct wl_surface *wl_surface;
-		struct sw__wayland_surface_buffer buffer;
-		su_bool32_t dirty;
-		sw_wayland_cursor_shape_t cursor_shape;
-		sw_wayland_output_t *output;
-		union {
-			struct {
-				struct zwlr_layer_surface_v1 *layer_surface;
-    			int32_t exclusive_zone;
-    			uint32_t anchor; // sw_wayland_surface_layer_anchor_t |
-    			sw_wayland_surface_layer_layer_t layer;
-				union {
-					struct {
-						int32_t margin_top;
-						int32_t margin_right;
-						int32_t margin_bottom;
-						int32_t margin_left;
-					};
-					struct {
-						int32_t margins[4]; // top, right, bottom, left
-					};
-				};
-				SU_PAD32;
-			} layer;
-			struct {
-				sw_wayland_surface_t *parent;
-				sw_wayland_pointer_t *grab;
-				struct xdg_surface *xdg_surface;
-				struct xdg_popup *xdg_popup;
-				struct xdg_positioner *xdg_positioner;
-				int32_t x, y;
-    			sw_wayland_surface_popup_gravity_t gravity;
-    			uint32_t constraint_adjustment; // sw_wayland_surface_popup_constraint_adjustment_t |
-			} popup;
-		};
-	} private;
-	SU_LLIST_STRUCT_FIELDS(sw_wayland_surface_t);
+    sw_wayland_surface_in_t in;
+	sw_wayland_surface_out_t out;
+	SW__PRIVATE_FIELDS(136);
+	SU_LLIST_FIELDS(sw_wayland_surface_t);
 };
 
-#endif // SW_WITH_WAYLAND
+#endif /* SW_WITH_WAYLAND */
 
-typedef union sw_color {
-	struct {
-		uint32_t u32;
-	};
-	struct {
+typedef struct sw_point {
+	/* ? TODO: % */
+	int32_t x, y;
+} sw_point_t;
+
+typedef union sw_color_argb32 {
+	uint32_t u32;
+	struct { /* ? TODO: extract */
 		uint8_t b;
 		uint8_t g;
 		uint8_t r;
 		uint8_t a;
-	};
+	} c;
+} sw_color_argb32_t;
+
+typedef struct sw_color_gradient_stop {
+	sw_color_argb32_t color;
+	SU_PAD32;
+	double pos; /* position along gradient line (0..1) */
+} sw_color_gradient_stop_t;
+
+SU_ARRAY_DECLARE(sw_color_gradient_stop_t);
+
+typedef struct sw_color_linear_gradient {
+	sw_point_t p1, p2;
+	su_array__sw_color_gradient_stop_t__t stops;
+} sw_color_linear_gradient_t;
+
+typedef struct sw_color_conical_gradient {
+	sw_point_t center;
+	double angle;
+	su_array__sw_color_gradient_stop_t__t stops;
+} sw_color_conical_gradient_t;
+
+typedef struct sw_color_radial_gradient {
+	sw_point_t inner_p, outer_p;
+	int32_t inner_r, outer_r;
+	su_array__sw_color_gradient_stop_t__t stops;
+} sw_color_radial_gradient_t;
+
+typedef enum sw_color_type {
+	SW_COLOR_TYPE_ARGB32,
+	SW_COLOR_TYPE_LINEAR_GRADIENT,
+	SW_COLOR_TYPE_CONICAL_GRADIENT,
+	SW_COLOR_TYPE_RADIAL_GRADIENT
+} sw_color_type_t;
+
+typedef union sw_color_ {
+	sw_color_argb32_t argb32;
+	sw_color_linear_gradient_t linear_gradient;
+	sw_color_conical_gradient_t conical_gradient;
+	sw_color_radial_gradient_t radial_gradient;
+} sw_color__t;
+
+typedef struct sw_color {
+	SU_PAD32;
+	sw_color_type_t type;
+	sw_color__t _;
 } sw_color_t;
 
 typedef enum sw_layout_block_type {
-	SW_LAYOUT_BLOCK_TYPE_SPACER = 0,
+	SW_LAYOUT_BLOCK_TYPE_SPACER = 0
 #if SW_WITH_TEXT
-	SW_LAYOUT_BLOCK_TYPE_TEXT = 1,
-#endif // SW_WITH_TEXT 
-	SW_LAYOUT_BLOCK_TYPE_IMAGE = 2,
-	SW_LAYOUT_BLOCK_TYPE_COMPOSITE = 3,
+	,SW_LAYOUT_BLOCK_TYPE_TEXT = 1
+#endif /* SW_WITH_TEXT */ 
+	,SW_LAYOUT_BLOCK_TYPE_IMAGE = 2
+	,SW_LAYOUT_BLOCK_TYPE_COMPOSITE = 3
 } sw_layout_block_type_t;
 
 typedef enum sw_layout_block_anchor {
-	SW_LAYOUT_BLOCK_ANCHOR_LEFT, // top in vertical layouts
-	SW_LAYOUT_BLOCK_ANCHOR_TOP, // left in horizontal layouts
-	SW_LAYOUT_BLOCK_ANCHOR_RIGHT, // bottom in vertical layouts
-	SW_LAYOUT_BLOCK_ANCHOR_BOTTOM, // right in horizontal layouts
+	SW_LAYOUT_BLOCK_ANCHOR_LEFT, /* top in vertical layouts */
+	SW_LAYOUT_BLOCK_ANCHOR_TOP, /* left in horizontal layouts */
+	SW_LAYOUT_BLOCK_ANCHOR_RIGHT, /* bottom in vertical layouts */
+	SW_LAYOUT_BLOCK_ANCHOR_BOTTOM, /* right in horizontal layouts */
 	SW_LAYOUT_BLOCK_ANCHOR_CENTER,
-	SW_LAYOUT_BLOCK_ANCHOR_NONE, // use x and y to position
+	SW_LAYOUT_BLOCK_ANCHOR_NONE /* use x and y to position */
 } sw_layout_block_anchor_t;
 
 typedef enum sw_layout_block_content_anchor {
@@ -431,7 +438,7 @@ typedef enum sw_layout_block_content_anchor {
 	SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_BOTTOM,
 	SW_LAYOUT_BLOCK_CONTENT_ANCHOR_RIGHT_TOP,
 	SW_LAYOUT_BLOCK_CONTENT_ANCHOR_RIGHT_CENTER,
-	SW_LAYOUT_BLOCK_CONTENT_ANCHOR_RIGHT_BOTTOM,
+	SW_LAYOUT_BLOCK_CONTENT_ANCHOR_RIGHT_BOTTOM
 } sw_layout_block_content_anchor_t;
 
 typedef enum sw_layout_block_content_transform {
@@ -442,7 +449,7 @@ typedef enum sw_layout_block_content_transform {
 	SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED,
 	SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_90,
 	SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_180,
-	SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_270,
+	SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_270
 } sw_layout_block_content_transform_t;
 
 typedef enum sw_layout_block_expand {
@@ -451,7 +458,7 @@ typedef enum sw_layout_block_expand {
 	SW_LAYOUT_BLOCK_EXPAND_RIGHT = (1 << 2),
 	SW_LAYOUT_BLOCK_EXPAND_BOTTOM = (1 << 3),
 	SW_LAYOUT_BLOCK_EXPAND_TOP = (1 << 4),
-	SW_LAYOUT_BLOCK_EXPAND_CONTENT = (1 << 5),
+	SW_LAYOUT_BLOCK_EXPAND_CONTENT = (1 << 5)
 
 #define SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES \
 	(SW_LAYOUT_BLOCK_EXPAND_LEFT | SW_LAYOUT_BLOCK_EXPAND_RIGHT \
@@ -465,104 +472,75 @@ typedef enum sw_layout_block_expand {
 } sw_layout_block_expand_t;
 
 typedef struct sw_layout_block_border {
-	struct {
-		int32_t width;
-		sw_color_t color;
-	} in;
+	int32_t width;
+	SU_PAD32;
+	sw_color_t color;
 } sw_layout_block_border_t;
 
 typedef enum sw_layout_block_composite_children_layout {
 	SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_HORIZONTAL,
-	SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL,
+	SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL
 } sw_layout_block_composite_children_layout_t;
 
 typedef struct sw_layout_block_dimensions {
 	int32_t x, y, width, height;
 	int32_t content_width, content_height;
-	union {
-		struct {
-			int32_t border_left;
-			int32_t border_right;
-			int32_t border_bottom;
-			int32_t border_top;
-		};
-		struct {
-			int32_t borders[4]; // left, right, bottom, top
-		};
-	};
+	int32_t borders[4]; /* left right bottom top */
 } sw_layout_block_dimensions_t;
-
-typedef enum sw_layout_block_status {
-	SW_LAYOUT_BLOCK_STATUS_ALIVE,
-	SW_LAYOUT_BLOCK_STATUS_ERROR,
-} sw_layout_block_status_t;
 
 #if SW_WITH_TEXT
 typedef struct sw_layout_block_text {
 	su_string_t text;
 	su_array__su_string_t__t font_names;
 	sw_color_t color;
-	SU_PAD32;
 } sw_layout_block_text_t;
-#endif // SW_WITH_TEXT
+#endif /* SW_WITH_TEXT */
 
 typedef struct sw_pixmap {
 	uint32_t width;
 	uint32_t height;
-	uint32_t pixels[]; // ARGB32
+	sw_color_argb32_t pixels[1]; /* flexible */
 } sw_pixmap_t;
 
 typedef enum sw_layout_block_image_image_type {
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP = 1, // see sw_pixmap_t
+	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_AUTO = 0
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP = 1 /* see sw_pixmap_t */
 #if SW_WITH_PNG
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG = 2,
-#endif // SW_WITH_PNG
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG = 2
+#endif /* SW_WITH_PNG */
 #if SW_WITH_JPG
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_JPG = 3,
-#endif // SW_WITH_JPG
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_JPG = 3
+#endif /* SW_WITH_JPG */
 #if SW_WITH_SVG
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG = 4,
-#endif // SW_WITH_SVG
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG = 4
+#endif /* SW_WITH_SVG */
 #if SW_WITH_TGA
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_TGA = 5,
-#endif // SW_WITH_TGA
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_TGA = 5
+#endif /* SW_WITH_TGA */
 #if SW_WITH_BMP
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_BMP = 6,
-#endif // SW_WITH_BMP
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_BMP = 6
+#endif /* SW_WITH_BMP */
 #if SW_WITH_PSD
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PSD = 7,
-#endif // SW_WITH_PSD
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PSD = 7
+#endif /* SW_WITH_PSD */
 #if SW_WITH_GIF
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_GIF = 8,
-#endif // SW_WITH_GIF
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_GIF = 8
+#endif /* SW_WITH_GIF */
 #if SW_WITH_HDR
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_HDR = 9,
-#endif // SW_WITH_HDR
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_HDR = 9
+#endif /* SW_WITH_HDR */
 #if SW_WITH_PIC
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PIC = 10,
-#endif // SW_WITH_PIC
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PIC = 10
+#endif /* SW_WITH_PIC */
 #if SW_WITH_PNM
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNM = 11,
-#endif // SW_WITH_PNM
+	,SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNM = 11
+#endif /* SW_WITH_PNM */
 } sw_layout_block_image_image_type_t;
 
-typedef enum sw_layout_block_image_image_format {
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH,
-	SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_MEMORY,
-} sw_layout_block_image_image_format_t;
-
 typedef struct sw_layout_block_image {
-	sw_layout_block_image_image_format_t format;
+	SU_PAD32;
 	sw_layout_block_image_image_type_t type;
-	union {
-		struct {
-			su_string_t path;
-		};
-		struct {
-			void *data;
-			size_t len;
-		};
-	};
+	su_fat_ptr_t data;
 } sw_layout_block_image_t;
 
 SU_LLIST_DECLARE(sw_layout_block_t);
@@ -573,228 +551,158 @@ typedef struct sw_layout_block_composite {
 	SU_PAD32;
 } sw_layout_block_composite_t;
 
-typedef void (*sw_layout_block_func_t)(sw_layout_block_t *, sw_state_t *);
-typedef su_bool32_t (*sw_layout_block_prepare_func_t)(sw_layout_block_t *, sw_state_t *);
+typedef su_bool32_t (*sw_layout_block_prepare_func_t)(sw_layout_block_t *, sw_context_t *);
+typedef void (*sw_layout_block_error_func_t)(sw_layout_block_t *, sw_context_t *, sw_status_t);
+typedef void (*sw_layout_block_fini_func_t)(sw_layout_block_t *, sw_context_t *);
+
+typedef union sw_layout_block_ {
+#if SW_WITH_TEXT
+	sw_layout_block_text_t text;
+#endif /* SW_WITH_TEXT */
+	sw_layout_block_image_t image;
+	sw_layout_block_composite_t composite;
+} sw_layout_block__t;
+
+typedef struct sw_layout_block_in {
+	sw_layout_block__t _;
+	sw_layout_block_type_t type;
+	sw_layout_block_anchor_t anchor;
+	sw_color_t color;
+	uint32_t expand; /* sw_layout_block_expand_t | */
+	int32_t x, y;
+	int32_t min_width, max_width;
+	int32_t min_height, max_height;
+	int32_t content_width, content_height;
+	sw_layout_block_content_anchor_t content_anchor;
+	sw_layout_block_content_transform_t content_transform;
+	SU_PAD32;
+	sw_layout_block_border_t borders[4]; /* left right bottom top */
+	sw_layout_block_prepare_func_t prepare; /* may be NULL */
+	sw_layout_block_prepare_func_t prepared; /* may be NULL */
+	sw_layout_block_error_func_t error; /* may be NULL */
+} sw_layout_block_in_t;
+
+typedef struct sw_layout_block_out {
+	sw_layout_block_dimensions_t dim;
+	sw_layout_block_fini_func_t fini; /* must be called at destruction */
+} sw_layout_block_out_t;
 
 struct sw_layout_block {
-	struct {
-		union {
-			// spacer;
-#if SW_WITH_TEXT
-			sw_layout_block_text_t text;
-#endif // SW_WITH_TEXT
-			sw_layout_block_image_t image;
-			sw_layout_block_composite_t composite;
-		};
-		sw_layout_block_type_t type;
-		sw_layout_block_anchor_t anchor;
-		sw_color_t color;
-		uint32_t expand; // sw_layout_block_expand_t |
-		int32_t x, y;
-		int32_t min_width, max_width;
-		int32_t min_height, max_height;
-		int32_t content_width, content_height;
-		sw_layout_block_content_anchor_t content_anchor;
-		sw_layout_block_content_transform_t content_transform;
-		union {
-			struct {
-				sw_layout_block_border_t border_left;
-				sw_layout_block_border_t border_right;
-				sw_layout_block_border_t border_bottom;
-				sw_layout_block_border_t border_top;
-			};
-			struct {
-				sw_layout_block_border_t borders[4]; // left, right, bottom, top
-			};
-		};
-		sw_layout_block_prepare_func_t prepare;
-		sw_layout_block_prepare_func_t prepared;
-		sw_layout_block_func_t error;
-	} in;
-	struct {
-		sw_layout_block_status_t status;
-		SU_PAD32;
-		sw_layout_block_dimensions_t dim;
-		sw_layout_block_func_t fini;
-	} out;
-	struct {
-		sw_state_t *sw;
-		pixman_image_t *content_image; // bits
-		pixman_image_t *color; // solid fill
-		pixman_image_t *border_left_color; // solid fill
-		pixman_image_t *border_right_color; // solid fill
-		pixman_image_t *border_bottom_color; // solid fill
-		pixman_image_t *border_top_color; // solid fill
-	} private;
-	SU_LLIST_STRUCT_FIELDS(sw_layout_block_t);
+	sw_layout_block_in_t in;
+	sw_layout_block_out_t out;
+	SW__PRIVATE_FIELDS(8);
+	SU_LLIST_FIELDS(sw_layout_block_t);
 };
-
-#if SW_WITH_GIF
-struct sw__image_gif_frame {
-	pixman_image_t *image; // bits
-	uint16_t delay; // ms
-	SU_PAD16;
-	SU_PAD32;
-};
-
-typedef struct sw__image_gif_frame struct_sw__image_gif_frame;
-SU_ARRAY_DECLARE(struct_sw__image_gif_frame);
-
-struct sw__image_multiframe_gif {
-	su_array__struct_sw__image_gif_frame__t frames;
-	size_t frame_idx;
-	int64_t frame_end; // absolute ms
-};
-#endif // SW_WITH_GIF
-
-enum sw__image_data_type {
-	SW__IMAGE_DATA_TYPE_NONE = 0,
-#if SW_WITH_SVG
-	SW__IMAGE_DATA_TYPE_SVG = 1,
-#endif // SW_WITH_SVG
-#if SW_WITH_GIF
-	SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF = 2,
-#endif // SW_WITH_GIF
-};
-
-typedef struct resvg_render_tree resvg_render_tree;
-
-struct sw__image_data {
-	enum sw__image_data_type type;
-	SU_PAD32;
-	#if SW_WITH_SVG || SW_WITH_GIF
-	union {
-#if SW_WITH_SVG
-		resvg_render_tree *svg;
-#endif // SW_WITH_SVG
-#if SW_WITH_GIF
-		struct sw__image_multiframe_gif *multiframe_gif;
-#endif // SW_WITH_GIF
-	};
-#endif // SW_WITH_SVG || SW_WITH_GIF
-
-	uint32_t *pixels;
-	su_allocator_t *gp_alloc;
-};
-
-struct sw__image_cache {
-	SU_HASH_TABLE_STRUCT_FIELDS(su_string_t)
-	sw_layout_block_image_image_type_t type;
-	SU_PAD32;
-	struct timespec mtim_ts;
-	pixman_image_t *image; // bits
-};
-
-typedef struct sw__image_cache struct_sw__image_cache;
-SU_HASH_TABLE_DECLARE(struct_sw__image_cache, su_stbds_hash, su_string_equal, 16);
-
-#if SW_WITH_TEXT
-struct sw__text_run_cache_entry {
-	struct fcft_font *font;
-	struct fcft_text_run *text_run;
-};
-
-typedef struct sw__text_run_cache_entry struct_sw__text_run_cache_entry;
-SU_ARRAY_DECLARE(struct_sw__text_run_cache_entry);
-
-struct sw__text_run_cache {
-	SU_HASH_TABLE_STRUCT_FIELDS(su_string_t)
-	su_array__struct_sw__text_run_cache_entry__t items;
-};
-
-typedef struct sw__text_run_cache struct_sw__text_run_cache;
-SU_HASH_TABLE_DECLARE(struct_sw__text_run_cache, su_stbds_hash, su_string_equal, 16);
-#endif // SW_WITH_TEXT
 
 typedef enum sw_backend_type {
-	// TODO SW_BACKEND_TYPE_IMAGE,
 #if SW_WITH_WAYLAND
-	SW_BACKEND_TYPE_WAYLAND,
-#endif // SW_WITH_WAYLAND
+	SW_BACKEND_TYPE_WAYLAND
+#endif /* SW_WITH_WAYLAND */
 } sw_backend_type_t;
 
-struct sw_state {
-	struct {
-		su_allocator_t *gp_alloc;
-		su_allocator_t *scratch_alloc;
-		SU_PAD32;
-		sw_backend_type_t type;
-		union {
-			// TODO: generic window
 #if SW_WITH_WAYLAND
-			struct {
-				sw_wayland_output_create_func_t output_create;
-				sw_wayland_seat_create_func_t seat_create;
-				su_llist__sw_wayland_surface_t__t layers;
-			} wayland;
-#endif // SW_WITH_WAYLAND
-		};
-	} in;
-	struct {
-		int64_t t; // absolute timeout in ms
-		union {
+typedef struct sw_backend_wayland_in {
+	sw_wayland_output_create_func_t output_create; /* may be NULL */
+	sw_wayland_seat_create_func_t seat_create; /* may be NULL */
+	su_llist__sw_wayland_surface_t__t layers;
+} sw_backend_wayland_in_t;
+#endif /* SW_WITH_WAYLAND */
+
+typedef union sw_backend_in {
 #if SW_WITH_WAYLAND
-			struct {
-				struct pollfd pfd;
-				su_llist__sw_wayland_output_t__t outputs;
-				su_llist__sw_wayland_seat_t__t seats;
-			} wayland;
-#endif // SW_WITH_WAYLAND
-		};
-	} out;
-	struct {
+	sw_backend_wayland_in_t wayland;
+#endif /* SW_WITH_WAYLAND */
+} sw_backend_in_t;
+
 #if SW_WITH_WAYLAND
-		struct {
-			struct wl_display *display;
-			struct wl_registry *registry;
-			struct wl_compositor *compositor;
-			struct wl_shm *shm;
-			struct zwlr_layer_shell_v1 *layer_shell;
-			struct xdg_wm_base *wm_base;
-			struct wp_cursor_shape_manager_v1 *cursor_shape_manager;
-		} wayland;
-#endif // SW_WITH_WAYLAND
-		su_hash_table__struct_sw__image_cache__t image_cache;
-#if SW_WITH_TEXT
-		su_hash_table__struct_sw__text_run_cache__t text_run_cache;
-#endif // SW_WITH_TEXT
-	} private;
+typedef struct sw_backend_wayland_out {
+	struct pollfd pfd;
+	su_llist__sw_wayland_output_t__t outputs;
+	su_llist__sw_wayland_seat_t__t seats;
+} sw_backend_wayland_out_t;
+#endif /* SW_WITH_WAYLAND */
+
+typedef union sw_backend_out {
+#if SW_WITH_WAYLAND
+	sw_backend_wayland_out_t wayland;
+#endif /* SW_WITH_WAYLAND */
+} sw_backend_out_t;
+
+typedef struct sw_context_in {
+	su_allocator_t *gp_alloc;
+	su_allocator_t *scratch_alloc;
+	SU_PAD32;
+	sw_backend_type_t backend_type;
+	sw_backend_in_t backend;
+} sw_context_in_t;
+
+typedef struct sw_context_out {
+	int64_t t; /* absolute timeout in ms at which to call sw_set */
+	sw_backend_out_t backend;
+} sw_context_out_t;
+
+struct sw_context {
+	sw_context_in_t in;
+	sw_context_out_t out;
+	SW__PRIVATE_FIELDS(104);
 };
 
 #if defined(SW_STRIP_PREFIXES)
 
+typedef sw_status_t status_t;
+
+#if SW_WITH_WAYLAND
+
+typedef sw_wayland_output_in_t wayland_output_in_t;
+typedef sw_wayland_output_out_t wayland_output_out_t;
+typedef sw_wayland_output_t wayland_output_t;
+typedef sw_wayland_output_transform_t wayland_output_transform_t;
+typedef sw_wayland_output_func_t wayland_output_func_t;
+typedef sw_wayland_output_create_func_t wayland_output_create_func_t;
 typedef sw_wayland_pointer_button_state_t wayland_pointer_button_state_t;
 typedef sw_wayland_pointer_scroll_axis_t wayland_pointer_scroll_axis_t;
-typedef sw_wayland_output_transform_t wayland_output_transform_t;
-
-typedef sw_wayland_output_t wayland_output_t;
-typedef sw_wayland_output_func_t wayland_output_func_t;
-typedef sw_wayland_output_create_func_t wayland_output_create_func_t; 
-
+typedef sw_wayland_pointer_in_t wayland_pointer_in_t;
+typedef sw_wayland_pointer_out_t wayland_pointer_out_t;
 typedef sw_wayland_pointer_t wayland_pointer_t;
 typedef sw_wayland_pointer_func_t wayland_pointer_func_t;
 typedef sw_wayland_pointer_create_func_t wayland_pointer_create_func_t;
-
+typedef sw_wayland_seat_in_t wayland_seat_in_t;
+typedef sw_wayland_seat_out_t wayland_seat_out_t;
 typedef sw_wayland_seat_t wayland_seat_t;
 typedef sw_wayland_seat_func_t wayland_seat_func_t;
 typedef sw_wayland_seat_create_func_t wayland_seat_create_func_t;
-
 typedef sw_wayland_surface_layer_anchor_t wayland_surface_layer_anchor_t;
 typedef sw_wayland_surface_layer_layer_t wayland_surface_layer_layer_t;
-
 typedef sw_wayland_cursor_shape_t wayland_cursor_shape_t;
 typedef sw_wayland_region_t wayland_region_t;
-
 typedef sw_wayland_surface_popup_gravity_t wayland_surface_popup_gravity_t;
 typedef sw_wayland_surface_popup_constraint_adjustment_t wayland_surface_popup_constraint_adjustment_t;
-
 typedef sw_wayland_surface_type_t wayland_surface_type_t;
-typedef sw_wayland_surface_status_t wayland_surface_status_t;
+typedef sw_wayland_surface_layer_t wayland_surface_layer_t;
+typedef sw_wayland_surface_popup_t wayland_surface_popup_t;
+typedef sw_wayland_surface__t wayland_surface__t;
+typedef sw_wayland_surface_in_t wayland_surface_in_t;
+typedef sw_wayland_surface_out_t wayland_surface_out_t;
 typedef sw_wayland_surface_t wayland_surface_t;
-typedef sw_wayland_surface_func_t wayland_surface_func_t;
+typedef sw_wayland_surface_destroy_func_t wayland_surface_destroy_func_t;
+typedef sw_wayland_surface_error_func_t wayland_surface_error_func_t;
 
-typedef sw_color_t color_t;
+typedef sw_backend_wayland_in_t backend_wayland_in_t;
+typedef sw_backend_wayland_out_t backend_wayland_out_t;
+
+#endif /* SW_WITH_WAYLAND */
+
 typedef sw_pixmap_t pixmap_t;
+typedef sw_point_t point_t;
+
+typedef sw_color_argb32_t color_argb32_t;
+typedef sw_color_gradient_stop_t color_gradient_stop_t;
+typedef sw_color_linear_gradient_t color_linear_gradient_t;
+typedef sw_color_conical_gradient_t color_conical_gradient_t;
+typedef sw_color_radial_gradient_t color_radial_gradient_t;
+typedef sw_color__t color__t;
+typedef sw_color_type_t color_type_t;
+typedef sw_color_t color_t;
 
 typedef sw_layout_block_type_t layout_block_type_t;
 typedef sw_layout_block_anchor_t layout_block_anchor_t;
@@ -804,97 +712,89 @@ typedef sw_layout_block_expand_t layout_block_expand_t;
 typedef sw_layout_block_border_t layout_block_border_t;
 typedef sw_layout_block_composite_children_layout_t layout_block_composite_children_layout_t;
 typedef sw_layout_block_dimensions_t layout_block_dimensions_t;
-typedef sw_layout_block_status_t layout_block_status_t;
 typedef sw_layout_block_text_t layout_block_text_t;
 typedef sw_layout_block_image_image_type_t layout_block_image_image_type_t;
-typedef sw_layout_block_image_image_format_t layout_block_image_image_format_t;
 typedef sw_layout_block_image_t layout_block_image_t;
 typedef sw_layout_block_composite_t layout_block_composite_t;
+typedef sw_layout_block__t layout_block__t;
+typedef sw_layout_block_in_t layout_block_in_t;
+typedef sw_layout_block_out_t layout_block_out_t;
 typedef sw_layout_block_t layout_block_t;
-typedef sw_layout_block_func_t layout_block_func_t;
+typedef sw_layout_block_prepare_func_t layout_block_prepare_func_t;
+typedef sw_layout_block_fini_func_t layout_block_fini_func_t;
+typedef sw_layout_block_error_func_t layout_block_error_func_t;
 
 typedef sw_backend_type_t backend_type_t;
-typedef sw_state_t state_t;
+typedef sw_backend_in_t backend_in_t;
+typedef sw_backend_out_t backend_out_t;
 
-//#define init sw_init
-//#define fini sw_fini
-//#define set sw_set
-#define flush sw_flush
-#define process sw_process
+typedef sw_context_in_t context_in_t;
+typedef sw_context_out_t context_out_t;
+typedef sw_context_t context_t;
 
+/*#define init sw_init */
+/*#define fini sw_fini */
+/*#define set sw_set */
+/*#define flush sw_flush */
+/*#define process sw_process */
 
-#endif // defined(SW_STRIP_PREFIXES)
+#endif /* defined(SW_STRIP_PREFIXES) */
+
+#if defined(__cplusplus)
+}
+#endif /* defined(__cplusplus) */
 
 #undef _XOPEN_SOURCE
 #if defined(SW__USER_XOPEN_SOURCE)
 #define _XOPEN_SOURCE SW__USER_XOPEN_SOURCE
-#endif // defined(SW__USER_XOPEN_SOURCE)
+#endif /* defined(SW__USER_XOPEN_SOURCE) */
 
-#endif // SW_HEADER
+#endif /* SW_HEADER */
+
 
 #if defined(SW_IMPLEMENTATION) && !defined(SW__REIMPLEMENTATION_GUARD)
 #define SW__REIMPLEMENTATION_GUARD
 
 #if !defined(SU_IMPLEMENTATION)
 #define SU_IMPLEMENTATION
-#endif // !defined(SU_IMPLEMENTATION)
+#endif /* !defined(SU_IMPLEMENTATION) */
 #include "su.h"
 
-#if SU_HAS_INCLUDE(<pixman.h>)
-#include <pixman.h>
-#else
+#if defined(__cplusplus)
+extern "C" {
+#endif /* defined(__cplusplus) */
+
+SU_IGNORE_WARNINGS_START
+
+SU_IGNORE_WARNING("-Wc99-extensions")
+SU_IGNORE_WARNING("-Wcomment")
+SU_IGNORE_WARNING("-Wc++98-compat-pedantic")
+
+#if SU_HAS_INCLUDE(<pixman/pixman.h>)
 #include <pixman/pixman.h>
-#endif // SU_HAS_INCLUDE(<pixman.h>)
+#else
+#include <pixman.h>
+#endif /* SU_HAS_INCLUDE(<pixman.h>) */
 
 #if SW_WITH_TEXT
 #if SU_HAS_INCLUDE(<fcft.h>)
 #include <fcft.h>
 #else
 #include <fcft/fcft.h>
-#endif // SU_HAS_INCLUDE(<fcft.h>)
-#endif // SW_WITH_TEXT
+#endif /* SU_HAS_INCLUDE(<fcft.h>) */
+#endif /* SW_WITH_TEXT */
 
 #if SW_WITH_SVG
-#if SU_HAS_INCLUDE(<resvg.h>)
-#include <resvg.h>
-#elif SU_HAS_INCLUDE(<resvg/resvg.h>)
+#if SU_HAS_INCLUDE(<resvg/resvg.h>)
 #include <resvg/resvg.h>
+#elif SU_HAS_INCLUDE(<resvg.h>)
+#include <resvg.h>
 #else
 #include "resvg.h"
 #endif
-#endif // SW_WITH_SVG
+#endif /* SW_WITH_SVG */
 
-#if SW_WITH_WAYLAND
-
-#if SU_HAS_INCLUDE(<wayland-client.h>)
-#include <wayland-client.h>
-#else
-#include <wayland-client/wayland-client.h>
-#endif // SU_HAS_INCLUDE(<wayland-client.h>)
-
-#include "wlr-layer-shell-unstable-v1.h"
-#include "xdg-shell.h"
-#include "cursor-shape-v1.h"
-
-SU_LLIST_DEFINE(sw_wayland_output_t)
-SU_LLIST_DEFINE(sw_wayland_seat_t)
-SU_LLIST_DEFINE(sw_wayland_region_t)
-SU_LLIST_DEFINE(sw_wayland_surface_t)
-
-#endif // SW_WITH_WAYLAND
-
-SU_LLIST_DEFINE(sw_layout_block_t)
-
-#if SW_WITH_GIF
-SU_ARRAY_DEFINE(struct_sw__image_gif_frame)
-#endif // SW_WITH_GIF
-
-SU_HASH_TABLE_DEFINE(struct_sw__image_cache, su_stbds_hash, su_string_equal, 16)
-
-#if SW_WITH_TEXT
-SU_ARRAY_DEFINE(struct_sw__text_run_cache_entry)
-SU_HASH_TABLE_DEFINE(struct_sw__text_run_cache, su_stbds_hash, su_string_equal, 16)
-#endif // SW_WITH_TEXT
+SU_IGNORE_WARNINGS_END
 
 #if SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM
 
@@ -902,6 +802,7 @@ static void *sw__malloc_stbi(size_t size);
 static void sw__free_stbi(void *ptr);
 static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size);
 
+#define STBI_NO_STDIO
 #define STBI_ASSERT SU_ASSERT
 #define STBI_MALLOC sw__malloc_stbi
 #define STBI_FREE sw__free_stbi
@@ -910,37 +811,37 @@ static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size)
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
 #define STBI_NO_FAILURE_STRINGS
-#define STBI_NO_THREAD_LOCALS
 
 #if !SW_WITH_PNG
 #define STBI_NO_PNG
-#endif // !SW_WITH_PNG
+#endif /* !SW_WITH_PNG */
 #if !SW_WITH_JPG
 #define STBI_NO_JPEG
-#endif // !SW_WITH_JPG
+#endif /* !SW_WITH_JPG */
 #if !SW_WITH_TGA
 #define STBI_NO_TGA
-#endif // !SW_WITH_TGA
+#endif /* !SW_WITH_TGA */
 #if !SW_WITH_BMP
 #define STBI_NO_BMP
-#endif // !SW_WITH_BMP
+#endif /* !SW_WITH_BMP */
 #if !SW_WITH_PSD
 #define STBI_NO_PSD
-#endif // !SW_WITH_PSD
+#endif /* !SW_WITH_PSD */
 #if !SW_WITH_GIF
 #define STBI_NO_GIF
-#endif //  !SW_WITH_GIF
+#endif /*  !SW_WITH_GIF */
 #if !SW_WITH_HDR
 #define STBI_NO_HDR
-#endif // !SW_WITH_HDR
+#endif /* !SW_WITH_HDR */
 #if !SW_WITH_PIC
 #define STBI_NO_PIC
-#endif // !SW_WITH_PIC
+#endif /* !SW_WITH_PIC */
 #if !SW_WITH_PNM
 #define STBI_NO_PNM
-#endif // !SW_WITH_PNM
+#endif /* !SW_WITH_PNM */
 
 SU_IGNORE_WARNINGS_START
+
 SU_IGNORE_WARNING("-Wduplicated-branches")
 SU_IGNORE_WARNING("-Warith-conversion")
 SU_IGNORE_WARNING("-Wconversion")
@@ -955,96 +856,411 @@ SU_IGNORE_WARNING("-Wswitch-default")
 SU_IGNORE_WARNING("-Wimplicit-int-conversion")
 SU_IGNORE_WARNING("-Wimplicit-fallthrough")
 SU_IGNORE_WARNING("-Wmissing-prototypes")
+SU_IGNORE_WARNING("-Wcomment")
+SU_IGNORE_WARNING("-Wcomma")
+SU_IGNORE_WARNING("-Wzero-as-null-pointer-constant")
+SU_IGNORE_WARNING("-Wcast-qual")
+SU_IGNORE_WARNING("-Wuseless-cast")
+
 #include "stb_image.h"
+
 SU_IGNORE_WARNINGS_END
 
-#endif // SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM
+#endif /* SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM */
 
-static su_allocator_t *sw__scratch_alloc; // TODO: remove
+#if SW_WITH_WAYLAND
 
+SU_IGNORE_WARNINGS_START
+
+SU_IGNORE_WARNING("-Wc99-extensions")
+SU_IGNORE_WARNING("-Wc++98-compat-pedantic")
+SU_IGNORE_WARNING("-Wcast-qual")
+
+#if SU_HAS_INCLUDE(<wayland-client/wayland-client.h>)
+#include <wayland-client/wayland-client.h>
+#else
+#include <wayland-client.h>
+#endif
+
+#include "wlr-layer-shell-unstable-v1.h"
+#include "xdg-shell.h"
+#include "cursor-shape-v1.h"
+
+SU_IGNORE_WARNINGS_END
+
+typedef struct sw__wayland_output {
+	uint32_t wl_name;
+	SU_PAD32;
+	struct wl_output *wl_output;
+} sw__wayland_output_t;
+
+typedef struct sw__wayland_pointer {
+	struct wl_pointer *wl_pointer;
+	struct wp_cursor_shape_device_v1 *cursor_shape_device;
+	uint32_t enter_serial, button_serial;
+} sw__wayland_pointer_t;
+
+typedef struct sw__wayland_seat {
+	struct wl_seat *wl_seat;
+	uint32_t wl_name;
+	SU_PAD32;
+} sw__wayland_seat_t;
+
+typedef struct sw__wayland_surface_buffer {
+	struct wl_buffer *wl_buffer;
+	pixman_image_t *image; /* bits */
+	uint32_t *pixels;
+	uint32_t size;
+	su_bool32_t busy;
+} sw__wayland_surface_buffer_t;
+
+typedef struct sw__wayland_surface_layer {
+	struct zwlr_layer_surface_v1 *layer_surface;
+	int32_t exclusive_zone;
+	uint32_t anchor; /* sw_wayland_surface_layer_anchor_t | */
+	sw_wayland_surface_layer_layer_t layer;
+	int32_t margins[4]; /* top right bottom left */
+	SU_PAD32;
+} sw__wayland_surface_layer_t;
+
+typedef struct sw__wayland_surface_popup {
+	sw_wayland_surface_t *parent;
+	sw_wayland_pointer_t *grab;
+	struct xdg_surface *xdg_surface;
+	struct xdg_popup *xdg_popup;
+	struct xdg_positioner *xdg_positioner;
+	int32_t x, y;
+    sw_wayland_surface_popup_gravity_t gravity;
+    uint32_t constraint_adjustment; /* sw_wayland_surface_popup_constraint_adjustment_t | */
+} sw__wayland_surface_popup_t;
+
+typedef union sw__wayland_surface_ {
+	sw__wayland_surface_layer_t layer;
+	sw__wayland_surface_popup_t popup;
+} sw__wayland_surface__t;
+
+typedef struct sw__wayland_surface {
+	sw__wayland_surface__t _;
+	struct wl_surface *wl_surface;
+	sw__wayland_surface_buffer_t buffer;
+	su_bool32_t dirty;
+	sw_wayland_cursor_shape_t cursor_shape;
+	sw_wayland_output_t *output;
+	su_array__sw_wayland_region_t__t input_regions;
+} sw__wayland_surface_t;
+
+SU_LLIST_DEFINE(sw_wayland_output_t)
+SU_LLIST_DEFINE(sw_wayland_seat_t)
+SU_ARRAY_DEFINE(sw_wayland_region_t)
+SU_LLIST_DEFINE(sw_wayland_surface_t)
+
+#endif /* SW_WITH_WAYLAND */
+
+typedef struct sw__layout_block {
+	pixman_image_t *content_image;
+} sw__layout_block_t;
+
+#if SW_WITH_GIF
+typedef struct sw__image_gif_frame {
+	pixman_image_t *image; /* bits */
+	uint16_t delay; /* ms */
+	SU_PAD16;
+	SU_PAD32;
+} sw__image_gif_frame_t;
+
+SU_ARRAY_DECLARE_DEFINE(sw__image_gif_frame_t)
+
+typedef struct sw__image_multiframe_gif {
+	su_array__sw__image_gif_frame_t__t frames;
+	size_t frame_idx;
+	int64_t frame_end; /* absolute ms */
+} sw__image_multiframe_gif_t;
+#endif /* SW_WITH_GIF */
+
+#if SW_WITH_SVG || SW_WITH_GIF
+typedef enum sw__image_data_type {
+	SW__IMAGE_DATA_TYPE_NONE = 0
+#if SW_WITH_SVG
+	,SW__IMAGE_DATA_TYPE_SVG = 1
+#endif /* SW_WITH_SVG */
+#if SW_WITH_GIF
+	,SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF = 2
+#endif /* SW_WITH_GIF */
+} sw__image_data_type_t;
+#endif /* SW_WITH_SVG || SW_WITH_GIF */
+
+typedef struct sw__image_data {
+#if SW_WITH_SVG || SW_WITH_GIF
+	SU_PAD32;
+	sw__image_data_type_t type;
+	void *data;
+#endif /* SW_WITH_SVG || SW_WITH_GIF */
+
+	uint32_t *pixels;
+} sw__image_data_t;
+
+typedef struct sw__image_cache {
+	SU_HASH_TABLE_FIELDS(su_fat_ptr_t);
+	pixman_image_t *image; /* bits */
+} sw__image_cache_t;
+
+/* TODO: better hash function */
+SU_HASH_TABLE_DECLARE_DEFINE(sw__image_cache_t, su_fat_ptr_t, su_stbds_hash, su_fat_ptr_equal, 16)
+
+#if SW_WITH_TEXT
+typedef struct sw__text_run_cache_entry {
+	struct fcft_font *font;
+	struct fcft_text_run *text_run;
+} sw__text_run_cache_entry_t;
+
+SU_ARRAY_DECLARE_DEFINE(sw__text_run_cache_entry_t)
+
+typedef struct sw__text_run_cache {
+	SU_HASH_TABLE_FIELDS(su_string_t);
+	su_array__sw__text_run_cache_entry_t__t items;
+} sw__text_run_cache_t;
+
+/* TODO: better hash function */
+SU_HASH_TABLE_DECLARE_DEFINE(sw__text_run_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, 16)
+#endif /* SW_WITH_TEXT */
+
+typedef struct sw__context_wayland {
+	struct wl_display *display;
+	struct wl_registry *registry;
+	struct wl_compositor *compositor;
+	struct wl_shm *shm;
+	struct zwlr_layer_shell_v1 *layer_shell;
+	struct xdg_wm_base *wm_base;
+	struct wp_cursor_shape_manager_v1 *cursor_shape_manager;
+} sw__context_wayland_t;
+
+typedef struct sw__context {
+#if SW_WITH_WAYLAND
+	sw__context_wayland_t wayland;
+#endif /* SW_WITH_WAYLAND */
+
+	/* TODO: arena for content: */
+	su_hash_table__sw__image_cache_t__t image_cache;
+#if SW_WITH_TEXT
+	su_hash_table__sw__text_run_cache_t__t text_run_cache;
+#endif /* SW_WITH_TEXT */
+} sw__context_t;
+
+SU_LLIST_DEFINE(sw_layout_block_t)
+SU_ARRAY_DEFINE(sw_color_gradient_stop_t)
+
+
+static SU_THREAD_LOCAL sw_context_t *sw__context;
+
+#if defined(__cplusplus)
+}
+#endif /* defined(__cplusplus) */
+
+SU_STATIC_ASSERT(sizeof(sw__context->sw__private) == sizeof(sw__context_t));
+#if SW_WITH_WAYLAND
+SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.outputs.head->sw__private) == sizeof(sw__wayland_output_t));
+SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->sw__private) == sizeof(sw__wayland_seat_t));
+SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->out.pointer->sw__private) == sizeof(sw__wayland_pointer_t));
+SU_STATIC_ASSERT(sizeof(sw__context->in.backend.wayland.layers.head->sw__private) == sizeof(sw__wayland_surface_t));
+/* TODO: assert outside SW_WITH_WAYLAND */
+SU_STATIC_ASSERT(sizeof(sw__context->in.backend.wayland.layers.head->in.root->sw__private) == sizeof(sw__layout_block_t));
+#endif /* sw__layout_block_t */
+
+#if SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM
 static void *sw__malloc_stbi(size_t size) {
-	return sw__scratch_alloc->alloc(sw__scratch_alloc, size, SU_ALIGNOF(max_align_t));
+	return sw__context->in.scratch_alloc->alloc(sw__context->in.scratch_alloc, size, 64);
 }
 
 static void sw__free_stbi(void *ptr) {
-	sw__scratch_alloc->free(sw__scratch_alloc, ptr);
+	sw__context->in.scratch_alloc->free(sw__context->in.scratch_alloc, ptr);
 }
 
 static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size) {
-	void *ret = sw__scratch_alloc->alloc(sw__scratch_alloc, new_size, SU_ALIGNOF(max_align_t));
+	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
+	void *ret = scratch_alloc->alloc(scratch_alloc, new_size, 64);
 	if (ptr) {
 		memcpy(ret, ptr, SU_MIN(old_size, new_size));
-		sw__scratch_alloc->free(sw__scratch_alloc, ptr);
+		scratch_alloc->free(scratch_alloc, ptr);
 	}
 	return ret;
 }
+#endif /* SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM */
 
-static void sw__update_t(sw_state_t *sw, int64_t t) {
-	if ((sw->out.t == -1) || (t < sw->out.t)) {
-		sw->out.t = t;
+static void sw__update_t(int64_t t) {
+	if ((sw__context->out.t == -1) || (t < sw__context->out.t)) {
+		sw__context->out.t = t;
 	}
 }
 
-static pixman_color_t sw__color_to_pixman_color(sw_color_t color) {
-	color.r = (uint8_t)((((uint32_t)color.r * (uint32_t)color.a + 127) * 257) >> 16);
-	color.g = (uint8_t)((((uint32_t)color.g * (uint32_t)color.a + 127) * 257) >> 16);
-	color.b = (uint8_t)((((uint32_t)color.b * (uint32_t)color.a + 127) * 257) >> 16);
-	return (pixman_color_t) {
-		.alpha = (uint16_t)(color.a * 257),
-		.red = (uint16_t)(color.r * 257),
-		.green = (uint16_t)(color.g * 257),
-		.blue = (uint16_t)(color.b * 257),
-	};
+static pixman_color_t sw__color_argb32_to_pixman_color(sw_color_argb32_t color) {
+	pixman_color_t c;
+	c.alpha = (uint16_t)(color.c.a * 257);
+	c.red = (uint16_t)((uint8_t)((((uint32_t)color.c.r * (uint32_t)color.c.a + 127) * 257) >> 16) * 257);
+	c.green = (uint16_t)((uint8_t)((((uint32_t)color.c.g * (uint32_t)color.c.a + 127) * 257) >> 16) * 257);
+	c.blue = (uint16_t)((uint8_t)((((uint32_t)color.c.b * (uint32_t)color.c.a + 127) * 257) >> 16) * 257);
+
+	return c;
+}
+
+static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_t *scratch_alloc) {
+	switch (color.type) {
+	case SW_COLOR_TYPE_ARGB32: {
+		pixman_color_t c = sw__color_argb32_to_pixman_color(color._.argb32);
+		return pixman_image_create_solid_fill(&c);
+	}
+	case SW_COLOR_TYPE_LINEAR_GRADIENT: {
+		pixman_gradient_stop_t *stops = (pixman_gradient_stop_t *)scratch_alloc->alloc(
+			scratch_alloc, sizeof(*stops) * color._.linear_gradient.stops.len, SU_ALIGNOF(*stops));
+		sw_color_gradient_stop_t prev_stop = su_array__sw_color_gradient_stop_t__get(&color._.linear_gradient.stops, 0);
+		pixman_point_fixed_t p1, p2;
+		pixman_image_t *image;
+		size_t i = 0;
+
+		SU_NOTUSED(prev_stop);
+		SU_ASSERT(color._.linear_gradient.stops.len >= 2);
+
+		for ( ; i < color._.linear_gradient.stops.len; ++i) {
+			sw_color_gradient_stop_t stop = su_array__sw_color_gradient_stop_t__get(&color._.linear_gradient.stops, i);
+			SU_ASSERT(stop.pos >= prev_stop.pos);
+			stops[i].color = sw__color_argb32_to_pixman_color(stop.color);
+			stops[i].x = pixman_double_to_fixed(stop.pos);
+			prev_stop = stop;
+		}
+
+		p1.x = pixman_int_to_fixed(color._.linear_gradient.p1.x);
+		p1.y = pixman_int_to_fixed(color._.linear_gradient.p1.y);
+		p2.x = pixman_int_to_fixed(color._.linear_gradient.p2.x);
+		p2.y = pixman_int_to_fixed(color._.linear_gradient.p2.y);
+		image = pixman_image_create_linear_gradient(
+			&p1, &p2, stops, (int)color._.linear_gradient.stops.len);
+
+		scratch_alloc->free(scratch_alloc, stops);
+		return image;
+	}
+	case SW_COLOR_TYPE_CONICAL_GRADIENT: {
+		pixman_gradient_stop_t *stops = (pixman_gradient_stop_t *)scratch_alloc->alloc(
+			scratch_alloc, sizeof(*stops) * color._.conical_gradient.stops.len, SU_ALIGNOF(*stops));
+		sw_color_gradient_stop_t prev_stop = su_array__sw_color_gradient_stop_t__get(&color._.conical_gradient.stops, 0);
+		size_t i = 0;
+		pixman_point_fixed_t center;
+		pixman_image_t *image;
+
+		SU_NOTUSED(prev_stop);
+		SU_ASSERT(color._.conical_gradient.stops.len >= 2);
+
+		for ( ; i < color._.conical_gradient.stops.len; ++i) {
+			sw_color_gradient_stop_t stop = su_array__sw_color_gradient_stop_t__get(&color._.conical_gradient.stops, i); 
+			SU_ASSERT(stop.pos >= prev_stop.pos);
+			stops[i].color = sw__color_argb32_to_pixman_color(stop.color);
+			stops[i].x = pixman_double_to_fixed(stop.pos);
+			prev_stop = stop;
+		}
+		center.x = pixman_int_to_fixed(color._.conical_gradient.center.x);
+		center.y = pixman_int_to_fixed(color._.conical_gradient.center.y);
+		image = pixman_image_create_conical_gradient(
+			&center, pixman_double_to_fixed(color._.conical_gradient.angle),
+			stops, (int)color._.conical_gradient.stops.len);
+		scratch_alloc->free(scratch_alloc, stops);
+		return image;
+	}
+	case SW_COLOR_TYPE_RADIAL_GRADIENT: {
+		pixman_gradient_stop_t *stops = (pixman_gradient_stop_t *)scratch_alloc->alloc(
+			scratch_alloc, sizeof(*stops) * color._.radial_gradient.stops.len, SU_ALIGNOF(*stops));
+		sw_color_gradient_stop_t prev_stop = su_array__sw_color_gradient_stop_t__get(&color._.radial_gradient.stops, 0);
+		size_t i = 0;
+		pixman_point_fixed_t p_inner, p_outer;
+		pixman_image_t *image;
+
+		SU_NOTUSED(prev_stop);
+		SU_ASSERT(color._.radial_gradient.stops.len >= 2);
+
+		for ( ; i < color._.radial_gradient.stops.len; ++i) {
+			sw_color_gradient_stop_t stop = su_array__sw_color_gradient_stop_t__get(&color._.radial_gradient.stops, i);
+			SU_ASSERT(stop.pos >= prev_stop.pos);
+			stops[i].color = sw__color_argb32_to_pixman_color(stop.color);
+			stops[i].x = pixman_double_to_fixed(stop.pos);
+			prev_stop = stop;
+		}
+		p_inner.x = pixman_int_to_fixed(color._.radial_gradient.inner_p.x);
+		p_inner.y = pixman_int_to_fixed(color._.radial_gradient.inner_p.y);
+		p_outer.x = pixman_int_to_fixed(color._.radial_gradient.outer_p.x);
+		p_outer.y = pixman_int_to_fixed(color._.radial_gradient.outer_p.y);
+		image = pixman_image_create_radial_gradient(
+			&p_inner, &p_outer,
+			pixman_int_to_fixed(color._.radial_gradient.inner_r),
+			pixman_int_to_fixed(color._.radial_gradient.outer_r),
+			stops, (int)color._.radial_gradient.stops.len);
+		scratch_alloc->free(scratch_alloc, stops);
+		return image;
+	}
+	default:
+		SU_ASSERT_UNREACHABLE;
+	}
 }
 
 static void sw__image_handle_destroy(pixman_image_t *image, void *data) {
-	SU_NOTUSED(image);
-	struct sw__image_data *image_data = data;
+	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	sw__image_data_t *image_data = (sw__image_data_t *)data;
+
+#if SW_WITH_SVG || SW_WITH_GIF
 	switch (image_data->type) {
 	case SW__IMAGE_DATA_TYPE_NONE:
 		break;
 #if SW_WITH_SVG
-	case SW__IMAGE_DATA_TYPE_SVG:
-		resvg_tree_destroy(image_data->svg);
+	case SW__IMAGE_DATA_TYPE_SVG: {
+		resvg_render_tree *render_tree = (resvg_render_tree *)image_data->data;
+		resvg_tree_destroy(render_tree);
 		break;
-#endif // SW_WITH_SVG
+	}
+#endif /* SW_WITH_SVG */
 #if SW_WITH_GIF
 	case SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF: {
-		for (size_t i = 0; i < image_data->multiframe_gif->frames.len; ++i) {
-			pixman_image_t *frame_image = su_array__struct_sw__image_gif_frame__get(
-				&image_data->multiframe_gif->frames, i).image;
-			struct sw__image_data *frame_data = pixman_image_get_destroy_data(frame_image);
+		sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)image_data->data;
+		size_t i = 0;
+		for ( ; i < gif->frames.len; ++i) {
+			pixman_image_t *frame_image = su_array__sw__image_gif_frame_t__get(
+				&gif->frames, i).image;
+			sw__image_data_t *frame_data = (sw__image_data_t *)pixman_image_get_destroy_data(frame_image);
 			frame_data->type = SW__IMAGE_DATA_TYPE_NONE;
 			pixman_image_unref(frame_image);
 		}
-		su_array__struct_sw__image_gif_frame__fini(&image_data->multiframe_gif->frames, image_data->gp_alloc);
-		image_data->gp_alloc->free(image_data->gp_alloc, image_data->multiframe_gif);
+		su_array__sw__image_gif_frame_t__fini(&gif->frames, gp_alloc);
+		gp_alloc->free(gp_alloc, gif);
 		break;
 	}
-#endif // SW_WITH_GIF
+#endif /* SW_WITH_GIF */
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
+#endif /* SW_WITH_SVG || SW_WITH_GIF */
 
-	image_data->gp_alloc->free(image_data->gp_alloc, image_data->pixels);
+	SU_NOTUSED(image);
 
-	image_data->gp_alloc->free(image_data->gp_alloc, image_data);
+	gp_alloc->free(gp_alloc, image_data->pixels);
+
+	gp_alloc->free(gp_alloc, image_data);
 }
 
 static pixman_image_t *sw__image_create( su_allocator_t *gp_alloc,
-		int width, int height, struct sw__image_data **data_out) {
+		int width, int height, sw__image_data_t **data_out) {
+	sw__image_data_t *data;
+	int stride;
+	size_t size;
+	pixman_image_t *image;
+
 	SU_ASSERT(width > 0);
 	SU_ASSERT(height > 0);
 
-	struct sw__image_data *data = gp_alloc->alloc(gp_alloc, sizeof(*data), SU_ALIGNOF(*data));
-	data->gp_alloc = gp_alloc;
+	data = (SU_TYPEOF(data))gp_alloc->alloc(gp_alloc, sizeof(*data), SU_ALIGNOF(*data));
+#if SW_WITH_SVG || SW_WITH_GIF
 	data->type = SW__IMAGE_DATA_TYPE_NONE;
+#endif /* SW_WITH_SVG || SW_WITH_GIF */
 
-	int stride = width * 4;
-	size_t size = (size_t)height * (size_t)stride;
-	data->pixels = gp_alloc->alloc(gp_alloc, size, 64);
+	stride = width * 4;
+	size = (size_t)height * (size_t)stride;
+	data->pixels = (SU_TYPEOF(data->pixels))gp_alloc->alloc(gp_alloc, size, 64);
 	memset(data->pixels, 0, size);
-	pixman_image_t *image = pixman_image_create_bits(PIXMAN_a8r8g8b8, width, height, data->pixels, stride);
+	image = pixman_image_create_bits(PIXMAN_a8r8g8b8, width, height, data->pixels, stride);
 	pixman_image_set_destroy_function(image, sw__image_handle_destroy, data);
 
 	if (data_out) {
@@ -1053,78 +1269,45 @@ static pixman_image_t *sw__image_create( su_allocator_t *gp_alloc,
 	return image;
 }
 
-static pixman_image_t *sw__load_pixmap_file(su_allocator_t *gp_alloc, su_string_t path) {
-	SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-	FILE *f = fopen(path.s, "r");
-	if (f == NULL) {
-		return NULL;
-	}
-
-	sw_pixmap_t pixmap;
-
-	pixman_image_t *image = NULL;
-	if (fread(&pixmap, 1, sizeof(pixmap), f) != sizeof(pixmap)) {
-		errno = EINVAL;
-		goto cleanup;
-	}
-
-	if ((pixmap.width == 0) || (pixmap.height == 0)) {
-		errno = EINVAL;
-		goto cleanup;
-	}
-
-	struct sw__image_data *image_data;
-	image = sw__image_create(gp_alloc, (int)pixmap.width, (int)pixmap.height, &image_data);
-
-	size_t size = pixmap.width * pixmap.height * 4;
-	if (fread(image_data->pixels, 1, size, f) != size) {
-		pixman_image_unref(image);
-		image = NULL;
-		errno = EINVAL;
-		goto cleanup;
-	}
+static pixman_image_t *sw__load_pixmap(su_allocator_t *gp_alloc, su_fat_ptr_t data, sw_status_t *status_out) {
+	sw_pixmap_t *pixmap;
+	static size_t pixmap_size = (sizeof(pixmap->width) + sizeof(pixmap->height));
+	sw__image_data_t *image_data;
+	pixman_image_t *image;
 	
-	su_argb_premultiply_alpha(image_data->pixels, image_data->pixels, pixmap.width * pixmap.height);
-
-cleanup:
-	fclose(f);
-    return image;
-}
-
-static pixman_image_t *sw__load_pixmap_memory(su_allocator_t *gp_alloc, void *data, size_t len) {
-	if (len <= sizeof(sw_pixmap_t)) {
+	if (data.len <= pixmap_size) {
 		goto error;
 	}
 
-	sw_pixmap_t pixmap;
+	pixmap = data.ptr;
 
-	memcpy(&pixmap, data, sizeof(pixmap));
-
-	if ((pixmap.width == 0) || (pixmap.height == 0)) {
+	if ((pixmap->width * pixmap->height * 4) != (data.len - pixmap_size)) {
 		goto error;
 	}
 
-	struct sw__image_data *image_data;
-	pixman_image_t *image = sw__image_create(gp_alloc, (int)pixmap.width, (int)pixmap.height, &image_data);
+	image = sw__image_create(gp_alloc, (int)pixmap->width, (int)pixmap->height, &image_data);
 
-	su_argb_premultiply_alpha(image_data->pixels,
-		(uint32_t *)(void *)((uint8_t *)data + sizeof(pixmap)), pixmap.width * pixmap.height);
+	su_argb_premultiply_alpha( image_data->pixels,
+		(uint32_t *)(void *)((uint8_t *)pixmap + pixmap_size),
+		pixmap->width * pixmap->height);
 
+	*status_out = SW_STATUS_SUCCESS;
     return image;
 error:
-	errno = EINVAL;
+	*status_out = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE;
 	return NULL;
 }
 
 #if SW_WITH_SVG
 static pixman_image_t *sw__render_svg(su_allocator_t *gp_alloc, resvg_render_tree *tree,
-		struct sw__image_data **image_data_out, int32_t target_width, int32_t target_height) {
-	resvg_size image_size = resvg_get_image_size(tree); // ? TODO: resvg_get_image_bbox
+		sw__image_data_t **image_data_out, int32_t target_width, int32_t target_height) {
+	resvg_size image_size = resvg_get_image_size(tree); /* ? TODO: resvg_get_image_bbox */
 	int32_t width = (int32_t)image_size.width;
 	int32_t height = (int32_t)image_size.width;
-
 	resvg_transform transform = resvg_transform_identity();
+	sw__image_data_t *image_data;
+	pixman_image_t *image;
+	
 	if (target_width > 0) {
 		width = target_width;
 		transform.a = (float)target_width / image_size.width;
@@ -1137,8 +1320,7 @@ static pixman_image_t *sw__render_svg(su_allocator_t *gp_alloc, resvg_render_tre
 	SU_ASSERT(width > 0);
 	SU_ASSERT(height > 0);
 
-	struct sw__image_data *image_data;
-	pixman_image_t *image = sw__image_create(gp_alloc, width, height, &image_data);
+	image = sw__image_create(gp_alloc, width, height, &image_data);
 
 	resvg_render(tree, transform, (uint32_t)width, (uint32_t)height, (char *)image_data->pixels);
 
@@ -1151,24 +1333,22 @@ static pixman_image_t *sw__render_svg(su_allocator_t *gp_alloc, resvg_render_tre
 	return image;
 }
 
-static pixman_image_t *sw__load_svg(su_allocator_t *gp_alloc, sw_layout_block_image_image_format_t format,
-		su_string_t path, void *data, size_t len) {
-	SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
+static pixman_image_t *sw__load_svg(su_allocator_t *gp_alloc, su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
 	resvg_render_tree *tree = NULL;
 	resvg_options *opt = resvg_options_create();
-	int32_t ret = (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH)
-		? resvg_parse_tree_from_file(path.s, opt, &tree)
-		: resvg_parse_tree_from_data(data, len, opt, &tree);
+	int32_t ret;
+
+	ret = resvg_parse_tree_from_data(data.ptr, data.len, opt, &tree);
     if (ret == RESVG_OK) {
-		struct sw__image_data *image_data;
+		sw__image_data_t *image_data;
 		image = sw__render_svg(gp_alloc, tree, &image_data, -1, -1);
 		image_data->type = SW__IMAGE_DATA_TYPE_SVG;
-		image_data->svg = tree;
+		image_data->data = tree;
+		*status_out = SW_STATUS_SUCCESS;
     } else if (tree) {
 		resvg_tree_destroy(tree);
-		errno = EINVAL;
+		*status_out = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE;
 	}
 
 	if (opt) {
@@ -1177,267 +1357,175 @@ static pixman_image_t *sw__load_svg(su_allocator_t *gp_alloc, sw_layout_block_im
 
 	return image;
 }
-#endif // SW_WITH_SVG
+#endif /* SW_WITH_SVG */
 
 #if SW_WITH_PNG
 static pixman_image_t *sw__load_png(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
-	stbi__result_info ri = {
-		.bits_per_channel = 8,
-	};
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__result_info ri;
+	stbi__context ctx;
+	memset(&ri, 0, sizeof(ri));
+	ri.bits_per_channel = 8;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__png_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__png_load(&ctx, &width, &height, &unused, 4, &ri);
+		uint32_t *src = (uint32_t *)stbi__png_load(&ctx, &width, &height, &unused, 4, &ri);
 		if (src && (width > 0) && (height > 0)) {
+			sw__image_data_t *image_data;
 			if (ri.bits_per_channel != 8) {
 				SU_ASSERT(ri.bits_per_channel == 16);
 				src = (uint32_t *)(void *)stbi__convert_16_to_8((stbi__uint16 *)src, width, height, 4);
 			}
-			struct sw__image_data *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_PNG
+#endif /* SW_WITH_PNG */
 
 #if SW_WITH_JPG
 static pixman_image_t *sw__load_jpg(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__context ctx;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__jpeg_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__jpeg_load(&ctx, &width, &height, &unused, 4, NULL);
+		uint32_t *src = (uint32_t *)stbi__jpeg_load(&ctx, &width, &height, &unused, 4, NULL);
 		if (src && (width > 0) && (height > 0)) {
-			struct sw__image_data *image_data;
+			sw__image_data_t *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_JPG
+#endif /* SW_WITH_JPG */
 
 #if SW_WITH_TGA
 static pixman_image_t *sw__load_tga(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__context ctx;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__tga_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__tga_load(&ctx, &width, &height, &unused, 4, NULL);
+		uint32_t *src = (uint32_t *)stbi__tga_load(&ctx, &width, &height, &unused, 4, NULL);
 		if (src && (width > 0) && (height > 0)) {
-			struct sw__image_data *image_data;
+			sw__image_data_t *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_TGA
+#endif /* SW_WITH_TGA */
 
 #if SW_WITH_BMP
 static pixman_image_t *sw__load_bmp(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__context ctx;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__bmp_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__bmp_load(&ctx, &width, &height, &unused, 4, NULL);
+		uint32_t *src = (uint32_t *)stbi__bmp_load(&ctx, &width, &height, &unused, 4, NULL);
 		if (src && (width > 0) && (height > 0)) {
-			struct sw__image_data *image_data;
+			sw__image_data_t *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_BMP
+#endif /* SW_WITH_BMP */
 
 #if SW_WITH_PSD
 static pixman_image_t *sw__load_psd(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
-	stbi__result_info ri = {
-		.bits_per_channel = 8,
-	};
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__result_info ri;
+	stbi__context ctx;
+	memset(&ri, 0, sizeof(ri));
+	ri.bits_per_channel = 8;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__psd_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__psd_load(&ctx, &width, &height, &unused, 4, &ri, 8);
+		uint32_t *src = (uint32_t *)stbi__psd_load(&ctx, &width, &height, &unused, 4, &ri, 8);
 		if (src && (width > 0) && (height > 0)) {
+			sw__image_data_t *image_data;
 			if (ri.bits_per_channel != 8) {
 				SU_ASSERT(ri.bits_per_channel == 16);
 				src = (uint32_t *)(void *)stbi__convert_16_to_8((stbi__uint16 *)src, width, height, 4);
 			}
-			struct sw__image_data *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_PSD
+#endif /* SW_WITH_PSD */
 
 #if SW_WITH_GIF
 static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
 	int width, height, unused, *frame_delays, frame_count;
-	uint32_t *src = stbi__load_gif_main(&ctx, &frame_delays, &width, &height, &frame_count, &unused, 4);
-	if (src && (width > 0) && (height > 0) && (frame_count > 0)) {
+	uint32_t *src;
+	stbi__context ctx;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
+	if ((src = (uint32_t *)stbi__load_gif_main(&ctx, &frame_delays, &width, &height, &frame_count, &unused, 4))
+			&& (width > 0) && (height > 0) && (frame_count > 0)) {
 		if (frame_count > 1) {
-			struct sw__image_multiframe_gif *multiframe_gif = gp_alloc->alloc(
-				gp_alloc, sizeof(*multiframe_gif), SU_ALIGNOF(*multiframe_gif));
-			multiframe_gif->frame_idx = 0;
-			multiframe_gif->frame_end = 0;
-			su_array__struct_sw__image_gif_frame__init(
-				&multiframe_gif->frames, gp_alloc, (size_t)frame_count);
+			int i = 0;
+			sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)gp_alloc->alloc(
+				gp_alloc, sizeof(*gif), SU_ALIGNOF(*gif));
+			sw__image_gif_frame_t frame;
+			su_array__sw__image_gif_frame_t__init(&gif->frames, gp_alloc, (size_t)frame_count);
 
-			for (int i = 0; i < frame_count; ++i) {
-				struct sw__image_data *frame_data;
-				su_array__struct_sw__image_gif_frame__add_nocheck(&multiframe_gif->frames,
-					(struct sw__image_gif_frame){
-						.image = sw__image_create(gp_alloc, width, height, &frame_data),
-						.delay = (uint16_t)frame_delays[i],
-				});
-
+			for ( ; i < frame_count; ++i) {
+				sw__image_data_t *frame_data;
 				size_t size = (size_t)width * (size_t)height * 4;
+				frame.image = sw__image_create(gp_alloc, width, height, &frame_data);
+				frame.delay = (uint16_t)frame_delays[i];
+				su_array__sw__image_gif_frame_t__add_nocheck(&gif->frames, frame);
+
 				su_abgr_to_argb_premultiply_alpha(frame_data->pixels,
 					(uint32_t *)(void *)&((uint8_t *)src)[size * (size_t)i],
 					(size_t)width * (size_t)height);
 				frame_data->type = SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF;
-				frame_data->multiframe_gif = multiframe_gif;
+				frame_data->data = gif;
 			}
 
-			image = su_array__struct_sw__image_gif_frame__get(&multiframe_gif->frames, 0).image;
+			frame = su_array__sw__image_gif_frame_t__get(&gif->frames, 0);
+			gif->frame_idx = 0;
+			gif->frame_end = su_now_ms() + frame.delay; /* TODO: set 0 */
+			image = frame.image;
 		} else {
-			struct sw__image_data *image_data;
+			sw__image_data_t *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
@@ -1445,34 +1533,18 @@ static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *sc
 	scratch_alloc->free(scratch_alloc, src);
 	scratch_alloc->free(scratch_alloc, frame_delays);
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_GIF
+#endif /* SW_WITH_GIF */
 
 #if SW_WITH_HDR
 static pixman_image_t *sw__load_hdr(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__context ctx;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__hdr_test(&ctx)) {
 		int width = 0, height = 0, unused;
 		uint32_t *src = (uint32_t *)(void *)stbi__hdr_to_ldr(
@@ -1480,190 +1552,128 @@ static pixman_image_t *sw__load_hdr(su_allocator_t *gp_alloc, su_allocator_t *sc
 			width, height, 4
 		);
 		if (src && (width > 0) && (height > 0)) {
-			struct sw__image_data *image_data;
+			sw__image_data_t *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_HDR
+#endif /* SW_WITH_HDR */
 
 #if SW_WITH_PIC
 static pixman_image_t *sw__load_pic(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__context ctx;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+			
 	if (stbi__pic_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__pic_load(&ctx, &width, &height, &unused, 4, NULL);
+		uint32_t *src = (uint32_t *)stbi__pic_load(&ctx, &width, &height, &unused, 4, NULL);
 		if (src && (width > 0) && (height > 0)) {
-			struct sw__image_data *image_data;
+			sw__image_data_t *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_PIC
+#endif /* SW_WITH_PIC */
 
 #if SW_WITH_PNM
 static pixman_image_t *sw__load_pnm(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
-		sw_layout_block_image_image_format_t format, su_string_t path, void *data, size_t len) {
-	FILE *f = NULL;
-	stbi__context ctx;
-	if (format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-		SU_ASSERT(path.nul_terminated); // TODO: handle properly
-
-		if (!(f = fopen(path.s, "rb"))) {
-			return NULL;
-		}
-
-		stbi__start_file(&ctx, f);
-	} else {
-		stbi__start_mem(&ctx, data, (int)len);
-	}
-
-	stbi__result_info ri = {
-		.bits_per_channel = 8,
-	};
-
+		su_fat_ptr_t data, sw_status_t *status_out) {
 	pixman_image_t *image = NULL;
+	stbi__result_info ri;
+	stbi__context ctx;
+	memset(&ri, 0, sizeof(ri));
+	ri.bits_per_channel = 8;
+	stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
+
 	if (stbi__pnm_test(&ctx)) {
 		int width, height, unused;
-		uint32_t *src = stbi__pnm_load(&ctx, &width, &height, &unused, 4, &ri);
+		uint32_t *src = (uint32_t *)stbi__pnm_load(&ctx, &width, &height, &unused, 4, &ri);
 		if (src && (width > 0) && (height > 0)) {
+			sw__image_data_t *image_data;
 			if (ri.bits_per_channel != 8) {
 				SU_ASSERT(ri.bits_per_channel == 16);
 				src = (uint32_t *)(void *)stbi__convert_16_to_8((stbi__uint16 *)src, width, height, 4);
 			}
-			struct sw__image_data *image_data;
 			image = sw__image_create(gp_alloc, width, height, &image_data);
 			su_abgr_to_argb_premultiply_alpha(image_data->pixels, src, (size_t)width * (size_t)height);
 		}
 		scratch_alloc->free(scratch_alloc, src);
 	}
 
-	if (f) {
-		fclose(f);
-	}
-	if (!image) {
-		errno = EINVAL;
-	}
+	*status_out = (image ? SW_STATUS_SUCCESS : SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_IMAGE);
 	return image;
 }
-#endif // SW_WITH_PNM
+#endif /* SW_WITH_PNM */
 
-static void sw__layout_block_fini(sw_layout_block_t *block, sw_state_t *sw) {
+static void sw__layout_block_fini(sw_layout_block_t *block, sw_context_t *sw) {
+	sw__layout_block_t *priv = (sw__layout_block_t *)&block->sw__private;
+
 	SU_NOTUSED(sw);
-	if (block->private.content_image) {
-		pixman_image_unref(block->private.content_image);
-	}
-	if (block->private.color) {
-		pixman_image_unref(block->private.color);
-	}
-	if (block->private.border_left_color) {
-		pixman_image_unref(block->private.border_left_color);
-	}
-	if (block->private.border_right_color) {
-		pixman_image_unref(block->private.border_right_color);
-	}
-	if (block->private.border_bottom_color) {
-		pixman_image_unref(block->private.border_bottom_color);
-	}
-	if (block->private.border_top_color) {
-		pixman_image_unref(block->private.border_top_color);
+
+	if (priv->content_image) {
+		pixman_image_unref(priv->content_image);
 	}
 }
 
-static su_bool32_t sw__layout_block_init(sw_layout_block_t *block, sw_state_t *sw) {
-	// TODO: remove recursion
+static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
+	/* TODO: remove recursion */
 
-	sw__layout_block_fini(block, sw);
-	memset(&block->private, 0 , sizeof(block->private));
-	block->private.sw = sw;
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	sw__layout_block_t *priv = (sw__layout_block_t *)&block->sw__private;
+	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
+	sw_status_t status = SW_STATUS_SUCCESS;
 
-	block->out.status = SW_LAYOUT_BLOCK_STATUS_ALIVE;
+	sw__layout_block_fini(block, sw__context);
+	memset(priv, 0 , sizeof(*priv));
+
 	block->out.fini = sw__layout_block_fini;
-
-	if (block->in.color.u32) {
-		pixman_color_t c = sw__color_to_pixman_color(block->in.color);
-		block->private.color = pixman_image_create_solid_fill(&c);
-	}
-	if (block->in.border_left.in.color.u32) {
-		pixman_color_t c = sw__color_to_pixman_color(block->in.border_left.in.color);
-		block->private.border_left_color = pixman_image_create_solid_fill(&c);
-	}
-	if (block->in.border_right.in.color.u32) {
-		pixman_color_t c = sw__color_to_pixman_color(block->in.border_right.in.color);
-		block->private.border_right_color = pixman_image_create_solid_fill(&c);
-	}
-	if (block->in.border_bottom.in.color.u32) {
-		pixman_color_t c = sw__color_to_pixman_color(block->in.border_bottom.in.color);
-		block->private.border_bottom_color = pixman_image_create_solid_fill(&c);
-	}
-	if (block->in.border_top.in.color.u32) {
-		pixman_color_t c = sw__color_to_pixman_color(block->in.border_top.in.color);
-		block->private.border_top_color = pixman_image_create_solid_fill(&c);
-	}
 
 	switch (block->in.type) {
 	case SW_LAYOUT_BLOCK_TYPE_SPACER:
 		break;
 #if SW_WITH_TEXT
 	case SW_LAYOUT_BLOCK_TYPE_TEXT: {
-		char **font_names = sw->in.scratch_alloc->alloc(sw->in.scratch_alloc,
-			(block->in.text.font_names.len + 1) * sizeof(*font_names), SU_ALIGNOF(*font_names));
-		for (size_t i = 0; i < block->in.text.font_names.len; ++i) {
-			su_string_t s = su_array__su_string_t__get(&block->in.text.font_names, i);
-			SU_ASSERT(s.nul_terminated == SU_TRUE); // TODO: handle properly
+		const char **font_names = (const char **)scratch_alloc->alloc(scratch_alloc,
+			(block->in._.text.font_names.len + 1) * sizeof(*font_names), SU_ALIGNOF(*font_names));
+		struct fcft_font *font;
+		struct fcft_text_run *text_run = NULL;
+		sw__text_run_cache_t *cache;
+		sw__text_run_cache_entry_t entry;
+		int image_width = 0, image_height;
+		int x = 0, y;
+		pixman_image_t *text_color;
+		size_t i = 0;
+		for ( ; i < block->in._.text.font_names.len; ++i) {
+			su_string_t s = su_array__su_string_t__get(&block->in._.text.font_names, i);
+			SU_ASSERT(s.nul_terminated == SU_TRUE); /* TODO: handle properly */
 			font_names[i] = s.s;
 		}
-		font_names[block->in.text.font_names.len] = "monospace:size=16";
-    	struct fcft_font *font = fcft_from_name(block->in.text.font_names.len + 1, (const char **)font_names, NULL);
-		sw->in.scratch_alloc->free(sw->in.scratch_alloc, font_names);
+		font_names[block->in._.text.font_names.len] = "monospace:size=16";
+		font = fcft_from_name(block->in._.text.font_names.len + 1, font_names, NULL);
+		scratch_alloc->free(scratch_alloc, font_names);
 		if (font == NULL) {
-			// ? TODO: set errno
+			status = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_FONT;
 			goto error;
 		}
 
-		struct fcft_text_run *text_run = NULL;
-		struct sw__text_run_cache *cache;
-		if (su_hash_table__struct_sw__text_run_cache__get(&sw->private.text_run_cache,
-				(struct sw__text_run_cache){ .key = block->in.text.text },
-				&cache)) {
-			for (size_t i = 0; i < cache->items.len; ++i) {
-				struct sw__text_run_cache_entry entry =
-					su_array__struct_sw__text_run_cache_entry__get(&cache->items, i);
+		if (su_hash_table__sw__text_run_cache_t__get(&sw_private->text_run_cache,
+				block->in._.text.text, &cache)) {
+			size_t j = 0;
+			for ( ; j < cache->items.len; ++j) {
+				entry = su_array__sw__text_run_cache_entry_t__get(&cache->items, j);
 				if (entry.font == font) {
 					text_run = entry.text_run;
 					break;
@@ -1672,22 +1682,23 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block, sw_state_t *s
 		}
 
 		if (text_run == NULL) {
-			char32_t *text = sw->in.scratch_alloc->alloc( sw->in.scratch_alloc,
-				block->in.text.text.len * sizeof(*text) + 1, SU_ALIGNOF(*text));
+			char32_t *text = (char32_t *)scratch_alloc->alloc(scratch_alloc,
+				block->in._.text.text.len * sizeof(*text) + 1, SU_ALIGNOF(*text));
 			size_t text_len = 0;
-			mbstate_t s = { 0 };
 			size_t consumed = 0;
-			while (consumed < block->in.text.text.len) {
+			mbstate_t s;
+			memset(&s, 0, sizeof(s));
+			while (consumed < block->in._.text.text.len) {
 				char32_t c32;
-				size_t ret = mbrtoc32(&c32, &block->in.text.text.s[consumed],
-						block->in.text.text.len - consumed, &s);
+				size_t ret = mbrtoc32(&c32, &block->in._.text.text.s[consumed],
+						block->in._.text.text.len - consumed, &s);
 				switch (ret) {
-				case 0: // ? TODO: do not treat as error
+				case 0: /* ? TODO: do not treat as error */
 				case (size_t)-1:
 				case (size_t)-2:
 				case (size_t)-3:
-					sw->in.scratch_alloc->free(sw->in.scratch_alloc, text);
-					// ? TODO: set errno
+					scratch_alloc->free(scratch_alloc, text);
+					status = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_TEXT;
 					goto error;
 				default:
 					text[text_len++] = c32;
@@ -1695,52 +1706,48 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block, sw_state_t *s
 				}
 			}
 
-			text_run = fcft_rasterize_text_run_utf32(font, text_len, text, FCFT_SUBPIXEL_NONE);
-			sw->in.scratch_alloc->free(sw->in.scratch_alloc, text);
+			text_run = fcft_rasterize_text_run_utf32(font, text_len, (uint32_t *)text, FCFT_SUBPIXEL_NONE);
+			scratch_alloc->free(scratch_alloc, text);
 			if ((text_run == NULL) || (text_run->count == 0)) {
 				fcft_text_run_destroy(text_run);
-				// ? TODO: set errno
+				status = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_TEXT;
 				goto error;
 			}
 
-			if (su_hash_table__struct_sw__text_run_cache__add(&sw->private.text_run_cache,
-					sw->in.gp_alloc,
-					(struct sw__text_run_cache){ .key = block->in.text.text },
-					&cache)) {
-				su_string_init_string(&cache->key, sw->in.gp_alloc, cache->key);
+			if (su_hash_table__sw__text_run_cache_t__add(&sw_private->text_run_cache,
+					gp_alloc, block->in._.text.text, &cache)) {
+				su_string_init_string(&cache->key, gp_alloc, cache->key);
 			}
 
-			su_array__struct_sw__text_run_cache_entry__add(&cache->items,
-				sw->in.gp_alloc,
-				(struct sw__text_run_cache_entry){
-					.font = font,
-					.text_run = text_run,
-			});
+			entry.font = font;
+			entry.text_run = text_run;
+			su_array__sw__text_run_cache_entry_t__add(&cache->items,
+				gp_alloc, entry);
 		}
 
-		int image_width = 0, image_height = font->height;
-		for (size_t i = 0; i < text_run->count; ++i) {
+		image_height = font->height;
+		for ( i = 0; i < text_run->count; ++i) {
 			image_width += text_run->glyphs[i]->advance.x;
 		}
 		if ((image_width <= 0) || (image_height <= 0)) {
-			errno = EINVAL;
+			status = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_TEXT;
 			goto error;
 		}
 
-		block->private.content_image = sw__image_create(sw->in.gp_alloc, image_width, image_height, NULL);
+		priv->content_image = sw__image_create(gp_alloc, image_width, image_height, NULL);
 
-		pixman_color_t color = sw__color_to_pixman_color(block->in.text.color);
-		pixman_image_t *text_color = pixman_image_create_solid_fill(&color);
+		/* TODO: move to sw__layout_block_render */
+		text_color = sw__color_to_pixman_image(block->in._.text.color, scratch_alloc);
 
-		int x = 0, y = font->height - font->descent;
-		for (size_t i = 0; i < text_run->count; ++i) {
+		y = font->height - font->descent;
+		for ( i = 0; i < text_run->count; ++i) {
 			const struct fcft_glyph *glyph = text_run->glyphs[i];
 			if (pixman_image_get_format(glyph->pix) == PIXMAN_a8r8g8b8) {
-				pixman_image_composite32(PIXMAN_OP_OVER, glyph->pix, NULL, block->private.content_image,
+				pixman_image_composite32(PIXMAN_OP_OVER, glyph->pix, NULL, priv->content_image,
 						0, 0, 0, 0, x + glyph->x, y - glyph->y,
 						glyph->width, glyph->height);
 			} else {
-				pixman_image_composite32(PIXMAN_OP_OVER, text_color, glyph->pix, block->private.content_image,
+				pixman_image_composite32(PIXMAN_OP_OVER, text_color, glyph->pix, priv->content_image,
 						0, 0, 0, 0, x + glyph->x, y - glyph->y,
 						glyph->width, glyph->height);
 			}
@@ -1750,154 +1757,116 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block, sw_state_t *s
 		pixman_image_unref(text_color);
 		break;
 	}
-#endif // SW_WITH_TEXT
+#endif /* SW_WITH_TEXT */
 	case SW_LAYOUT_BLOCK_TYPE_IMAGE: {
-		char abspath_buf[PATH_MAX];
-		su_string_t abspath = { 0 };
-		struct stat sb;
-		struct sw__image_cache *cache;
+		su_fat_ptr_t data = block->in._.image.data;
+		sw__image_cache_t *cache;
 
-		if (block->in.image.format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-			SU_ASSERT(block->in.image.path.nul_terminated); // TODO: handle properly
-			if (realpath(block->in.image.path.s, abspath_buf) == NULL) {
-				goto error;
-			}
-
-			abspath = (su_string_t){
-				.s = abspath_buf,
-				.len = strlen(abspath_buf),
-				.free_contents = SU_FALSE,
-				.nul_terminated = SU_TRUE,
-			};
-
-			if (stat(abspath.s, &sb) == -1) {
-				struct sw__image_cache del;
-				if (su_hash_table__struct_sw__image_cache__del(&sw->private.image_cache,
-						(struct sw__image_cache){ .key = abspath }, &del)) {
-					su_string_fini(&del.key, sw->in.gp_alloc);
-					pixman_image_unref(del.image);
-				}
-				goto error;
-			}
-
-			if (su_hash_table__struct_sw__image_cache__get(&sw->private.image_cache,
-					(struct sw__image_cache){ .key = abspath },
-					&cache)) {
-				if ((memcmp(&sb.st_mtim, &cache->mtim_ts, sizeof(sb.st_mtim)) == 0)
-						&& (cache->type == block->in.image.type)) {
-					block->private.content_image = pixman_image_ref(cache->image);
-				} else {
-					pixman_image_unref(cache->image);
-				}
-			}
-		}
-
-		// TODO: cache for memory images
-
-		sw__scratch_alloc = sw->in.scratch_alloc; // TODO: remove
-
-		if (block->private.content_image == NULL) {
-			switch (block->in.image.type) {
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP:
-				block->private.content_image = (block->in.image.format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH)
-					? sw__load_pixmap_file(sw->in.gp_alloc, abspath)
-					: sw__load_pixmap_memory(sw->in.gp_alloc, block->in.image.data, block->in.image.len);
-				break;
-#if SW_WITH_SVG
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG:
-				block->private.content_image = sw__load_svg(sw->in.gp_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_SVG
-#if SW_WITH_PNG
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG:
-				block->private.content_image = sw__load_png(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_PNG
-#if SW_WITH_JPG
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_JPG:
-				block->private.content_image = sw__load_jpg(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_JPG
-#if SW_WITH_TGA
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_TGA:
-				block->private.content_image = sw__load_tga(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_TGA
-#if SW_WITH_BMP
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_BMP:
-				block->private.content_image = sw__load_bmp(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_BMP
-#if SW_WITH_PSD
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PSD:
-				block->private.content_image = sw__load_psd(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_PSD
+		if (su_hash_table__sw__image_cache_t__get(&sw_private->image_cache,
+				data, &cache)) {
 #if SW_WITH_GIF
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_GIF:
-				block->private.content_image = sw__load_gif(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_GIF
+			sw__image_data_t *d = (sw__image_data_t *)pixman_image_get_destroy_data(cache->image);
+			if (d->type == SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF) {
+				sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)d->data;
+				priv->content_image = pixman_image_ref(
+					su_array__sw__image_gif_frame_t__get(&gif->frames, gif->frame_idx).image);
+			} else
+#endif /* SW_WITH_GIF */
+				priv->content_image = pixman_image_ref(cache->image);
+		} else {
+			if (block->in._.image.type == SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_AUTO) {
+#if SW_WITH_SVG
+				if ((priv->content_image = sw__load_svg(gp_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_SVG */
+#if SW_WITH_PNG
+				if ((priv->content_image = sw__load_png(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_PNG */
+#if SW_WITH_JPG
+				if ((priv->content_image = sw__load_jpg(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_JPG */
+#if SW_WITH_TGA
+				if ((priv->content_image = sw__load_tga(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_TGA */
+#if SW_WITH_BMP
+				if ((priv->content_image = sw__load_bmp(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_BMP */
+#if SW_WITH_PSD
+				if ((priv->content_image = sw__load_psd(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_PSD */
+#if SW_WITH_GIF
+				if ((priv->content_image = sw__load_gif(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_GIF */
 #if SW_WITH_HDR
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_HDR:
-				block->private.content_image = sw__load_hdr(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_HDR
+				if ((priv->content_image = sw__load_hdr(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_HDR */
 #if SW_WITH_PIC
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PIC:
-				block->private.content_image = sw__load_pic(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_PIC
+				if ((priv->content_image = sw__load_pic(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_PIC */
 #if SW_WITH_PNM
-			case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNM:
-				block->private.content_image = sw__load_pnm(sw->in.gp_alloc, sw->in.scratch_alloc,
-					block->in.image.format, abspath, block->in.image.data, block->in.image.len);
-				break;
-#endif // SW_WITH_PNM
-			default:
-				SU_ASSERT_UNREACHABLE;
+				if ((priv->content_image = sw__load_pnm(gp_alloc, scratch_alloc, data, &status))) goto process_content_image;
+#endif /* SW_WITH_PNM */
+				priv->content_image = sw__load_pixmap(gp_alloc, data, &status); goto process_content_image;
+			} else {
+				switch (block->in._.image.type) {
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP: priv->content_image = sw__load_pixmap(gp_alloc, data, &status); break;
+#if SW_WITH_SVG
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG: priv->content_image = sw__load_svg(gp_alloc, data, &status); break;
+#endif /* SW_WITH_SVG */
+#if SW_WITH_PNG
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG: priv->content_image = sw__load_png(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_PNG */
+#if SW_WITH_JPG
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_JPG: priv->content_image = sw__load_jpg(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_JPG */
+#if SW_WITH_TGA
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_TGA: priv->content_image = sw__load_tga(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_TGA */
+#if SW_WITH_BMP
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_BMP: priv->content_image = sw__load_bmp(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_BMP */
+#if SW_WITH_PSD
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PSD: priv->content_image = sw__load_psd(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_PSD */
+#if SW_WITH_GIF
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_GIF: priv->content_image = sw__load_gif(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_GIF */
+#if SW_WITH_HDR
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_HDR: priv->content_image = sw__load_hdr(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_HDR */
+#if SW_WITH_PIC
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PIC: priv->content_image = sw__load_pic(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_PIC */
+#if SW_WITH_PNM
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNM: priv->content_image = sw__load_pnm(gp_alloc, scratch_alloc, data, &status); break;
+#endif /* SW_WITH_PNM */
+				case SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_AUTO:
+				default:
+					SU_ASSERT_UNREACHABLE;
+				}
 			}
 
-			if (block->private.content_image == NULL) {
-				if (abspath.len > 0) {	
-					struct sw__image_cache del;
-					if (su_hash_table__struct_sw__image_cache__del(&sw->private.image_cache,
-							(struct sw__image_cache){ .key = abspath },
-							&del)) {
-						su_string_fini(&del.key, sw->in.gp_alloc);
-					}
-				}
+process_content_image:
+			if (!priv->content_image) {
 				goto error;
 			}
 
-			if (block->in.image.format == SW_LAYOUT_BLOCK_IMAGE_IMAGE_FORMAT_FILE_PATH) {
-				if (su_hash_table__struct_sw__image_cache__add(&sw->private.image_cache,
-						sw->in.gp_alloc,
-						(struct sw__image_cache){ .key = abspath }, &cache)) {
-					su_string_init_string(&cache->key, sw->in.gp_alloc, cache->key);
-				}
+			pixman_image_set_filter(priv->content_image, PIXMAN_FILTER_BEST, NULL, 0);
 
-				cache->image = pixman_image_ref(block->private.content_image);
-				cache->mtim_ts = sb.st_mtim;
-				cache->type = block->in.image.type;
-			}
+			su_hash_table__sw__image_cache_t__add(&sw_private->image_cache,
+				gp_alloc, data, &cache);
 
-			pixman_image_set_filter(block->private.content_image, PIXMAN_FILTER_BEST, NULL, 0);
+			cache->key.ptr = gp_alloc->alloc(gp_alloc, data.len, 64);
+			memcpy(cache->key.ptr, data.ptr, data.len);
+			cache->key.len = data.len;
+			cache->image = pixman_image_ref(priv->content_image);
 		}
 		break;
 	}
 	case SW_LAYOUT_BLOCK_TYPE_COMPOSITE: {
-		for (sw_layout_block_t *b = block->in.composite.children.head; b; b = b->next) {
-			sw__layout_block_init(b, sw);
+		sw_layout_block_t *b = block->in._.composite.children.head;
+		SU_ASSERT(block->in._.composite.children.len > 0);
+		for ( ; b; b = b->next) {
+			sw__layout_block_init(b);
 		}
 		break;
 	}
@@ -1907,27 +1876,26 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block, sw_state_t *s
 
 	return SU_TRUE;
 error:
-	sw__layout_block_fini(block, sw);
-	memset(&block->private, 0, sizeof(block->private));
-	block->out.status = SW_LAYOUT_BLOCK_STATUS_ERROR;
+	sw__layout_block_fini(block, sw__context);
+	memset(priv, 0, sizeof(*priv));
 	if (block->in.error) {
-		block->in.error(block, sw);
+		block->in.error(block, sw__context, status);
 	}
-	errno = 0;
 	return SU_FALSE;
 }
 
 static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *, sw_layout_block_dimensions_t *overrides);
 
 static su_bool32_t sw__layout_block_expand(sw_layout_block_t *block, int32_t available_width, int32_t available_height) {
-	if ((block->out.status == SW_LAYOUT_BLOCK_STATUS_ERROR) || (block->in.expand == SW_LAYOUT_BLOCK_EXPAND_NONE)) {
+	sw_layout_block_dimensions_t *dim = &block->out.dim;
+	int32_t x = dim->x;
+	int32_t y = dim->y;
+	int32_t width = dim->width;
+	int32_t height = dim->height;
+	
+	if ((block->out.fini == NULL) || (block->in.expand == SW_LAYOUT_BLOCK_EXPAND_NONE)) {
 		return SU_TRUE;
 	}
-
-	int32_t x = block->out.dim.x;
-	int32_t y = block->out.dim.y;
-	int32_t width = block->out.dim.width;
-	int32_t height = block->out.dim.height;
 
 	if (block->in.expand & SW_LAYOUT_BLOCK_EXPAND_LEFT) {
 		width += x;
@@ -1948,46 +1916,50 @@ static su_bool32_t sw__layout_block_expand(sw_layout_block_t *block, int32_t ava
 	}
 
 	if (block->in.expand & SW_LAYOUT_BLOCK_EXPAND_CONTENT) {
-		return sw__layout_block_prepare(
-			block,
-			&(sw_layout_block_dimensions_t){
-				.border_left = block->out.dim.border_left,
-				.border_bottom = block->out.dim.border_bottom,
-				.border_right = block->out.dim.border_right,
-				.border_top = block->out.dim.border_top,
-				.x = x,
-				.y = y,
-				.content_width = width - block->out.dim.border_left - block->out.dim.border_right,
-				.width = width,
-				.content_height = height - block->out.dim.border_top - block->out.dim.border_bottom,
-				.height = height,
-			}
-		);
+		sw_layout_block_dimensions_t dims;
+		memcpy(dims.borders, dim->borders, sizeof(dim->borders));
+		dims.x = x;
+		dims.y = y;
+		dims.width = width;
+		dims.height = height;
+		dims.content_width = (width - dim->borders[0] - dim->borders[1]);
+		dims.content_height = (height - dim->borders[3] - dim->borders[2]);
+		return sw__layout_block_prepare(block, &dims);
 	}
 
-	block->out.dim.x = x;
-	block->out.dim.y = y;
-	block->out.dim.width = width;
-	block->out.dim.height = height;
+	dim->x = x;
+	dim->y = y;
+	dim->width = width;
+	dim->height = height;
 
 	return SU_TRUE;
 }
 
 static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_block_dimensions_t *overrides) {
-	// TODO: remove recursion
-	if (block->out.status == SW_LAYOUT_BLOCK_STATUS_ERROR) {
+	/* TODO: remove recursion */
+
+	sw__layout_block_t *priv = (sw__layout_block_t *)&block->sw__private;
+	sw_layout_block_dimensions_t *dim;
+
+	if (block->out.fini == NULL) {
 		return SU_TRUE;
 	}
 
 	if (block->in.prepare) {
-		// ? TODO: overrides
-		if (!block->in.prepare(block, block->private.sw)) {
+		/* ? TODO: overrides */
+		if (!block->in.prepare(block, sw__context)) {
 			return SU_FALSE;
 		}
 	}
 
 	if (block->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) {
 		int32_t content_width, content_height;
+		su_bool32_t auto_content_width;
+		su_bool32_t auto_content_height;
+		su_bool32_t vertical = (block->in._.composite.layout == SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL);
+		int32_t l = 0, c = 0, r;
+		sw_layout_block_t *b;
+
 		if (overrides) {
 			content_width = overrides->content_width;
 			content_height = overrides->content_height;
@@ -1996,36 +1968,35 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 			content_height = block->in.content_height;
 		}
 
-		su_bool32_t auto_content_width = (content_width == 0);
-		su_bool32_t auto_content_height = (content_height == 0);
-		su_bool32_t vertical = (block->in.composite.layout == SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL);
-		int32_t l = 0, c = 0, r;
+		auto_content_width = (content_width == 0);
+		auto_content_height = (content_height == 0);
 
-		for (sw_layout_block_t *b = block->in.composite.children.head; b; b = b->next) {
-			if (b->out.status == SW_LAYOUT_BLOCK_STATUS_ERROR) {
+		for ( b = block->in._.composite.children.head; b; b = b->next) {
+			if (b->out.fini == NULL) {
 				continue;
 			}
 			if (!sw__layout_block_prepare(b, NULL)) {
 				return SU_FALSE;
 			}
+			dim = &b->out.dim;
 			if (b->in.anchor != SW_LAYOUT_BLOCK_ANCHOR_NONE) {
 				if (vertical) {
 					if (b->in.anchor == SW_LAYOUT_BLOCK_ANCHOR_CENTER) {
-						c += b->out.dim.height;
+						c += dim->height;
 					} else if (auto_content_height) {
-						content_height += b->out.dim.height;
+						content_height += dim->height;
 					}
-					if (auto_content_width && (b->out.dim.width > content_width)) {
-						content_width = b->out.dim.width;
+					if (auto_content_width && (dim->width > content_width)) {
+						content_width = dim->width;
 					}
 				} else {
 					if (b->in.anchor == SW_LAYOUT_BLOCK_ANCHOR_CENTER) {
-						c += b->out.dim.width;
+						c += dim->width;
 					} else if (auto_content_width) {
-						content_width += b->out.dim.width;
+						content_width += dim->width;
 					}
-					if (auto_content_height && (b->out.dim.height > content_height)) {
-						content_height = b->out.dim.height;
+					if (auto_content_height && (dim->height > content_height)) {
+						content_height = dim->height;
 					}
 				}
 			}
@@ -2053,8 +2024,9 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 			r = content_width;
 		}
 
-		for (sw_layout_block_t *b = block->in.composite.children.head; b; b = b->next) {
-			if (b->out.status == SW_LAYOUT_BLOCK_STATUS_ERROR) {
+		for (b = block->in._.composite.children.head; b; b = b->next) {
+			dim = &b->out.dim;
+			if (b->out.fini == NULL) {
 				continue;
 			}
 			if (b->in.anchor != SW_LAYOUT_BLOCK_ANCHOR_NONE) {
@@ -2062,20 +2034,20 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 					switch (b->in.anchor) {
 					case SW_LAYOUT_BLOCK_ANCHOR_TOP:
 					case SW_LAYOUT_BLOCK_ANCHOR_LEFT:
-						b->out.dim.x = 0;
-						b->out.dim.y = l;
-						l += b->out.dim.height;
+						dim->x = 0;
+						dim->y = l;
+						l += dim->height;
 						break;
 					case SW_LAYOUT_BLOCK_ANCHOR_CENTER:
-						b->out.dim.y = c;
-						c += b->out.dim.height;
-						b->out.dim.x = 0;
+						dim->y = c;
+						c += dim->height;
+						dim->x = 0;
 						break;
 					case SW_LAYOUT_BLOCK_ANCHOR_BOTTOM:
 					case SW_LAYOUT_BLOCK_ANCHOR_RIGHT:
-						b->out.dim.x = 0;
-						r -= b->out.dim.height;
-						b->out.dim.y = r;
+						dim->x = 0;
+						r -= dim->height;
+						dim->y = r;
 						break;
 					case SW_LAYOUT_BLOCK_ANCHOR_NONE:
 						break;
@@ -2086,20 +2058,20 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 					switch (b->in.anchor) {
 					case SW_LAYOUT_BLOCK_ANCHOR_TOP:
 					case SW_LAYOUT_BLOCK_ANCHOR_LEFT:
-						b->out.dim.y = 0;
-						b->out.dim.x = l;
-						l += b->out.dim.width;
+						dim->y = 0;
+						dim->x = l;
+						l += dim->width;
 						break;
 					case SW_LAYOUT_BLOCK_ANCHOR_CENTER:
-						b->out.dim.x = c;
-						c += b->out.dim.width;
-						b->out.dim.y = 0;
+						dim->x = c;
+						c += dim->width;
+						dim->y = 0;
 						break;
 					case SW_LAYOUT_BLOCK_ANCHOR_BOTTOM:
 					case SW_LAYOUT_BLOCK_ANCHOR_RIGHT:
-						b->out.dim.y = 0;
-						r -= b->out.dim.width;
-						b->out.dim.x = r;
+						dim->y = 0;
+						r -= dim->width;
+						dim->x = r;
 						break;
 					case SW_LAYOUT_BLOCK_ANCHOR_NONE:
 						break;
@@ -2113,44 +2085,47 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 			}
 		}
 
-		if (!block->private.content_image || (content_width != pixman_image_get_width(block->private.content_image))
-				|| (content_height != pixman_image_get_height(block->private.content_image))) {
-			if (block->private.content_image) {
-				pixman_image_unref(block->private.content_image);
+		if (!priv->content_image || (content_width != pixman_image_get_width(priv->content_image))
+				|| (content_height != pixman_image_get_height(priv->content_image))) {
+			if (priv->content_image) {
+				pixman_image_unref(priv->content_image);
 			}
-			block->private.content_image = ((content_width > 0) && (content_height > 0))
-				? sw__image_create(block->private.sw->in.gp_alloc, content_width, content_height, NULL) : NULL;
+			priv->content_image = ((content_width > 0) && (content_height > 0))
+				? sw__image_create(sw__context->in.gp_alloc, content_width, content_height, NULL) : NULL;
 		} else {
-			memset(pixman_image_get_data(block->private.content_image),
+			memset(pixman_image_get_data(priv->content_image),
 				0,
 				(size_t)content_width * 4 * (size_t)content_height);
 		}
 	}
 
+	dim = &block->out.dim;
 	if (overrides) {
-		block->out.dim = *overrides;
+		*dim = *overrides;
 	} else {
-		int32_t content_width = (((block->in.content_width <= 0) && block->private.content_image)
-			? pixman_image_get_width(block->private.content_image) : block->in.content_width);
-		int32_t content_height = (((block->in.content_height <= 0) && block->private.content_image)
-			? pixman_image_get_height(block->private.content_image) : block->in.content_height);
+		int32_t content_width = (((block->in.content_width <= 0) && priv->content_image)
+			? pixman_image_get_width(priv->content_image) : block->in.content_width);
+		int32_t content_height = (((block->in.content_height <= 0) && priv->content_image)
+			? pixman_image_get_height(priv->content_image) : block->in.content_height);
 		int32_t min_width = block->in.min_width;
 		int32_t max_width = block->in.max_width;
 		int32_t min_height = block->in.min_height;
 		int32_t max_height = block->in.max_height;
-		int32_t border_left = block->in.border_left.in.width;
-		int32_t border_right = block->in.border_right.in.width;
-		int32_t border_bottom = block->in.border_bottom.in.width;
-		int32_t border_top = block->in.border_top.in.width;
+		int32_t border_left = block->in.borders[0].width;
+		int32_t border_right = block->in.borders[1].width;
+		int32_t border_bottom = block->in.borders[2].width;
+		int32_t border_top = block->in.borders[3].width;
+		int32_t width, height;
 
-		if ((block->private.content_image) && block->in.content_transform && ((block->in.content_transform % 2) == 0)) {
+
+		if ((priv->content_image) && block->in.content_transform && ((block->in.content_transform % 2) == 0)) {
 			int32_t tmp = content_width;
 			content_width = content_height;
 			content_height = tmp;
 		}
 
-		int32_t width = content_width + border_left + border_right;
-		int32_t height = content_height + border_bottom + border_top;
+		width = content_width + border_left + border_right;
+		height = content_height + border_bottom + border_top;
 
 		SU_ASSERT((min_width <= 0) || (max_width <= 0) || (max_width >= min_width));
 		if (width < min_width) {
@@ -2166,115 +2141,134 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 			height = max_height;
 		}
 
-		block->out.dim.x = block->in.x;
-		block->out.dim.y = block->in.y;
-		block->out.dim.width = width;
-		block->out.dim.height = height;
-		block->out.dim.content_width = content_width;
-		block->out.dim.content_height = content_height;
-		block->out.dim.border_left = border_left;
-		block->out.dim.border_right = border_right;
-		block->out.dim.border_bottom = border_bottom;
-		block->out.dim.border_top = border_top;
+		dim->x = block->in.x;
+		dim->y = block->in.y;
+		dim->width = width;
+		dim->height = height;
+		dim->content_width = content_width;
+		dim->content_height = content_height;
+		dim->borders[0] = border_left;
+		dim->borders[1] = border_right;
+		dim->borders[2] = border_bottom;
+		dim->borders[3] = border_top;
 	}
 
 	if (block->in.prepared) {
-		return block->in.prepared(block, block->private.sw);
+		return block->in.prepared(block, sw__context);
 	}
 
 	return SU_TRUE;
 }
 
 static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *dest) {
-	// TODO: remove recursion
-	if (block->out.status == SW_LAYOUT_BLOCK_STATUS_ERROR) {
+	/* TODO: remove recursion */
+
+	sw__layout_block_t *priv = (sw__layout_block_t *)&block->sw__private;
+	sw_layout_block_dimensions_t dim = block->out.dim;
+	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
+	pixman_image_t *color;
+
+	if (block->out.fini == NULL) {
 		return;
 	}
 
 	if (block->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) {
-		for (sw_layout_block_t *b = block->in.composite.children.head; b; b = b->next) {
-			sw__layout_block_render(b, block->private.content_image);
+		sw_layout_block_t *b = block->in._.composite.children.head;
+		for ( ; b; b = b->next) {
+			sw__layout_block_render(b, priv->content_image);
 		}
 	}
 
-	sw_layout_block_dimensions_t dim = block->out.dim;
+	color = sw__color_to_pixman_image(block->in.color, scratch_alloc);
+	pixman_image_composite32(PIXMAN_OP_OVER, color, NULL, dest,
+		0, 0, 0, 0,
+		dim.x + dim.borders[0],
+		dim.y + dim.borders[3],
+		dim.width - dim.borders[1] - dim.borders[0],
+		dim.height - dim.borders[2] - dim.borders[3]);
+	pixman_image_unref(color);
 
-	if (block->private.color) {
-		pixman_image_composite32(PIXMAN_OP_OVER, block->private.color, NULL, dest,
-			0, 0, 0, 0,
-			dim.x + dim.border_left,
-			dim.y + dim.border_top,
-			dim.width - dim.border_right - dim.border_left,
-			dim.height - dim.border_bottom - dim.border_top);
+	if (dim.borders[0] > 0) {
+		pixman_image_t *c = sw__color_to_pixman_image(block->in.borders[0].color, scratch_alloc);
+		pixman_image_composite32(PIXMAN_OP_OVER, c, NULL, dest,
+			0, 0, 0, 0, dim.x, dim.y, dim.borders[0], dim.height);
+		pixman_image_unref(c);
 	}
 
-	if ((dim.border_left > 0) && block->private.border_left_color) {
-		pixman_image_composite32(PIXMAN_OP_OVER, block->private.border_left_color, NULL, dest,
-			0, 0, 0, 0, dim.x, dim.y, dim.border_left, dim.height);
+	if (dim.borders[1] > 0) {
+		pixman_image_t *c = sw__color_to_pixman_image(block->in.borders[1].color, scratch_alloc);
+		pixman_image_composite32(PIXMAN_OP_OVER, c, NULL, dest,
+			0, 0, 0, 0, dim.x + dim.width - dim.borders[1], dim.y,
+			dim.borders[1], dim.height);
+		pixman_image_unref(c);
 	}
 
-	if ((dim.border_right > 0) && block->private.border_right_color) {
-		pixman_image_composite32(PIXMAN_OP_OVER, block->private.border_right_color, NULL, dest,
-			0, 0, 0, 0, dim.x + dim.width - dim.border_right, dim.y,
-			dim.border_right, dim.height);
+	if (dim.borders[2] > 0) {
+		pixman_image_t *c = sw__color_to_pixman_image(block->in.borders[2].color, scratch_alloc);
+		pixman_image_composite32(PIXMAN_OP_OVER, c, NULL, dest,
+			0, 0, 0, 0, dim.x + dim.borders[0],
+			dim.y + dim.height - dim.borders[2],
+			dim.width - dim.borders[0] - dim.borders[1],
+			dim.borders[2]);
+		pixman_image_unref(c);
 	}
 
-	if ((dim.border_bottom > 0) && block->private.border_bottom_color) {
-		pixman_image_composite32(PIXMAN_OP_OVER, block->private.border_bottom_color, NULL, dest,
-			0, 0, 0, 0, dim.x + dim.border_left,
-			dim.y + dim.height - dim.border_bottom,
-			dim.width - dim.border_left - dim.border_right,
-			dim.border_bottom);
+	if (dim.borders[3] > 0) {
+		pixman_image_t *c = sw__color_to_pixman_image(block->in.borders[3].color, scratch_alloc);
+		pixman_image_composite32(PIXMAN_OP_OVER, c, NULL, dest,
+			0, 0, 0, 0, dim.x + dim.borders[0], dim.y,
+			dim.width - dim.borders[0] - dim.borders[1],
+			dim.borders[3]);
+		pixman_image_unref(c);
 	}
 
-	if ((dim.border_top > 0) && block->private.border_top_color) {
-		pixman_image_composite32(PIXMAN_OP_OVER, block->private.border_top_color, NULL, dest,
-			0, 0, 0, 0, dim.x + dim.border_left, dim.y,
-			dim.width - dim.border_left - dim.border_right,
-			dim.border_top);
-	}
-
-	if (block->private.content_image) {
-		struct sw__image_data *image_data = pixman_image_get_destroy_data(block->private.content_image);
+	if (priv->content_image) {
+		int content_image_width = pixman_image_get_width(priv->content_image);
+		int content_image_height = pixman_image_get_height(priv->content_image);
+		pixman_transform_t transform;
+		pixman_region32_t clip_region;
+		int32_t available_width = dim.width - dim.borders[0] - dim.borders[1];
+		int32_t available_height = dim.height - dim.borders[2] - dim.borders[3];
+		int32_t content_x = dim.x + dim.borders[0];
+		int32_t content_y = dim.y + dim.borders[3];
+		sw__image_data_t *image_data = (sw__image_data_t *)pixman_image_get_destroy_data(priv->content_image);
 		SU_NOTUSED(image_data);
 #if SW_WITH_GIF
 		if (image_data->type == SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF) {
 			int64_t now_msec = su_now_ms();
-			struct sw__image_multiframe_gif *data = image_data->multiframe_gif;
-			struct sw__image_gif_frame frame = su_array__struct_sw__image_gif_frame__get(
-				&data->frames, data->frame_idx);
-			if (now_msec >= data->frame_end) {
-				if (++data->frame_idx >= data->frames.len) {
-					data->frame_idx = 0;
+			sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)image_data->data;
+			if (now_msec >= gif->frame_end) {
+				sw__image_gif_frame_t frame = su_array__sw__image_gif_frame_t__get(
+					&gif->frames, gif->frame_idx);
+				if (++gif->frame_idx >= gif->frames.len) {
+					gif->frame_idx = 0;
 				}
-				data->frame_end = (now_msec + frame.delay);
+				gif->frame_end = (now_msec + frame.delay);
+				pixman_image_unref(priv->content_image);
+				priv->content_image = pixman_image_ref(frame.image);
 			}
-			pixman_image_unref(block->private.content_image);
-			block->private.content_image = pixman_image_ref(frame.image);
-			sw__update_t(block->private.sw, data->frame_end);
+			sw__update_t(gif->frame_end);
 		}
-#endif // SW_WITH_GIF
+#endif /* SW_WITH_GIF */
 
-		int content_image_width = pixman_image_get_width(block->private.content_image);
-		int content_image_height = pixman_image_get_height(block->private.content_image);
 		if (block->in.content_transform && ((block->in.content_transform % 2) == 0)) {
 			int tmp = content_image_width;
 			content_image_width = content_image_height;
 			content_image_height = tmp;
 		}
 
-		pixman_transform_t transform;
 		pixman_transform_init_identity(&transform);
 
 		if ((dim.content_width != content_image_width)
 				|| (dim.content_height != content_image_height)) {
 #if SW_WITH_SVG
 			if (image_data->type == SW__IMAGE_DATA_TYPE_SVG) {
-				pixman_image_unref(block->private.content_image);
-				block->private.content_image = sw__render_svg(block->private.sw->in.gp_alloc,
-					image_data->svg, NULL, dim.content_width, dim.content_height);
+				resvg_render_tree *render_tree = (resvg_render_tree *)image_data->data;
+				pixman_image_unref(priv->content_image);
+				priv->content_image = sw__render_svg(sw__context->in.gp_alloc,
+					render_tree, NULL, dim.content_width, dim.content_height);
 			} else
-#endif // SW_WITH_SVG
+#endif /* SW_WITH_SVG */
 				pixman_transform_scale(&transform, NULL,
 					pixman_int_to_fixed(content_image_width) / dim.content_width,
 					pixman_int_to_fixed(content_image_height) / dim.content_height);
@@ -2288,20 +2282,20 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 		case SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_90:
 			pixman_transform_rotate(&transform, NULL, 0, pixman_fixed_1);
 			pixman_transform_translate(&transform, NULL,
-				pixman_int_to_fixed(pixman_image_get_width(block->private.content_image)), 0);
+				pixman_int_to_fixed(pixman_image_get_width(priv->content_image)), 0);
 			break;
 		case SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_180:
 		case SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_180:
 			pixman_transform_rotate(&transform, NULL, pixman_fixed_minus_1, 0);
 			pixman_transform_translate(&transform, NULL,
-				pixman_int_to_fixed(pixman_image_get_width(block->private.content_image)),
-				pixman_int_to_fixed(pixman_image_get_height(block->private.content_image)));
+				pixman_int_to_fixed(pixman_image_get_width(priv->content_image)),
+				pixman_int_to_fixed(pixman_image_get_height(priv->content_image)));
 			break;
 		case SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_270:
 		case SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED_270:
 			pixman_transform_rotate(&transform, NULL, 0, pixman_fixed_minus_1);
 			pixman_transform_translate(&transform, NULL, 0,
-				pixman_int_to_fixed(pixman_image_get_height(block->private.content_image)));
+				pixman_int_to_fixed(pixman_image_get_height(priv->content_image)));
 			break;
 		default:
 			SU_ASSERT_UNREACHABLE;
@@ -2309,21 +2303,16 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 
 		if (block->in.content_transform >= SW_LAYOUT_BLOCK_CONTENT_TRANSFORM_FLIPPED) {
 			pixman_transform_translate(&transform, NULL,
-				-pixman_int_to_fixed(pixman_image_get_width(block->private.content_image)), 0);
+				-pixman_int_to_fixed(pixman_image_get_width(priv->content_image)), 0);
 			pixman_transform_scale(&transform, NULL, pixman_fixed_minus_1, pixman_fixed_1);
 		}
 
-		pixman_image_set_transform(block->private.content_image, &transform);
+		pixman_image_set_transform(priv->content_image, &transform);
 
-		pixman_region32_t clip_region;
 		pixman_region32_init_rect(&clip_region, dim.x, dim.y, (unsigned int)dim.width, (unsigned int)dim.height);
 		pixman_image_set_clip_region32(dest, &clip_region);
 
-		// ? TODO: move to sw__layout_block_prepare
-		int32_t available_width = dim.width - dim.border_left - dim.border_right;
-		int32_t available_height = dim.height - dim.border_bottom - dim.border_top;
-		int32_t content_x = dim.x + dim.border_left;
-		int32_t content_y = dim.y + dim.border_top;
+		/* ? TODO: move to sw__layout_block_prepare */
 		switch (block->in.content_anchor) {
 		case SW_LAYOUT_BLOCK_CONTENT_ANCHOR_LEFT_TOP:
 			break;
@@ -2359,16 +2348,16 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 			SU_ASSERT_UNREACHABLE;
 		}
 
-		pixman_image_composite32(PIXMAN_OP_OVER, block->private.content_image, NULL, dest,
+		pixman_image_composite32(PIXMAN_OP_OVER, priv->content_image, NULL, dest,
 			0, 0, 0, 0, content_x, content_y, dim.content_width, dim.content_height);
 
-		pixman_image_set_transform(block->private.content_image, NULL);
+		pixman_image_set_transform(priv->content_image, NULL);
 		pixman_image_set_clip_region32(dest, NULL);
 	}
 }
 
 #if SW_WITH_WAYLAND
-static void sw__wayland_surface_buffer_fini(struct sw__wayland_surface_buffer *buffer) {
+static void sw__wayland_surface_buffer_fini(sw__wayland_surface_buffer_t *buffer) {
 	if (buffer->image) {
 		pixman_image_unref(buffer->image);
 	}
@@ -2380,87 +2369,100 @@ static void sw__wayland_surface_buffer_fini(struct sw__wayland_surface_buffer *b
 	}
 }
 
-static void sw__wayland_surface_fini(sw_wayland_surface_t *surface, sw_state_t *sw) {
+static void sw__wayland_surface_fini(sw_wayland_surface_t *surface, sw_context_t *sw) {
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw_wayland_seat_t *seat;
+
+	SU_NOTUSED(sw);
+
 	switch (surface->in.type) {
-	case SW_WAYLAND_SURFACE_TYPE_LAYER:
-		if (surface->private.layer.layer_surface) {
-			zwlr_layer_surface_v1_destroy(surface->private.layer.layer_surface);
+	case SW_WAYLAND_SURFACE_TYPE_LAYER: {
+		sw__wayland_surface_layer_t *layer = &priv->_.layer;
+		if (layer->layer_surface) {
+			zwlr_layer_surface_v1_destroy(layer->layer_surface);
 		}
 		break;
-	case SW_WAYLAND_SURFACE_TYPE_POPUP:
-		if (surface->private.popup.xdg_positioner) {
-			xdg_positioner_destroy(surface->private.popup.xdg_positioner);
+	}
+	case SW_WAYLAND_SURFACE_TYPE_POPUP: {
+		sw__wayland_surface_popup_t *popup = &priv->_.popup;
+		if (popup->xdg_positioner) {
+			xdg_positioner_destroy(popup->xdg_positioner);
 		}
-		if (surface->private.popup.xdg_popup) {
-			xdg_popup_destroy(surface->private.popup.xdg_popup);
+		if (popup->xdg_popup) {
+			xdg_popup_destroy(popup->xdg_popup);
 		}
-		if (surface->private.popup.xdg_surface) {
-			xdg_surface_destroy(surface->private.popup.xdg_surface);
+		if (popup->xdg_surface) {
+			xdg_surface_destroy(popup->xdg_surface);
 		}
 		break;
+	}
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
-	sw__wayland_surface_buffer_fini(&surface->private.buffer);
-	if (surface->private.wl_surface) {
-		wl_surface_destroy(surface->private.wl_surface);
+	sw__wayland_surface_buffer_fini(&priv->buffer);
+	if (priv->wl_surface) {
+		wl_surface_destroy(priv->wl_surface);
 	}
 
-	for (sw_wayland_seat_t *seat = sw->out.wayland.seats.head; seat; seat = seat->next) {
+	su_array__sw_wayland_region_t__fini(&priv->input_regions, sw__context->in.gp_alloc);
+
+	for ( seat = sw__context->out.backend.wayland.seats.head; seat; seat = seat->next) {
 		if (seat->out.pointer && (seat->out.pointer->out.focused_surface == surface)) {
 			seat->out.pointer->out.focused_surface = NULL;
 		}
 	}
 }
 
-static void sw__wayland_surface_set_error(sw_wayland_surface_t *surface) {
-	sw_state_t *sw = surface->private.sw;
-	sw__wayland_surface_fini(surface, sw);
-	memset(&surface->private, 0, sizeof(surface->private));
-	surface->out.status = SW_WAYLAND_SURFACE_STATUS_ERROR;
+static void sw__wayland_surface_set_error(sw_wayland_surface_t *surface, sw_status_t status) {
+	sw__wayland_surface_fini(surface, sw__context);
+	memset(&surface->sw__private, 0, sizeof(surface->sw__private));
 	if (surface->in.error) {
-		surface->in.error(surface, sw);
+		surface->in.error(surface, sw__context, status);
 	}
-	errno = 0;
 }
 
 static void sw__wayland_surface_popup_init_stage2(sw_wayland_surface_t *);
 
 static void sw__wayland_surface_render(sw_wayland_surface_t *surface) {
-	if (surface->out.status != SW_WAYLAND_SURFACE_STATUS_ALIVE) {
-		return;
-	}
-
-	if (surface->private.buffer.wl_buffer && surface->private.buffer.busy) {
-		surface->private.dirty = SU_TRUE;
-		return;
-	}
-
-	if (!sw__layout_block_prepare(surface->in.root, NULL)) {
-		return;
-	}
-
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
 	int32_t surface_width, surface_height;
+
+	if (surface->out.fini == NULL) {
+		return;
+	}
+
+	if (priv->buffer.wl_buffer && priv->buffer.busy) {
+		priv->dirty = SU_TRUE;
+		return;
+	}
+
+	if (!sw__layout_block_prepare(surface->in.root, NULL) ||
+			((surface->in.root->out.dim.width <= 0) &&
+				(surface->in.root->out.dim.height <= 0))) {
+		sw__wayland_surface_set_error(surface, SW_STATUS_SURFACE_ERROR_LAYOUT_FAILED);
+		return;
+	}
+
 	switch (surface->in.type) {
 	case SW_WAYLAND_SURFACE_TYPE_LAYER: {
-		// ? TODO: allow surface sizing with SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL (the same can be achieved with 0 anchor)
-		if (surface->private.layer.anchor != SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL) {
+		sw__wayland_surface_layer_t *layer = &priv->_.layer;
+		int32_t exclusive_zone = surface->in._.layer.exclusive_zone;
+		/* ? TODO: allow surface sizing with SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL (the same can be achieved with 0 anchor) */
+		if (layer->anchor != SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL) {
 			if (surface->in.width < 0) {
-				SU_ASSERT(surface->in.root->out.dim.width > 0);
 				surface_width = surface->in.root->out.dim.width;
 			} else {
 				surface_width = surface->in.width;
 			}
 			if (surface->in.height < 0) {
-				SU_ASSERT(surface->in.root->out.dim.height > 0);
 				surface_height = surface->in.root->out.dim.height;
 			} else {
 				surface_height = surface->in.height;
 			}
-			if (!surface->private.buffer.wl_buffer ||
+			if (!priv->buffer.wl_buffer ||
 						((surface_width != 0) && (surface->out.width != surface_width)) ||
 						((surface_height != 0) && (surface->out.height != surface_height))) {
-				zwlr_layer_surface_v1_set_size(surface->private.layer.layer_surface,
+				zwlr_layer_surface_v1_set_size(layer->layer_surface,
 					(uint32_t)(surface_width / surface->out.scale),
 					(uint32_t)(surface_height / surface->out.scale));
 			}
@@ -2468,9 +2470,8 @@ static void sw__wayland_surface_render(sw_wayland_surface_t *surface) {
 			surface_width = surface->out.width;
 			surface_height = surface->out.height;
 		}
-		int32_t exclusive_zone = surface->in.layer.exclusive_zone;
 		if (exclusive_zone < -1) {
-			switch (surface->private.layer.anchor) {
+			switch (layer->anchor) {
 			case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
 			case (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
 					ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
@@ -2496,26 +2497,26 @@ static void sw__wayland_surface_render(sw_wayland_surface_t *surface) {
 				break;
 			}
 		}
-		if (surface->private.layer.exclusive_zone != exclusive_zone) {
-			zwlr_layer_surface_v1_set_exclusive_zone(surface->private.layer.layer_surface,
+		if (layer->exclusive_zone != exclusive_zone) {
+			zwlr_layer_surface_v1_set_exclusive_zone(layer->layer_surface,
 				exclusive_zone / surface->out.scale);
-			surface->private.layer.exclusive_zone = exclusive_zone;
+			layer->exclusive_zone = exclusive_zone;
 		}
 		break;
 	}
 	case SW_WAYLAND_SURFACE_TYPE_POPUP: {
+		sw__wayland_surface_popup_t *popup = &priv->_.popup;
 		surface_width = (surface->in.width <= 0) ? surface->in.root->out.dim.width : surface->in.width;
 		surface_height = (surface->in.height <= 0) ? surface->in.root->out.dim.height : surface->in.height;
-		SU_ASSERT((surface_width > 0) && (surface_height > 0));
-		if (!surface->private.buffer.wl_buffer ||
+		if (!priv->buffer.wl_buffer ||
 				(surface->out.width != surface_width) || (surface->out.height != surface_height)) {
-			xdg_positioner_set_size(surface->private.popup.xdg_positioner,
+			xdg_positioner_set_size(popup->xdg_positioner,
 				surface_width / surface->out.scale, surface_height / surface->out.scale);
-			if (!surface->private.popup.xdg_popup) {
+			if (!popup->xdg_popup) {
 				sw__wayland_surface_popup_init_stage2(surface);
 				return;
 			}
-			xdg_popup_reposition(surface->private.popup.xdg_popup, surface->private.popup.xdg_positioner, 0);
+			xdg_popup_reposition(popup->xdg_popup, popup->xdg_positioner, 0);
 		}
 		break;
 	}
@@ -2529,47 +2530,54 @@ static void sw__wayland_surface_render(sw_wayland_surface_t *surface) {
 		return;
 	}
 
-	if (surface->private.buffer.wl_buffer) {
-		memset(surface->private.buffer.pixels, 0, surface->private.buffer.size);
+	if (priv->buffer.wl_buffer) {
+		memset(priv->buffer.pixels, 0, priv->buffer.size);
 
-		sw__layout_block_render(surface->in.root, surface->private.buffer.image);
+		sw__layout_block_render(surface->in.root, priv->buffer.image);
 
-		wl_surface_set_buffer_scale(surface->private.wl_surface, surface->out.scale);
-		wl_surface_attach(surface->private.wl_surface, surface->private.buffer.wl_buffer, 0, 0);
-		wl_surface_damage_buffer(surface->private.wl_surface, 0, 0, surface->out.width, surface->out.height);
+		wl_surface_set_buffer_scale(priv->wl_surface, surface->out.scale);
+		wl_surface_attach(priv->wl_surface, priv->buffer.wl_buffer, 0, 0);
+		wl_surface_damage_buffer(priv->wl_surface, 0, 0, surface->out.width, surface->out.height);
 
-		surface->private.buffer.busy = SU_TRUE;
-		surface->private.dirty = SU_FALSE;
+		priv->buffer.busy = SU_TRUE;
+		priv->dirty = SU_FALSE;
 	}
 
-	wl_surface_commit(surface->private.wl_surface);
+	wl_surface_commit(priv->wl_surface);
 }
 
 static void sw__wayland_surface_buffer_handle_release(void *data, struct wl_buffer *wl_buffer) {
+	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)data;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+
 	SU_NOTUSED(wl_buffer);
-	sw_wayland_surface_t *surface = data;
-	surface->private.buffer.busy = SU_FALSE;
-	if (surface->private.dirty) {
+
+	priv->buffer.busy = SU_FALSE;
+	if (priv->dirty) {
 		sw__wayland_surface_render(surface);
 	}
 }
 
-static su_bool32_t sw__wayland_surface_buffer_init(struct sw__wayland_surface_buffer *buffer,
-		sw_wayland_surface_t *surface, int32_t width, int32_t height) {
-	*buffer = (struct sw__wayland_surface_buffer){ 0 };
-
-	struct timespec ts = { 0 };
+static su_bool32_t sw__wayland_surface_buffer_init(sw__wayland_surface_buffer_t *buffer,
+		sw_wayland_surface_t *surface, int32_t width, int32_t height, sw_status_t *status) {
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	struct timespec ts;
 	pid_t pid = getpid();
 	char shm_name[NAME_MAX];
+	int shm_fd;
+	int32_t stride = width * 4;
+	struct wl_shm_pool *wl_shm_pool;
 
-// TODO: limit retry count
+	static struct wl_buffer_listener surface_buffer_listener = { sw__wayland_surface_buffer_handle_release };
+
+	memset(buffer, 0, sizeof(*buffer));
+
+/* TODO: limit retry count */
 generate_shm_name:
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	su_snprintf(shm_name, sizeof(shm_name),"/sw-%d-%ld-%ld",
-			pid, ts.tv_sec, ts.tv_nsec);
+	clock_gettime(CLOCK_MONOTONIC, &ts); /* ? TODO: assert success */
+	su_snprintf(shm_name, sizeof(shm_name),"/sw-%d-%ld-%ld", pid, ts.tv_sec, ts.tv_nsec);
 
-	int shm_fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, 0600);
-	if (shm_fd == -1) {
+	if ((shm_fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, 0600)) == -1) {
 		if (errno == EEXIST) {
 			goto generate_shm_name;
 		} else {
@@ -2578,7 +2586,6 @@ generate_shm_name:
 	}
 	shm_unlink(shm_name);
 
-	int32_t stride = width * 4;
 	buffer->size = (uint32_t)stride * (uint32_t)height;
 	while (ftruncate(shm_fd, buffer->size) == -1) {
 		if (errno == EINTR) {
@@ -2588,7 +2595,8 @@ generate_shm_name:
 		}
 	}
 
-	buffer->pixels = mmap(NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+	buffer->pixels = (SU_TYPEOF(buffer->pixels))mmap(
+		NULL, buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 	if (buffer->pixels == MAP_FAILED) {
 		goto error;
 	}
@@ -2596,34 +2604,32 @@ generate_shm_name:
 	buffer->image = pixman_image_create_bits_no_clear(PIXMAN_a8r8g8b8, width, height,
 			buffer->pixels, stride);
 
-	struct wl_shm_pool *wl_shm_pool =
-		wl_shm_create_pool(surface->private.sw->private.wayland.shm, shm_fd, (int32_t)buffer->size);
+	wl_shm_pool = wl_shm_create_pool(sw_private->wayland.shm, shm_fd, (int32_t)buffer->size);
 	buffer->wl_buffer = wl_shm_pool_create_buffer(wl_shm_pool, 0, width,
 			height, stride, WL_SHM_FORMAT_ARGB8888);
-	static struct wl_buffer_listener surface_buffer_listener = {
-		.release = sw__wayland_surface_buffer_handle_release,
-	};
 	wl_buffer_add_listener(buffer->wl_buffer, &surface_buffer_listener, surface);
 	wl_shm_pool_destroy(wl_shm_pool);
 	close(shm_fd);
 
 	buffer->busy = SU_FALSE;
 
+	*status = SW_STATUS_SUCCESS;
 	return SU_TRUE;
 error:
 	sw__wayland_surface_buffer_fini(buffer);
+	*status = SW_STATUS_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER;
 	return SU_FALSE;
 }
 
 static void sw__wayland_surface_destroy(sw_wayland_surface_t *surface) {
-	// TODO: remove recursion
-	for (sw_wayland_surface_t *popup = surface->in.popups.head; popup; ) {
+	/* TODO: remove recursion */
+	sw_wayland_surface_t *popup = surface->in.popups.head;
+	for ( ; popup; ) {
 		sw_wayland_surface_t *next = popup->next;
 		sw__wayland_surface_destroy(popup);
 		popup = next;
 	}
-	surface->out.status = SW_WAYLAND_SURFACE_STATUS_CLOSED;
-	surface->in.destroy(surface, surface->private.sw);
+	surface->in.destroy(surface, sw__context);
 }
 
 static void sw__wayland_surface_handle_enter(void *data, struct wl_surface *wl_surface, struct wl_output *output) {
@@ -2641,182 +2647,200 @@ static void sw__wayland_surface_handle_preferred_buffer_transform(void *data,
 
 static void sw__wayland_surface_layer_handle_preferred_buffer_scale(void *data,
 		struct wl_surface *wl_surface, int32_t factor) {
+	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)data;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw__wayland_surface_layer_t *layer = &priv->_.layer;
+
 	SU_NOTUSED(wl_surface);
-	sw_wayland_surface_t *layer = data;
-	if (layer->out.scale != factor) {
-		layer->out.scale = factor;
-		layer->private.dirty = SU_TRUE;
-		if (layer->private.layer.anchor != SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL) {
-			zwlr_layer_surface_v1_set_size(layer->private.layer.layer_surface,
-				(layer->in.width == 0) ? 0 : (uint32_t)(layer->out.width / factor),
-				(layer->in.height == 0) ? 0 : (uint32_t)(layer->out.height / factor));
+
+	if (surface->out.scale != factor) {
+		surface->out.scale = factor;
+		priv->dirty = SU_TRUE;
+		if (layer->anchor != SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL) {
+			zwlr_layer_surface_v1_set_size(layer->layer_surface,
+				(surface->in.width == 0) ? 0 : (uint32_t)(surface->out.width / factor),
+				(surface->in.height == 0) ? 0 : (uint32_t)(surface->out.height / factor));
 		}
-		if (layer->private.layer.exclusive_zone > 0) {
-			zwlr_layer_surface_v1_set_exclusive_zone(layer->private.layer.layer_surface,
-				layer->private.layer.exclusive_zone / factor);
+		if (layer->exclusive_zone > 0) {
+			zwlr_layer_surface_v1_set_exclusive_zone(layer->layer_surface,
+				layer->exclusive_zone / factor);
 		}
-		zwlr_layer_surface_v1_set_margin(layer->private.layer.layer_surface,
-			layer->private.layer.margins[0] / factor,
-			layer->private.layer.margins[1] / factor,
-			layer->private.layer.margins[2] / factor,
-			layer->private.layer.margins[3] / factor);
-		wl_surface_commit(layer->private.wl_surface);
+		zwlr_layer_surface_v1_set_margin(layer->layer_surface,
+			layer->margins[0] / factor,
+			layer->margins[1] / factor,
+			layer->margins[2] / factor,
+			layer->margins[3] / factor);
+		wl_surface_commit(priv->wl_surface);
 	}
 }
 
 static void sw__wayland_surface_layer_handle_layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *layer_surface,
 		uint32_t serial, uint32_t width_, uint32_t height_) {
-	SU_NOTUSED(layer_surface);
-	sw_wayland_surface_t *layer = data;
-
-	zwlr_layer_surface_v1_ack_configure(layer->private.layer.layer_surface, serial);
-
+	sw_wayland_surface_t *layer = (sw_wayland_surface_t *)data;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&layer->sw__private;
 	int32_t width = (int32_t)width_ * layer->out.scale;
 	int32_t height = (int32_t)height_ * layer->out.scale;
+	sw_status_t status = SW_STATUS_SUCCESS;
+
+	SU_NOTUSED(layer_surface);
+
+	zwlr_layer_surface_v1_ack_configure(priv->_.layer.layer_surface, serial);
+
 	if (((layer->out.height != height) || (layer->out.width != width))
 			&& (width != 0) && (height != 0)) {
-		sw__wayland_surface_buffer_fini(&layer->private.buffer);
-		if (sw__wayland_surface_buffer_init(&layer->private.buffer, layer, width, height)) {
+		sw__wayland_surface_buffer_fini(&priv->buffer);
+		if (sw__wayland_surface_buffer_init(&priv->buffer, layer, width, height, &status)) {
 			layer->out.width = width;
 			layer->out.height = height;
-			layer->private.dirty = SU_TRUE;
+			priv->dirty = SU_TRUE;
 		} else {
-			sw__wayland_surface_set_error(layer);
+			sw__wayland_surface_set_error(layer, status);
 			return;
 		}
 	}
 
-	if (layer->private.dirty) {
+	if (priv->dirty) {
 		sw__wayland_surface_render(layer);
 	}
 }
 
 static void sw__wayland_surface_layer_handle_layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *layer_surface) {
+	sw_wayland_surface_t *layer = (sw_wayland_surface_t *)data;
 	SU_NOTUSED(layer_surface);
-	sw_wayland_surface_t *layer = data;
 	sw__wayland_surface_destroy(layer);
 }
 
 static void sw__wayland_surface_popup_handle_preferred_buffer_scale(void *data,
 		struct wl_surface *wl_surface, int32_t factor) {
+	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)data;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw__wayland_surface_popup_t *popup = &priv->_.popup;
+
 	SU_NOTUSED(wl_surface);
-	sw_wayland_surface_t *popup = data;
-	if (popup->out.scale != factor) {
-		popup->out.scale = factor;
-		popup->private.dirty = SU_TRUE;
-		xdg_positioner_set_size(popup->private.popup.xdg_positioner,
-			popup->out.width / factor, popup->out.height / factor);
-		xdg_positioner_set_anchor_rect(popup->private.popup.xdg_positioner,
-			popup->private.popup.x / factor,
-			popup->private.popup.y / factor,
-			1, 1);
-		xdg_popup_reposition(popup->private.popup.xdg_popup, popup->private.popup.xdg_positioner, 0);
-		wl_surface_commit(popup->private.wl_surface);
+
+	if (surface->out.scale != factor) {
+		surface->out.scale = factor;
+		priv->dirty = SU_TRUE;
+		xdg_positioner_set_size( popup->xdg_positioner,
+			surface->out.width / factor, surface->out.height / factor);
+		xdg_positioner_set_anchor_rect(popup->xdg_positioner,
+			popup->x / factor, popup->y / factor, 1, 1);
+		xdg_popup_reposition(popup->xdg_popup, popup->xdg_positioner, 0);
+		wl_surface_commit(priv->wl_surface);
 	}
 }
 
 static void sw__wayland_surface_popup_xdg_surface_handle_configure(void *data, struct xdg_surface *xdg_surface,
 		uint32_t serial) {
+	sw_wayland_surface_t *popup = (sw_wayland_surface_t *)data;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&popup->sw__private;
+
 	SU_NOTUSED(xdg_surface);
-	sw_wayland_surface_t *popup = data;
 
-	xdg_surface_ack_configure(popup->private.popup.xdg_surface, serial);
+	xdg_surface_ack_configure(priv->_.popup.xdg_surface, serial);
 
-	if (popup->private.dirty) {
+	if (priv->dirty) {
 		sw__wayland_surface_render(popup);
 	}
 }
 
-static void sw__wayland_surface_layer_init(sw_wayland_surface_t *surface, sw_wayland_surface_layer_layer_t layer,
-		sw_state_t *sw) {
-	surface->private.sw = sw;
+static void sw__wayland_surface_layer_init(sw_wayland_surface_t *surface, sw_wayland_surface_layer_layer_t l) {
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw__wayland_output_t *output_private = (sw__wayland_output_t *)&surface->in._.layer.output->sw__private;
+	sw__wayland_surface_layer_t *layer = &priv->_.layer;
+
+	static struct wl_surface_listener wl_surface_listener = {
+		sw__wayland_surface_handle_enter,
+		sw__wayland_surface_handle_leave,
+		sw__wayland_surface_layer_handle_preferred_buffer_scale,
+		sw__wayland_surface_handle_preferred_buffer_transform
+	};
+	static struct zwlr_layer_surface_v1_listener layer_surface_listener = {
+		sw__wayland_surface_layer_handle_layer_surface_configure,
+		sw__wayland_surface_layer_handle_layer_surface_closed
+	};
+
 	surface->out.fini = sw__wayland_surface_fini;
-	surface->out.scale = surface->in.layer.output->out.scale;
-	surface->out.status = SW_WAYLAND_SURFACE_STATUS_ALIVE;
+	surface->out.scale = surface->in._.layer.output->out.scale;
 	surface->out.width = 0;
 	surface->out.height = 0;
-	surface->private.output = surface->in.layer.output;
-	surface->private.layer.exclusive_zone = INT32_MIN;
-	surface->private.layer.anchor = UINT32_MAX;
-	surface->private.layer.layer = layer;
-	surface->private.layer.margin_top = INT32_MIN;
-	surface->private.layer.margin_right = INT32_MIN;
-	surface->private.layer.margin_bottom = INT32_MIN;
-	surface->private.layer.margin_left = INT32_MIN;
-	surface->private.wl_surface = wl_compositor_create_surface(surface->private.sw->private.wayland.compositor);
-	static struct wl_surface_listener wl_surface_listener = {
-		.enter = sw__wayland_surface_handle_enter,
-		.leave = sw__wayland_surface_handle_leave,
-		.preferred_buffer_transform = sw__wayland_surface_handle_preferred_buffer_transform,
-		.preferred_buffer_scale = sw__wayland_surface_layer_handle_preferred_buffer_scale,
-	};
-	wl_surface_add_listener(surface->private.wl_surface, &wl_surface_listener, surface);
-	surface->private.layer.layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-		surface->private.sw->private.wayland.layer_shell, surface->private.wl_surface,
-		surface->in.layer.output->private.wl_output, layer, "sw");
-	static struct zwlr_layer_surface_v1_listener layer_surface_listener = {
-		.configure = sw__wayland_surface_layer_handle_layer_surface_configure,
-		.closed = sw__wayland_surface_layer_handle_layer_surface_closed,
-	};
-	zwlr_layer_surface_v1_add_listener(
-		surface->private.layer.layer_surface, &layer_surface_listener, surface);
+	priv->output = surface->in._.layer.output;
+	layer->exclusive_zone = INT32_MIN;
+	layer->anchor = UINT32_MAX;
+	layer->layer = l;
+	layer->margins[0] = INT32_MIN;
+	layer->margins[1] = INT32_MIN;
+	layer->margins[2] = INT32_MIN;
+	layer->margins[3] = INT32_MIN;
+
+	priv->wl_surface = wl_compositor_create_surface(sw_private->wayland.compositor);
+	wl_surface_add_listener(priv->wl_surface, &wl_surface_listener, surface);
+	layer->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
+		sw_private->wayland.layer_shell, priv->wl_surface,
+		output_private->wl_output, l, "sw");
+	zwlr_layer_surface_v1_add_listener( layer->layer_surface, &layer_surface_listener, surface);
 }
 
-static void sw__wayland_surface_popup_init_stage1(sw_wayland_surface_t *popup,
-		sw_wayland_surface_t *parent, sw_state_t *sw) {
-	popup->private.sw = sw;
-	popup->private.popup.parent = parent;
-	popup->private.output = parent->private.output;
-	popup->out.fini = sw__wayland_surface_fini;
-	popup->out.scale = parent->private.output->out.scale;
-	popup->out.status = SW_WAYLAND_SURFACE_STATUS_ALIVE;
-	popup->out.width = 0;
-	popup->out.height = 0;
-	popup->private.popup.x = INT32_MIN;
-	popup->private.popup.y = INT32_MIN;
-	popup->private.popup.gravity = (sw_wayland_surface_popup_gravity_t)UINT32_MAX;
-	popup->private.popup.constraint_adjustment = UINT32_MAX;
-
-	popup->private.wl_surface = wl_compositor_create_surface(popup->private.sw->private.wayland.compositor);
+static void sw__wayland_surface_popup_init_stage1(sw_wayland_surface_t *surface, sw_wayland_surface_t *parent) {
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw__wayland_surface_popup_t *popup = &priv->_.popup;
+	sw__wayland_surface_t *parent_private = (sw__wayland_surface_t *)&parent->sw__private;
 	static struct wl_surface_listener wl_surface_listener = {
-		.enter = sw__wayland_surface_handle_enter,
-		.leave = sw__wayland_surface_handle_leave,
-		.preferred_buffer_transform = sw__wayland_surface_handle_preferred_buffer_transform,
-		.preferred_buffer_scale = sw__wayland_surface_popup_handle_preferred_buffer_scale,
+		sw__wayland_surface_handle_enter,
+		sw__wayland_surface_handle_leave,
+		sw__wayland_surface_popup_handle_preferred_buffer_scale,
+		sw__wayland_surface_handle_preferred_buffer_transform,
 	};
-	wl_surface_add_listener(popup->private.wl_surface, &wl_surface_listener, popup);
+	static struct xdg_surface_listener xdg_surface_listener = { sw__wayland_surface_popup_xdg_surface_handle_configure };
 
-	popup->private.popup.xdg_surface = xdg_wm_base_get_xdg_surface(
-		popup->private.sw->private.wayland.wm_base, popup->private.wl_surface);
-	static struct xdg_surface_listener xdg_surface_listener = {
-		.configure = sw__wayland_surface_popup_xdg_surface_handle_configure,
-	};
-	xdg_surface_add_listener(popup->private.popup.xdg_surface, &xdg_surface_listener, popup);
+	popup->parent = parent;
+	priv->output = parent_private->output;
+	surface->out.fini = sw__wayland_surface_fini;
+	surface->out.scale = parent_private->output->out.scale;
+	surface->out.width = 0;
+	surface->out.height = 0;
+	popup->x = INT32_MIN;
+	popup->y = INT32_MIN;
+	popup->gravity = (sw_wayland_surface_popup_gravity_t)UINT32_MAX;
+	popup->constraint_adjustment = UINT32_MAX;
 
-	popup->private.popup.xdg_positioner = xdg_wm_base_create_positioner(popup->private.sw->private.wayland.wm_base);
+	priv->wl_surface = wl_compositor_create_surface(sw_private->wayland.compositor);
+	wl_surface_add_listener(priv->wl_surface, &wl_surface_listener, surface);
+
+	popup->xdg_surface = xdg_wm_base_get_xdg_surface(
+		sw_private->wayland.wm_base, priv->wl_surface);
+	xdg_surface_add_listener(popup->xdg_surface, &xdg_surface_listener, surface);
+
+	popup->xdg_positioner = xdg_wm_base_create_positioner(sw_private->wayland.wm_base);
 }
 
 static void sw__wayland_surface_popup_handle_configure(void *data, struct xdg_popup *xdg_popup,
 		int32_t x, int32_t y, int32_t width, int32_t height) {
+	sw_wayland_surface_t *popup = (sw_wayland_surface_t *)data;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&popup->sw__private;
+	sw_status_t status = SW_STATUS_SUCCESS;
+
 	SU_NOTUSED(xdg_popup); SU_NOTUSED(x); SU_NOTUSED(y);
-	sw_wayland_surface_t *popup = data;
+
 	width *= popup->out.scale;
 	height *= popup->out.scale;
 	if ((popup->out.width != width) || (popup->out.height != height)) {
-		sw__wayland_surface_buffer_fini(&popup->private.buffer);
-		if (sw__wayland_surface_buffer_init(&popup->private.buffer, popup, width, height)) {
+		sw__wayland_surface_buffer_fini(&priv->buffer);
+		if (sw__wayland_surface_buffer_init(&priv->buffer, popup, width, height, &status)) {
 			popup->out.width = width;
 			popup->out.height = height;
-			popup->private.dirty = SU_TRUE;
+			priv->dirty = SU_TRUE;
 		} else {
-			sw__wayland_surface_set_error(popup);
+			sw__wayland_surface_set_error(popup, status);
 		}
 	}
 }
 
 static void sw__wayland_surface_popup_handle_done(void *data, struct xdg_popup *xdg_popup) {
+	sw_wayland_surface_t *popup = (sw_wayland_surface_t *)data;
 	SU_NOTUSED(xdg_popup);
-	sw_wayland_surface_t *popup = data;
 	sw__wayland_surface_destroy(popup);
 }
 
@@ -2825,186 +2849,223 @@ static void sw__wayland_surface_popup_handle_repositioned(void *data, struct xdg
 	SU_NOTUSED(data); SU_NOTUSED(xdg_popup); SU_NOTUSED(token);
 }
 
-static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_wayland_surface_t *parent, sw_state_t *sw) {
-	// TODO: remove recursion
+static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_wayland_surface_t *parent) {
+	/* TODO: remove recursion */
+	
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw_wayland_cursor_shape_t cursor_shape = (surface->in.cursor_shape == SW_WAYLAND_CURSOR_SHAPE_DEFAULT)
+		? SW_WAYLAND_CURSOR_SHAPE_DEFAULT_ : surface->in.cursor_shape;
 
-	surface->private.sw = sw;
+	SU_ASSERT(surface->in.destroy != NULL);
+	SU_ASSERT(surface->in.root != NULL);
 
-	if (!sw__layout_block_init(surface->in.root, sw)) {
-		sw__wayland_surface_set_error(surface);
+	if (!sw__layout_block_init(surface->in.root)) {
+		sw__wayland_surface_set_error(surface, SW_STATUS_SURFACE_ERROR_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK);
 		return;
 	}
 
 	switch (surface->in.type) {
-	case SW_WAYLAND_SURFACE_TYPE_LAYER:
-		if (surface->private.output != surface->in.layer.output) {
-			sw__wayland_surface_fini(surface, sw);
-			memset(&surface->private, 0, sizeof(surface->private));
-		}
-
+	case SW_WAYLAND_SURFACE_TYPE_LAYER: {
+		sw__wayland_surface_layer_t *layer = &priv->_.layer;
 		static uint32_t horiz = (ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
 		static uint32_t vert = (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
+		sw_wayland_surface_t *popup;
+
 		SU_NOTUSED(horiz); SU_NOTUSED(vert);
-		SU_ASSERT((surface->in.layer.anchor == SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL) ||
-			(((surface->in.width != 0) || ((surface->in.layer.anchor & horiz) == horiz)) &&
-			((surface->in.height != 0) || ((surface->in.layer.anchor & vert) == vert)))
+		SU_ASSERT(surface->in._.layer.output != NULL);
+		SU_ASSERT((surface->in._.layer.anchor == SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL) ||
+			(((surface->in.width != 0) || ((surface->in._.layer.anchor & horiz) == horiz)) &&
+			((surface->in.height != 0) || ((surface->in._.layer.anchor & vert) == vert)))
 		);
 
-		if (!surface->private.wl_surface) {
-			sw__wayland_surface_layer_init(surface, surface->in.layer.layer, sw);
+		if (priv->output != surface->in._.layer.output) {
+			sw__wayland_surface_fini(surface, sw__context);
+			memset(priv, 0, sizeof(*priv));
 		}
 
-		// ? TODO: exclusive_edge
-
-		if (surface->private.layer.anchor != surface->in.layer.anchor) {
-			zwlr_layer_surface_v1_set_anchor(surface->private.layer.layer_surface, surface->in.layer.anchor);
-			surface->private.layer.anchor = surface->in.layer.anchor;
+		if (!priv->wl_surface) {
+			sw__wayland_surface_layer_init(surface, surface->in._.layer.layer);
 		}
 
-		if (surface->private.layer.layer != surface->in.layer.layer) {
-			zwlr_layer_surface_v1_set_layer(surface->private.layer.layer_surface, surface->in.layer.layer);
-			surface->private.layer.layer = surface->in.layer.layer;
+		/* ? TODO: exclusive_edge */
+
+		if (layer->anchor != surface->in._.layer.anchor) {
+			zwlr_layer_surface_v1_set_anchor(layer->layer_surface, surface->in._.layer.anchor);
+			layer->anchor = surface->in._.layer.anchor;
 		}
 
-		if (memcmp(surface->private.layer.margins, surface->in.layer.margins,
-				sizeof(surface->in.layer.margins)) != 0) {
-			zwlr_layer_surface_v1_set_margin(surface->private.layer.layer_surface,
-				surface->in.layer.margins[0] / surface->out.scale,
-				surface->in.layer.margins[1] / surface->out.scale,
-				surface->in.layer.margins[2] / surface->out.scale,
-				surface->in.layer.margins[3] / surface->out.scale);
-			memcpy(surface->private.layer.margins, surface->in.layer.margins,
-				sizeof(surface->in.layer.margins));
+		if (layer->layer != surface->in._.layer.layer) {
+			zwlr_layer_surface_v1_set_layer(layer->layer_surface, surface->in._.layer.layer);
+			layer->layer = surface->in._.layer.layer;
 		}
 
-		for (sw_wayland_surface_t *popup = surface->in.popups.head; popup; popup = popup->next) {
+		if (memcmp(layer->margins, surface->in._.layer.margins,
+				sizeof(surface->in._.layer.margins)) != 0) {
+			zwlr_layer_surface_v1_set_margin(layer->layer_surface,
+				surface->in._.layer.margins[0] / surface->out.scale,
+				surface->in._.layer.margins[1] / surface->out.scale,
+				surface->in._.layer.margins[2] / surface->out.scale,
+				surface->in._.layer.margins[3] / surface->out.scale);
+			memcpy(layer->margins, surface->in._.layer.margins,
+				sizeof(surface->in._.layer.margins));
+		}
+
+		for ( popup = surface->in.popups.head; popup; popup = popup->next) {
 			SU_ASSERT(popup->in.type == SW_WAYLAND_SURFACE_TYPE_POPUP);
-			sw__wayland_surface_prepare(popup, surface, sw);
+			sw__wayland_surface_prepare(popup, surface);
 		}
 		break;
-	case SW_WAYLAND_SURFACE_TYPE_POPUP:
-		if (!surface->private.wl_surface) {
-			sw__wayland_surface_popup_init_stage1(surface, parent, sw);
-		}
-
+	}
+	case SW_WAYLAND_SURFACE_TYPE_POPUP: {
+		sw__wayland_surface_popup_t *popup = &priv->_.popup;
 		su_bool32_t reposition = SU_FALSE;
-		if ((surface->private.popup.x != surface->in.popup.x) ||
-				(surface->private.popup.y != surface->in.popup.y)) {
-			xdg_positioner_set_anchor_rect(surface->private.popup.xdg_positioner,
-				surface->in.popup.x / surface->out.scale, surface->in.popup.y / surface->out.scale, 1, 1);
-			surface->private.popup.x = surface->in.popup.x;
-			surface->private.popup.y = surface->in.popup.y;
+
+		if (!priv->wl_surface) {
+			sw__wayland_surface_popup_init_stage1(surface, parent);
+		}
+
+		if ((popup->x != surface->in._.popup.x) ||
+				(popup->y != surface->in._.popup.y)) {
+			xdg_positioner_set_anchor_rect(popup->xdg_positioner,
+				surface->in._.popup.x / surface->out.scale, surface->in._.popup.y / surface->out.scale, 1, 1);
+			popup->x = surface->in._.popup.x;
+			popup->y = surface->in._.popup.y;
 			reposition = SU_TRUE;
 		}
 
-		if (surface->private.popup.gravity != surface->in.popup.gravity) {
-			xdg_positioner_set_gravity(surface->private.popup.xdg_positioner, surface->in.popup.gravity);
-			surface->private.popup.gravity = surface->in.popup.gravity;
+		if (popup->gravity != surface->in._.popup.gravity) {
+			xdg_positioner_set_gravity(popup->xdg_positioner, surface->in._.popup.gravity);
+			popup->gravity = surface->in._.popup.gravity;
 			reposition = SU_TRUE;
 		}
 
-		if (surface->private.popup.constraint_adjustment != surface->in.popup.constraint_adjustment) {
+		if (popup->constraint_adjustment != surface->in._.popup.constraint_adjustment) {
 			xdg_positioner_set_constraint_adjustment(
-				surface->private.popup.xdg_positioner, surface->in.popup.constraint_adjustment);
-			surface->private.popup.constraint_adjustment = surface->in.popup.constraint_adjustment;
+				popup->xdg_positioner, surface->in._.popup.constraint_adjustment);
+			popup->constraint_adjustment = surface->in._.popup.constraint_adjustment;
 			reposition = SU_TRUE;
 		}
 
-		if (surface->private.popup.xdg_popup) {
+		if (popup->xdg_popup) {
+			sw_wayland_surface_t *p;
 			if (reposition) {
-				xdg_popup_reposition(surface->private.popup.xdg_popup, surface->private.popup.xdg_positioner, 0);
+				xdg_popup_reposition(popup->xdg_popup, popup->xdg_positioner, 0);
 			}
-			for (sw_wayland_surface_t *popup = surface->in.popups.head; popup; popup = popup->next) {
-				SU_ASSERT(popup->in.type == SW_WAYLAND_SURFACE_TYPE_POPUP);
-				sw__wayland_surface_prepare(popup, surface, sw);
+			for ( p = surface->in.popups.head; p; p = p->next) {
+				SU_ASSERT(p->in.type == SW_WAYLAND_SURFACE_TYPE_POPUP);
+				sw__wayland_surface_prepare(p, surface);
 			}
 		}
 		break;
+	}
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
 
-	sw_wayland_cursor_shape_t cursor_shape = (surface->in.cursor_shape == SW_WAYLAND_CURSOR_SHAPE_DEFAULT)
-		? SW_WAYLAND_CURSOR_SHAPE_DEFAULT_ : surface->in.cursor_shape;
-	if (surface->private.cursor_shape != cursor_shape) {
-		for (sw_wayland_seat_t *seat = sw->out.wayland.seats.head; seat; seat = seat->next) {
-			if (seat->out.pointer && seat->out.pointer->private.cursor_shape_device
+	if (priv->cursor_shape != cursor_shape) {
+		sw_wayland_seat_t *seat = sw__context->out.backend.wayland.seats.head;
+		for ( ; seat; seat = seat->next) {
+			sw__wayland_pointer_t *pointer_private = (sw__wayland_pointer_t *)&seat->out.pointer->sw__private;
+			if (seat->out.pointer && pointer_private->cursor_shape_device
 					&& (seat->out.pointer->out.focused_surface == surface)) {
-				wp_cursor_shape_device_v1_set_shape(seat->out.pointer->private.cursor_shape_device,
-					seat->out.pointer->private.enter_serial, cursor_shape);
+				wp_cursor_shape_device_v1_set_shape(pointer_private->cursor_shape_device,
+					pointer_private->enter_serial, cursor_shape);
 			}
 		}
-		surface->private.cursor_shape = cursor_shape;
+		priv->cursor_shape = cursor_shape;
 	}
 
-	// TODO: set only if changed
-	if (surface->in.input_regions.len > 0) {
-		struct wl_region *input_region = wl_compositor_create_region(sw->private.wayland.compositor);
-		for (sw_wayland_region_t *r = surface->in.input_regions.head; r; r = r->next) {
-			wl_region_add(input_region, r->in.x, r->in.y, r->in.width, r->in.height);
+	if ((priv->input_regions.len != surface->in.input_regions.len) ||
+			(memcmp(priv->input_regions.items, surface->in.input_regions.items,
+				sizeof(*surface->in.input_regions.items) * surface->in.input_regions.len) != 0)) {
+		size_t i;
+		struct wl_region *input_region = NULL;
+		if (surface->in.input_regions.len > 0) {
+			input_region = wl_compositor_create_region(sw_private->wayland.compositor);
+			for ( i = 0; i < surface->in.input_regions.len; ++i) {
+				sw_wayland_region_t region = su_array__sw_wayland_region_t__get(&surface->in.input_regions, i);
+				wl_region_add(input_region, region.x, region.y, region.width, region.height);
+			}
 		}
-		wl_surface_set_input_region(surface->private.wl_surface, input_region);
-		wl_region_destroy(input_region);
-	} else {
-		wl_surface_set_input_region(surface->private.wl_surface, NULL);
+		wl_surface_set_input_region(priv->wl_surface, input_region);
+		if (input_region) {
+			wl_region_destroy(input_region);
+		}
+		
+		priv->input_regions.len = 0;
+		for ( i = 0; i < surface->in.input_regions.len; ++i) {
+			su_array__sw_wayland_region_t__add(&priv->input_regions, sw__context->in.gp_alloc,
+				su_array__sw_wayland_region_t__get(&surface->in.input_regions, i));
+		}
 	}
 
 	sw__wayland_surface_render(surface);
 }
 
-static void sw__wayland_surface_popup_init_stage2(sw_wayland_surface_t *popup) {
-	switch (popup->private.popup.parent->in.type) {
+static void sw__wayland_surface_popup_init_stage2(sw_wayland_surface_t *surface) {
+	sw__wayland_surface_t *priv = (sw__wayland_surface_t *)&surface->sw__private;
+	sw__wayland_surface_popup_t *popup = &priv->_.popup;
+	sw__wayland_surface_t *parent_private = (sw__wayland_surface_t *)&popup->parent->sw__private;
+	sw_wayland_surface_t *p;
+
+	static struct xdg_popup_listener xdg_popup_listener = {
+		sw__wayland_surface_popup_handle_configure,
+		sw__wayland_surface_popup_handle_done,
+		sw__wayland_surface_popup_handle_repositioned,
+	};
+
+	switch (popup->parent->in.type) {
 	case SW_WAYLAND_SURFACE_TYPE_LAYER:
-		popup->private.popup.xdg_popup = xdg_surface_get_popup(
-			popup->private.popup.xdg_surface, NULL, popup->private.popup.xdg_positioner);
-		zwlr_layer_surface_v1_get_popup(popup->private.popup.parent->private.layer.layer_surface,
-			popup->private.popup.xdg_popup);
-		popup->private.popup.grab = popup->in.popup.grab;
+		popup->xdg_popup = xdg_surface_get_popup(
+			popup->xdg_surface, NULL, popup->xdg_positioner);
+		zwlr_layer_surface_v1_get_popup(parent_private->_.layer.layer_surface, popup->xdg_popup);
+		popup->grab = surface->in._.popup.grab;
 		break;
 	case SW_WAYLAND_SURFACE_TYPE_POPUP:
-		popup->private.popup.xdg_popup = xdg_surface_get_popup( popup->private.popup.xdg_surface,
-			popup->private.popup.parent->private.popup.xdg_surface, popup->private.popup.xdg_positioner);
-		popup->private.popup.grab = popup->private.popup.parent->private.popup.grab;
+		popup->xdg_popup = xdg_surface_get_popup( popup->xdg_surface,
+			parent_private->_.popup.xdg_surface, popup->xdg_positioner);
+		popup->grab = parent_private->_.popup.grab;
 		break;
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
 
-	static struct xdg_popup_listener xdg_popup_listener = {
-		.configure = sw__wayland_surface_popup_handle_configure,
-		.popup_done = sw__wayland_surface_popup_handle_done,
-		.repositioned = sw__wayland_surface_popup_handle_repositioned,
-	};
-	xdg_popup_add_listener(popup->private.popup.xdg_popup, &xdg_popup_listener, popup);
+	xdg_popup_add_listener(popup->xdg_popup, &xdg_popup_listener, surface);
 
-	// TODO: handle grab with invalid serial, touch serial
-	if (popup->private.popup.grab) {
-		xdg_popup_grab(popup->private.popup.xdg_popup,
-			popup->private.popup.grab->out.seat->private.wl_seat,
-			popup->private.popup.grab->private.button_serial);
+	/* TODO: handle grab with invalid serial, touch serial */
+	if (popup->grab) {
+		sw__wayland_seat_t *seat_private = (sw__wayland_seat_t *)&popup->grab->out.seat->sw__private;
+		sw__wayland_pointer_t *pointer_private = (sw__wayland_pointer_t *)&popup->grab->sw__private;
+		xdg_popup_grab( popup->xdg_popup,
+			seat_private->wl_seat, pointer_private->button_serial);
 	}
 
-	wl_surface_commit(popup->private.wl_surface);
+	wl_surface_commit(priv->wl_surface);
 
-	for (sw_wayland_surface_t *p = popup->in.popups.head; p; p = p->next) {
+	for ( p = surface->in.popups.head; p; p = p->next) {
 		SU_ASSERT(p->in.type == SW_WAYLAND_SURFACE_TYPE_POPUP);
-		sw__wayland_surface_prepare(p, popup, popup->private.sw);
+		sw__wayland_surface_prepare(p, surface);
 	}
 }
 
 static void sw__wayland_output_handle_geometry(void *data, struct wl_output *wl_output,
 		int32_t x, int32_t y, int32_t physical_width, int32_t physical_height,
 		int32_t subpixel, const char *make, const char *model, int32_t transform) {
+	sw_wayland_output_t *output = (sw_wayland_output_t *)data;
+
 	SU_NOTUSED(wl_output); SU_NOTUSED(x); SU_NOTUSED(y); SU_NOTUSED(physical_width); SU_NOTUSED(physical_height);
 	SU_NOTUSED(subpixel); SU_NOTUSED(make); SU_NOTUSED(model);
-	sw_wayland_output_t *output = data;
+	
 	output->out.transform = (sw_wayland_output_transform_t)transform;
 }
 
 static void sw__wayland_output_handle_mode(void *data, struct wl_output *wl_output,
 		uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
+	sw_wayland_output_t *output = (sw_wayland_output_t *)data;
+
 	SU_NOTUSED(wl_output); SU_NOTUSED(flags); SU_NOTUSED(refresh);
-	sw_wayland_output_t *output = data;
+
 	output->out.width = width;
 	output->out.height = height;
 }
@@ -3014,17 +3075,19 @@ static void sw__wayland_output_handle_done(void *data, struct wl_output *wl_outp
 }
 
 static void sw__wayland_output_handle_scale(void *data, struct wl_output *wl_output, int32_t factor) {
+	sw_wayland_output_t *output = (sw_wayland_output_t *)data;
 	SU_NOTUSED(wl_output);
-	sw_wayland_output_t *output = data;
 	output->out.scale = factor;
 }
 
 static void sw__wayland_output_handle_name(void *data, struct wl_output *wl_output, const char *name) {
-	SU_NOTUSED(wl_output);
-	sw_wayland_output_t *output = data;
+	sw_wayland_output_t *output = (sw_wayland_output_t *)data;
 	size_t len = strlen(name);
+
+	SU_NOTUSED(wl_output);
+
 	if (len > 0) {
-		su_string_init_len(&output->out.name, output->private.sw->in.gp_alloc, (char *)name, len, SU_TRUE);
+		su_string_init_len(&output->out.name, sw__context->in.gp_alloc, name, len, SU_TRUE);
 	}
 }
 
@@ -3032,77 +3095,90 @@ static void sw__wayland_output_handle_description(void *data, struct wl_output *
 	SU_NOTUSED(data); SU_NOTUSED(wl_output); SU_NOTUSED(description);
 }
 
-static sw_wayland_output_t *sw__wayland_output_create(uint32_t wl_name, sw_state_t *sw) {
+static sw_wayland_output_t *sw__wayland_output_create(uint32_t wl_name) {
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
 	sw_wayland_output_t *output = NULL;
-	if (sw->in.wayland.output_create && (output = sw->in.wayland.output_create(sw))) {
-		output->private.sw = sw;
-		output->private.wl_output = wl_registry_bind(sw->private.wayland.registry, wl_name, &wl_output_interface, 4);
-		output->private.wl_name = wl_name;
-		output->out.scale = 1;
+	if (sw__context->in.backend.wayland.output_create && (output = sw__context->in.backend.wayland.output_create(sw__context))) {
 		static struct wl_output_listener output_listener = {
-			.geometry = sw__wayland_output_handle_geometry,
-			.mode = sw__wayland_output_handle_mode,
-			.done = sw__wayland_output_handle_done,
-			.scale = sw__wayland_output_handle_scale,
-			.name = sw__wayland_output_handle_name,
-			.description = sw__wayland_output_handle_description,
+			sw__wayland_output_handle_geometry,
+			sw__wayland_output_handle_mode,
+			sw__wayland_output_handle_done,
+			sw__wayland_output_handle_scale,
+			sw__wayland_output_handle_name,
+			sw__wayland_output_handle_description,
 		};
-		wl_output_add_listener(output->private.wl_output, &output_listener, output);
+
+		sw__wayland_output_t *priv = (sw__wayland_output_t *)&output->sw__private;
+
+		output->out.scale = 1;
+		priv->wl_output = (SU_TYPEOF(priv->wl_output))wl_registry_bind(sw_private->wayland.registry,
+			wl_name, &wl_output_interface, 4);
+		priv->wl_name = wl_name;
+		wl_output_add_listener(priv->wl_output, &output_listener, output);
 	}
 
 	return output;
 }
 
 static void sw__wayland_output_destroy(sw_wayland_output_t *output) {
-	for (sw_wayland_surface_t *layer = output->private.sw->in.wayland.layers.head; layer; ) {
+	sw__wayland_output_t *priv = (sw__wayland_output_t *)&output->sw__private;
+	sw_wayland_surface_t *layer = sw__context->in.backend.wayland.layers.head;
+	for ( ; layer; ) {
 		sw_wayland_surface_t *next = layer->next;
-		if (layer->in.layer.output == output) {
+		if (layer->in._.layer.output == output) {
 			sw__wayland_surface_destroy(layer);
 		}
 		layer = next;
 	}
-	if (output->private.wl_output) {
-		wl_output_destroy(output->private.wl_output);
+	if (priv->wl_output) {
+		wl_output_destroy(priv->wl_output);
 	}
-	su_string_fini(&output->out.name, output->private.sw->in.gp_alloc);
+	su_string_fini(&output->out.name, sw__context->in.gp_alloc);
 	if (output->in.destroy) {
-		output->in.destroy(output, output->private.sw);
+		output->in.destroy(output, sw__context);
 	}
 }
 
 static void sw__wayland_pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, struct wl_surface *wl_surface, wl_fixed_t surface_x, wl_fixed_t surface_y) {
+	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
+	sw__wayland_pointer_t *priv = (sw__wayland_pointer_t *)&pointer->sw__private;
+	sw_wayland_surface_t *surface;
+
 	SU_NOTUSED(wl_pointer);
+
 	if (!wl_surface) {
 		return;
 	}
 
-	sw_wayland_pointer_t *pointer = data;
-	sw_wayland_surface_t *surface = wl_surface_get_user_data(wl_surface);
+	surface = (sw_wayland_surface_t *)wl_surface_get_user_data(wl_surface);
 
-	if (pointer->private.cursor_shape_device) {
-		wp_cursor_shape_device_v1_set_shape(pointer->private.cursor_shape_device,
-				serial, surface->private.cursor_shape);
+	if (priv->cursor_shape_device) {
+		sw__wayland_surface_t *surface_private = (sw__wayland_surface_t *)&surface->sw__private;
+		wp_cursor_shape_device_v1_set_shape(priv->cursor_shape_device,
+				serial, surface_private->cursor_shape);
 	}
 
 	pointer->out.focused_surface = surface;
-	pointer->private.enter_serial = serial;
+	priv->enter_serial = serial;
 
 	pointer->out.pos_x = (int32_t)(wl_fixed_to_double(surface_x) * (double)surface->out.scale);
 	pointer->out.pos_y = (int32_t)(wl_fixed_to_double(surface_y) * (double)surface->out.scale);
 
 	if (surface->in.enter) {
-		surface->in.enter(pointer, pointer->private.sw);
+		surface->in.enter(pointer, sw__context);
 	}
 }
 
 static void sw__wayland_pointer_handle_leave(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, struct wl_surface *surface) {
+	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
+
 	SU_NOTUSED(wl_pointer); SU_NOTUSED(serial); SU_NOTUSED(surface);
-	sw_wayland_pointer_t *pointer = data;
+
 	if (pointer->out.focused_surface) {
 		if (pointer->out.focused_surface->in.leave) {
-			pointer->out.focused_surface->in.leave(pointer, pointer->private.sw);
+			pointer->out.focused_surface->in.leave(pointer, sw__context);
 		}
 		pointer->out.focused_surface = NULL;
 	}
@@ -3110,103 +3186,123 @@ static void sw__wayland_pointer_handle_leave(void *data, struct wl_pointer *wl_p
 
 static void sw__wayland_pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
 		uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y) {
+	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
+	int32_t x, y;
+
 	SU_NOTUSED(wl_pointer); SU_NOTUSED(time);
-	sw_wayland_pointer_t *pointer = data;
+
 	if (!pointer->out.focused_surface) {
 		return;
 	}
 
-	int32_t x = (int32_t)(wl_fixed_to_double(surface_x) * (double)pointer->out.focused_surface->out.scale);
-	int32_t y = (int32_t)(wl_fixed_to_double(surface_y) * (double)pointer->out.focused_surface->out.scale);
+	x = (int32_t)(wl_fixed_to_double(surface_x) * (double)pointer->out.focused_surface->out.scale);
+	y = (int32_t)(wl_fixed_to_double(surface_y) * (double)pointer->out.focused_surface->out.scale);
 	if ((x != pointer->out.pos_x) || (y != pointer->out.pos_y)) {
 		pointer->out.pos_x = x;
 		pointer->out.pos_y = y;
 		if (pointer->out.focused_surface->in.motion) {
-			pointer->out.focused_surface->in.motion(pointer, pointer->private.sw);
+			pointer->out.focused_surface->in.motion(pointer, sw__context);
 		}
 	}
 }
 
 static void sw__wayland_pointer_handle_button(void *data, struct wl_pointer *wl_pointer,
-		uint32_t serial, uint32_t time, uint32_t button, uint32_t state_) {
+		uint32_t serial, uint32_t time, uint32_t button, uint32_t st) {
+	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
+	sw__wayland_pointer_t *priv = (sw__wayland_pointer_t *)&pointer->sw__private;
+
 	SU_NOTUSED(wl_pointer); SU_NOTUSED(time);
-	sw_wayland_pointer_t *pointer = data;
+
 	if (!pointer->out.focused_surface) {
 		return;
 	}
 
 	pointer->out.btn_code = button;
-	pointer->out.btn_state = state_;
+	pointer->out.btn_state = (SU_TYPEOF(pointer->out.btn_state))st;
 
-	pointer->private.button_serial = serial;
+	priv->button_serial = serial;
 
 	if (pointer->out.focused_surface->in.button) {
-		pointer->out.focused_surface->in.button(pointer, pointer->private.sw);
+		pointer->out.focused_surface->in.button(pointer, sw__context);
 	}
 }
 
 static void sw__wayland_pointer_handle_axis(void *data, struct wl_pointer *wl_pointer,
 		uint32_t time, uint32_t axis, wl_fixed_t value) {
+	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
+
 	SU_NOTUSED(wl_pointer); SU_NOTUSED(data); SU_NOTUSED(time);
-	sw_wayland_pointer_t *pointer = data;
+
 	if (!pointer->out.focused_surface) {
 		return;
 	}
 
-	pointer->out.scroll_axis = axis;
+	pointer->out.scroll_axis = (SU_TYPEOF(pointer->out.scroll_axis))axis;
 	pointer->out.scroll_vector_length = wl_fixed_to_double(value);
 
 	if (pointer->out.focused_surface->in.scroll) {
-		pointer->out.focused_surface->in.scroll(pointer, pointer->private.sw);
+		pointer->out.focused_surface->in.scroll(pointer, sw__context);
 	}
 }
 
-static sw_wayland_pointer_t *sw__wayland_pointer_create(sw_wayland_seat_t *seat, sw_state_t *sw) {
+static sw_wayland_pointer_t *sw__wayland_pointer_create(sw_wayland_seat_t *seat) {
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
 	sw_wayland_pointer_t *pointer = NULL;
-	if (seat->in.pointer_create && (pointer = seat->in.pointer_create(sw))) {
-		pointer->private.sw = sw;
-		pointer->out.seat = seat;
-		pointer->private.wl_pointer = wl_seat_get_pointer(seat->private.wl_seat);
-		if (sw->private.wayland.cursor_shape_manager) {
-			pointer->private.cursor_shape_device = wp_cursor_shape_manager_v1_get_pointer(
-				sw->private.wayland.cursor_shape_manager, pointer->private.wl_pointer);
-		} else {
-			pointer->private.cursor_shape_device = NULL;
-		}
+	if (seat->in.pointer_create && (pointer = seat->in.pointer_create(sw__context))) {
+		sw__wayland_pointer_t *priv = (sw__wayland_pointer_t *)&pointer->sw__private;
+		sw__wayland_seat_t *seat_private = (sw__wayland_seat_t *)&seat->sw__private;
+
 		static struct wl_pointer_listener pointer_listener = {
-			.enter = sw__wayland_pointer_handle_enter,
-			.leave = sw__wayland_pointer_handle_leave,
-			.motion = sw__wayland_pointer_handle_motion,
-			.button = sw__wayland_pointer_handle_button,
-			.axis = sw__wayland_pointer_handle_axis,
+			sw__wayland_pointer_handle_enter,
+			sw__wayland_pointer_handle_leave,
+			sw__wayland_pointer_handle_motion,
+			sw__wayland_pointer_handle_button,
+			sw__wayland_pointer_handle_axis,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
 		};
-		wl_pointer_add_listener(pointer->private.wl_pointer, &pointer_listener, pointer);
+
+		pointer->out.seat = seat;
+		priv->wl_pointer = wl_seat_get_pointer(seat_private->wl_seat);
+		if (sw_private->wayland.cursor_shape_manager) {
+			priv->cursor_shape_device = wp_cursor_shape_manager_v1_get_pointer(
+				sw_private->wayland.cursor_shape_manager, priv->wl_pointer);
+		} else {
+			priv->cursor_shape_device = NULL;
+		}
+		wl_pointer_add_listener(priv->wl_pointer, &pointer_listener, pointer);
 	}
 
 	return pointer;
 }
 
 static void sw__wayland_pointer_destroy(sw_wayland_pointer_t *pointer) {
-	if (pointer->private.cursor_shape_device) {
-		wp_cursor_shape_device_v1_destroy(pointer->private.cursor_shape_device);
+	sw__wayland_pointer_t *priv = (sw__wayland_pointer_t *)&pointer->sw__private;
+	if (priv->cursor_shape_device) {
+		wp_cursor_shape_device_v1_destroy(priv->cursor_shape_device);
 	}
-	if (pointer->private.wl_pointer) {
-		wl_pointer_destroy(pointer->private.wl_pointer);
+	if (priv->wl_pointer) {
+		wl_pointer_destroy(priv->wl_pointer);
 	}
 	if (pointer->in.destroy) {
-		pointer->in.destroy(pointer, pointer->private.sw);
+		pointer->in.destroy(pointer, sw__context);
 	}
 }
 
 static void sw__wayland_seat_handle_capabilities(void *data, struct wl_seat *wl_seat, uint32_t capabilities) {
-	SU_NOTUSED(wl_seat);
-	sw_wayland_seat_t *seat = data;
+	sw_wayland_seat_t *seat = (sw_wayland_seat_t *)data;
 
 	su_bool32_t have_pointer = (capabilities & WL_SEAT_CAPABILITY_POINTER);
-	// TODO: touch, keyboard
+	/* TODO: touch, keyboard */
+
+	SU_NOTUSED(wl_seat);
 
 	if (have_pointer && !seat->out.pointer) {
-		seat->out.pointer = sw__wayland_pointer_create(seat, seat->private.sw);
+		seat->out.pointer = sw__wayland_pointer_create(seat);
 	} else if (!have_pointer && seat->out.pointer) {
 		sw__wayland_pointer_destroy(seat->out.pointer);
 		seat->out.pointer = NULL;
@@ -3214,319 +3310,373 @@ static void sw__wayland_seat_handle_capabilities(void *data, struct wl_seat *wl_
 }
 
 static void sw__wayland_seat_handle_name(void *data, struct wl_seat *wl_seat, const char *name) {
-	SU_NOTUSED(wl_seat);
-	sw_wayland_seat_t *seat = data;
+	sw_wayland_seat_t *seat = (sw_wayland_seat_t *)data;
 	size_t len = strlen(name);
+
+	SU_NOTUSED(wl_seat);
+
 	if (len > 0) {
-		su_string_init_len(&seat->out.name, seat->private.sw->in.gp_alloc, (char *)name, len, SU_TRUE);
+		su_string_init_len(&seat->out.name, sw__context->in.gp_alloc, name, len, SU_TRUE);
 	}
 }
 
-static sw_wayland_seat_t *sw__wayland_seat_create(uint32_t wl_name, sw_state_t *sw) {
+static sw_wayland_seat_t *sw__wayland_seat_create(uint32_t wl_name) {
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
 	sw_wayland_seat_t *seat = NULL;
-	if (sw->in.wayland.seat_create && (seat = sw->in.wayland.seat_create(sw))) {
-		seat->private.sw = sw;
-		seat->private.wl_seat = wl_registry_bind(sw->private.wayland.registry, wl_name, &wl_seat_interface, 2);
-		seat->private.wl_name = wl_name;
+	if (sw__context->in.backend.wayland.seat_create && (seat = sw__context->in.backend.wayland.seat_create(sw__context))) {
+		sw__wayland_seat_t *priv = (sw__wayland_seat_t *)&seat->sw__private;
+
 		static struct wl_seat_listener seat_listener = {
-			.capabilities = sw__wayland_seat_handle_capabilities,
-			.name = sw__wayland_seat_handle_name,
+			sw__wayland_seat_handle_capabilities,
+			sw__wayland_seat_handle_name,
 		};
-		wl_seat_add_listener(seat->private.wl_seat, &seat_listener, seat);
+
+		priv->wl_seat = (SU_TYPEOF(priv->wl_seat))wl_registry_bind(
+			sw_private->wayland.registry, wl_name, &wl_seat_interface, 2);
+		priv->wl_name = wl_name;
+		wl_seat_add_listener(priv->wl_seat, &seat_listener, seat);
 	}
 
 	return seat;
 }
 
 static void sw__wayland_seat_destroy(sw_wayland_seat_t *seat) {
+	sw__wayland_seat_t *priv = (sw__wayland_seat_t *)&seat->sw__private;
 	if (seat->out.pointer) {
 		sw__wayland_pointer_destroy(seat->out.pointer);
 	}
-	if (seat->private.wl_seat) {
-		wl_seat_destroy(seat->private.wl_seat);
+	if (priv->wl_seat) {
+		wl_seat_destroy(priv->wl_seat);
 	}
-	su_string_fini(&seat->out.name, seat->private.sw->in.gp_alloc);
+	su_string_fini(&seat->out.name, sw__context->in.gp_alloc);
 	if (seat->in.destroy) {
-		seat->in.destroy(seat, seat->private.sw);
+		seat->in.destroy(seat, sw__context);
 	}
 }
 
 static void sw__wayland_wm_base_handle_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial) {
-	SU_NOTUSED(xdg_wm_base);
-	sw_state_t *sw = data;
-	xdg_wm_base_pong(sw->private.wayland.wm_base, serial);
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	SU_NOTUSED(data); SU_NOTUSED(xdg_wm_base);
+	xdg_wm_base_pong(sw_private->wayland.wm_base, serial);
 }
 
 static void sw__wayland_registry_handle_global(void *data, struct wl_registry *wl_registry,
 		uint32_t wl_name, const char *interface, uint32_t version) {
-	SU_NOTUSED(wl_registry); SU_NOTUSED(version);
-	sw_state_t *sw = data;
+	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
+	sw__context_wayland_t *wayland = &sw_private->wayland;
+
+	SU_NOTUSED(data); SU_NOTUSED(wl_registry); SU_NOTUSED(version);
+	
 	if (strcmp(interface, wl_output_interface.name) == 0) {
-		sw_wayland_output_t *output = sw__wayland_output_create(wl_name, sw);
+		sw_wayland_output_t *output = sw__wayland_output_create(wl_name);
 		if (output) {
-			su_llist__sw_wayland_output_t__insert_tail(&sw->out.wayland.outputs, output);
+			su_llist__sw_wayland_output_t__insert_tail(
+				&sw__context->out.backend.wayland.outputs, output);
 		}
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
-		sw_wayland_seat_t *seat = sw__wayland_seat_create(wl_name, sw);
+		sw_wayland_seat_t *seat = sw__wayland_seat_create(wl_name);
 		if (seat) {
-			su_llist__sw_wayland_seat_t__insert_tail(&sw->out.wayland.seats, seat);
+			su_llist__sw_wayland_seat_t__insert_tail(&sw__context->out.backend.wayland.seats, seat);
 		}
     } else if (strcmp(interface, wl_compositor_interface.name) == 0) {
-		sw->private.wayland.compositor = wl_registry_bind(sw->private.wayland.registry, wl_name,
-			&wl_compositor_interface, 6);
+		wayland->compositor = (SU_TYPEOF(wayland->compositor))wl_registry_bind(
+			wayland->registry, wl_name, &wl_compositor_interface, 6);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
-		sw->private.wayland.shm = wl_registry_bind(sw->private.wayland.registry, wl_name, &wl_shm_interface, 1);
-		// ? TODO: wl_shm_add_listener (check for ARGB32)
+		wayland->shm = (SU_TYPEOF(wayland->shm))wl_registry_bind(
+			wayland->registry, wl_name, &wl_shm_interface, 1);
+		/* ? TODO: wl_shm_add_listener (check for ARGB32) */
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
-		sw->private.wayland.layer_shell = wl_registry_bind(sw->private.wayland.registry, wl_name,
-			&zwlr_layer_shell_v1_interface, 2);
+		wayland->layer_shell = (SU_TYPEOF(wayland->layer_shell))wl_registry_bind(
+			wayland->registry, wl_name, &zwlr_layer_shell_v1_interface, 2);
 	} else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
-		sw->private.wayland.wm_base = wl_registry_bind(sw->private.wayland.registry,
-			wl_name, &xdg_wm_base_interface, 3);
-		static struct xdg_wm_base_listener wm_base_listener = {
-			.ping = sw__wayland_wm_base_handle_ping,
-		};
-		xdg_wm_base_add_listener(sw->private.wayland.wm_base, &wm_base_listener, sw);
+		static struct xdg_wm_base_listener wm_base_listener = { sw__wayland_wm_base_handle_ping };
+		wayland->wm_base = (SU_TYPEOF(wayland->wm_base))wl_registry_bind(
+			wayland->registry,wl_name, &xdg_wm_base_interface, 3);
+		xdg_wm_base_add_listener(wayland->wm_base, &wm_base_listener, NULL);
 	} else if (strcmp(interface, wp_cursor_shape_manager_v1_interface.name) == 0) {
-		sw->private.wayland.cursor_shape_manager = wl_registry_bind(sw->private.wayland.registry, wl_name,
-			&wp_cursor_shape_manager_v1_interface, 1);
+		wayland->cursor_shape_manager = (SU_TYPEOF(wayland->cursor_shape_manager))wl_registry_bind(
+			wayland->registry, wl_name, &wp_cursor_shape_manager_v1_interface, 1);
 	}
 }
 
 static void sw__wayland_registry_handle_global_remove(void *data, struct wl_registry *wl_registry, uint32_t name) {
-	SU_NOTUSED(wl_registry);
-	sw_state_t *sw = data;
-	for (sw_wayland_output_t *output = sw->out.wayland.outputs.head; output; output = output->next) {
-		if (output->private.wl_name == name) {
-			su_llist__sw_wayland_output_t__pop(&sw->out.wayland.outputs, output);
+	sw_backend_wayland_out_t *wayland = &sw__context->out.backend.wayland;
+	sw_wayland_output_t *output;
+	sw_wayland_seat_t *seat;
+
+	SU_NOTUSED(data); SU_NOTUSED(wl_registry);
+
+	for ( output = wayland->outputs.head; output; output = output->next) {
+		sw__wayland_output_t *priv = (sw__wayland_output_t *)&output->sw__private;
+		if (priv->wl_name == name) {
+			su_llist__sw_wayland_output_t__pop(&wayland->outputs, output);
 			sw__wayland_output_destroy(output);
 			return;
 		}
 	}
 
-	for (sw_wayland_seat_t *seat = sw->out.wayland.seats.head; seat; seat = seat->next) {
-		if (seat->private.wl_name == name) {
-			su_llist__sw_wayland_seat_t__pop(&sw->out.wayland.seats, seat);
+	for ( seat = wayland->seats.head; seat; seat = seat->next) {
+		sw__wayland_seat_t *priv = (sw__wayland_seat_t *)&seat->sw__private;
+		if (priv->wl_name == name) {
+			su_llist__sw_wayland_seat_t__pop(&wayland->seats, seat);
 			sw__wayland_seat_destroy(seat);
 			return;
 		}
 	}
 }
 
-#endif // SW_WITH_WAYLAND
+#endif /* SW_WITH_WAYLAND */
 
-SW_EXPORT su_bool32_t sw_init(sw_state_t *sw) {
-	SU_ASSERT(locale_is_utf8());
+SW_EXPORT su_bool32_t sw_init(sw_context_t *sw) {
+	sw__context_t *priv;
 
-	*sw = (sw_state_t){
-		.in = sw->in,
-	};
+	SU_ASSERT(su_locale_is_utf8());
+	SU_ASSERT(sw->in.gp_alloc != NULL);
+	SU_ASSERT(sw->in.scratch_alloc != NULL);
+
+	sw__context = sw;
+	priv = (sw__context_t *)&sw->sw__private;
+
+	memset(&sw->out, 0, sizeof(sw->out));
+	memset(priv, 0, sizeof(*priv));
 	sw->out.t = -1;
 
-	switch (sw->in.type) {
+	switch (sw->in.backend_type) {
 #if SW_WITH_WAYLAND
-	case SW_BACKEND_TYPE_WAYLAND:
-		// ? TODO: add all data from wl_* to sw_wayland_*.out
+	case SW_BACKEND_TYPE_WAYLAND: {
+		/* ? TODO: add all data from wl_* to sw_wayland_*.out */
 
-		sw->private.wayland.display = wl_display_connect(NULL);
-		if (!sw->private.wayland.display) {
-			goto error;
-		}
+		sw__context_wayland_t *wayland = &priv->wayland;
 
 		static struct wl_registry_listener registry_listener = {
-		    .global = sw__wayland_registry_handle_global,
-			.global_remove = sw__wayland_registry_handle_global_remove,
+			sw__wayland_registry_handle_global,
+			sw__wayland_registry_handle_global_remove,
 		};
-		sw->private.wayland.registry = wl_display_get_registry(sw->private.wayland.display);
-		wl_registry_add_listener(sw->private.wayland.registry, &registry_listener, sw);
-		if (wl_display_roundtrip(sw->private.wayland.display) == -1) {
+
+		wayland->display = wl_display_connect(NULL);
+		if (!wayland->display) {
 			goto error;
 		}
 
-		if (!sw->private.wayland.layer_shell) {
+		wayland->registry = wl_display_get_registry(wayland->display);
+		wl_registry_add_listener(wayland->registry, &registry_listener, NULL);
+		if (wl_display_roundtrip(wayland->display) == -1) {
+			goto error;
+		}
+
+		if (!wayland->layer_shell) {
 			errno = EPROTONOSUPPORT;
 			goto error;
 		}
-		if (!sw->private.wayland.wm_base) {
+		if (!wayland->wm_base) {
 			errno = EPROTONOSUPPORT;
 			goto error;
 		}
-		if (!sw->private.wayland.cursor_shape_manager) {
-			// TODO: warning
+		if (!wayland->cursor_shape_manager) {
+			/* TODO: warning */
 		}
 
-		if (wl_display_roundtrip(sw->private.wayland.display) == -1) {
+		if (wl_display_roundtrip(wayland->display) == -1) {
 			goto error;
 		}
 
-		sw->out.wayland.pfd = (struct pollfd){
-			.fd = wl_display_get_fd(sw->private.wayland.display),
-			.events = POLLIN,
-		};
+		sw->out.backend.wayland.pfd.fd = wl_display_get_fd(wayland->display);
+		sw->out.backend.wayland.pfd.events = POLLIN;
 		break;
-#endif // SW_WITH_WAYLAND
+	}
+#endif /* SW_WITH_WAYLAND */
 	default:
-		ASSERT_UNREACHABLE;
+		SU_ASSERT_UNREACHABLE;
 	}
 
-//#if SW_WITH_SVG
-//	// ? TODO: resvg_init_log();
-//#endif // SW_WITH_SVG
+	/* ? TODO: resvg_init_log(); */
 
-	su_hash_table__struct_sw__image_cache__init(&sw->private.image_cache, sw->in.gp_alloc, 512);
+	su_hash_table__sw__image_cache_t__init(&priv->image_cache, sw->in.gp_alloc, 512);
 
 #if SW_WITH_TEXT
 	if (!fcft_init(FCFT_LOG_COLORIZE_NEVER, SU_FALSE, FCFT_LOG_CLASS_ERROR)) {
 		goto error;
 	}
 
-	su_hash_table__struct_sw__text_run_cache__init(&sw->private.text_run_cache, sw->in.gp_alloc, 1024);
-#endif // SW_WITH_TEXT
+	su_hash_table__sw__text_run_cache_t__init(&priv->text_run_cache, sw->in.gp_alloc, 1024);
+#endif /* SW_WITH_TEXT */
 
 	return sw_process(sw);
 error:
 	return SU_FALSE;
 }
 
-SW_EXPORT void sw_fini(sw_state_t *sw) {
-	//SU_ASSERT(locale_is_utf8());
+SW_EXPORT void sw_fini(sw_context_t *sw) {
+	sw__context_t *priv = (sw__context_t *)&sw__context->sw__private;
+	su_allocator_t *gp_alloc = sw->in.gp_alloc;
+	size_t i;
 
-	switch (sw->in.type) {
+	/*SU_ASSERT(su_locale_is_utf8());*/
+	SU_ASSERT(sw->in.gp_alloc != NULL);
+	SU_ASSERT(sw->in.scratch_alloc != NULL);
+
+	sw__context = sw;
+
+	switch (sw->in.backend_type) {
 #if SW_WITH_WAYLAND
-	case SW_BACKEND_TYPE_WAYLAND:
-		for (sw_wayland_output_t *output = sw->out.wayland.outputs.head; output; ) {
+	case SW_BACKEND_TYPE_WAYLAND: {
+		sw__context_wayland_t *wayland = &priv->wayland;
+		sw_wayland_output_t *output;
+		sw_wayland_seat_t *seat;
+
+		for ( output = sw->out.backend.wayland.outputs.head; output; ) {
 			sw_wayland_output_t *next = output->next;
 			sw__wayland_output_destroy(output);
 			output = next;
 		}
 
-		for (sw_wayland_seat_t *seat = sw->out.wayland.seats.head; seat; ) {
+		for ( seat = sw->out.backend.wayland.seats.head; seat; ) {
 			sw_wayland_seat_t *next = seat->next;
 			sw__wayland_seat_destroy(seat);
 			seat = next;
 		}
 
-		if (sw->private.wayland.cursor_shape_manager) {
-			wp_cursor_shape_manager_v1_destroy(sw->private.wayland.cursor_shape_manager);
+		if (wayland->cursor_shape_manager) {
+			wp_cursor_shape_manager_v1_destroy(wayland->cursor_shape_manager);
 		}
-		if (sw->private.wayland.layer_shell) {
-			zwlr_layer_shell_v1_destroy(sw->private.wayland.layer_shell);
+		if (wayland->layer_shell) {
+			zwlr_layer_shell_v1_destroy(wayland->layer_shell);
 		}
-		if (sw->private.wayland.wm_base) {
-			xdg_wm_base_destroy(sw->private.wayland.wm_base);
+		if (wayland->wm_base) {
+			xdg_wm_base_destroy(wayland->wm_base);
 		}
-		if (sw->private.wayland.shm) {
-			wl_shm_destroy(sw->private.wayland.shm);
+		if (wayland->shm) {
+			wl_shm_destroy(wayland->shm);
 		}
-		if (sw->private.wayland.compositor) {
-			wl_compositor_destroy(sw->private.wayland.compositor);
+		if (wayland->compositor) {
+			wl_compositor_destroy(wayland->compositor);
 		}
-		if (sw->private.wayland.registry) {
-			wl_registry_destroy(sw->private.wayland.registry);
+		if (wayland->registry) {
+			wl_registry_destroy(wayland->registry);
 		}
-		if (sw->private.wayland.display) {
-			wl_display_flush(sw->private.wayland.display);
-			wl_display_disconnect(sw->private.wayland.display);
+		if (wayland->display) {
+			wl_display_flush(wayland->display);
+			wl_display_disconnect(wayland->display);
 		}
 		break;
-#endif // SW_WITH_WAYLAND
+	}
+#endif /* SW_WITH_WAYLAND */
 	default:
-		ASSERT_UNREACHABLE;
+		SU_ASSERT_UNREACHABLE;
 	}
 
-	for (size_t i = 0; i < sw->private.image_cache.items.len; ++i) {
-		struct sw__image_cache cache = su_array__struct_sw__image_cache__get(&sw->private.image_cache.items, i);
-		su_string_fini(&cache.key, sw->in.gp_alloc);
+	for ( i = 0; i < priv->image_cache.items.len; ++i) {
+		sw__image_cache_t cache = su_array__sw__image_cache_t__get(&priv->image_cache.items, i);
+		gp_alloc->free(gp_alloc, cache.key.ptr);
 		if (cache.image) {
 			pixman_image_unref(cache.image);
 		}
 	}
-	su_hash_table__struct_sw__image_cache__fini(&sw->private.image_cache, sw->in.gp_alloc);
+	su_hash_table__sw__image_cache_t__fini(&priv->image_cache, gp_alloc);
 
 #if SW_WITH_TEXT
-	for (size_t i = 0; i < sw->private.text_run_cache.items.len; ++i) {
-		struct sw__text_run_cache cache = su_array__struct_sw__text_run_cache__get(&sw->private.text_run_cache.items, i);
-		su_string_fini(&cache.key, sw->in.gp_alloc);
-		for (size_t j = 0; j < cache.items.len; ++j) {
-			struct sw__text_run_cache_entry entry = su_array__struct_sw__text_run_cache_entry__get(&cache.items, j);
+	for ( i = 0; i < priv->text_run_cache.items.len; ++i) {
+		size_t j = 0;
+		sw__text_run_cache_t cache = su_array__sw__text_run_cache_t__get(
+			&priv->text_run_cache.items, i);
+		su_string_fini(&cache.key, gp_alloc);
+		for ( ; j < cache.items.len; ++j) {
+			sw__text_run_cache_entry_t entry = su_array__sw__text_run_cache_entry_t__get(&cache.items, j);
 			fcft_text_run_destroy(entry.text_run);
 			fcft_destroy(entry.font);
 		}
-		su_array__struct_sw__text_run_cache_entry__fini(&cache.items, sw->in.gp_alloc);
+		su_array__sw__text_run_cache_entry_t__fini(&cache.items, gp_alloc);
 	}
-	su_hash_table__struct_sw__text_run_cache__fini(&sw->private.text_run_cache, sw->in.gp_alloc);
+	su_hash_table__sw__text_run_cache_t__fini(&priv->text_run_cache, gp_alloc);
 
 	fcft_fini();
-#endif // SW_WITH_TEXT
+#endif /* SW_WITH_TEXT */
 
-	*sw = (sw_state_t){
-		.in = sw->in,
-	};
+	memset(&sw->out, 0, sizeof(sw->out));
+	memset(priv, 0, sizeof(*priv));
 }
 
-SW_EXPORT su_bool32_t sw_flush(sw_state_t *sw) {
-	//SU_ASSERT(locale_is_utf8());
+SW_EXPORT su_bool32_t sw_flush(sw_context_t *sw) {
+	sw__context_t *priv = (sw__context_t *)&sw__context->sw__private;
 
-	switch (sw->in.type) {
+	/*SU_ASSERT(su_locale_is_utf8()); */
+	/*SU_ASSERT(sw->in.gp_alloc != NULL); */
+	/*SU_ASSERT(sw->in.scratch_alloc != NULL); */
+
+	sw__context = sw;
+
+	switch (sw->in.backend_type) {
 #if SW_WITH_WAYLAND
 	case SW_BACKEND_TYPE_WAYLAND:
-		sw->out.wayland.pfd.events = POLLIN;
-		if (wl_display_flush(sw->private.wayland.display) == -1) {
+		sw->out.backend.wayland.pfd.events = POLLIN;
+		if (wl_display_flush(priv->wayland.display) == -1) {
 			if (errno == EAGAIN) {
-				sw->out.wayland.pfd.events = (POLLIN | POLLOUT);
+				sw->out.backend.wayland.pfd.events = (POLLIN | POLLOUT);
 			} else {
 				return SU_FALSE;
 			}
 		}
 		break;
-#endif // SW_WITH_WAYLAND
+#endif /* SW_WITH_WAYLAND */
 	default:
-		ASSERT_UNREACHABLE;
+		SU_ASSERT_UNREACHABLE;
 	}
 
 	return SU_TRUE;
 }
 
-SW_EXPORT su_bool32_t sw_process(sw_state_t *sw) {
-	SU_ASSERT(locale_is_utf8());
+SW_EXPORT su_bool32_t sw_process(sw_context_t *sw) {
+	sw__context_t *priv = (sw__context_t *)&sw__context->sw__private;
 
-	switch (sw->in.type) {
+	SU_ASSERT(su_locale_is_utf8());
+	SU_ASSERT(sw->in.gp_alloc != NULL);
+	SU_ASSERT(sw->in.scratch_alloc != NULL);
+
+	sw__context = sw;
+
+	switch (sw->in.backend_type) {
 #if SW_WITH_WAYLAND
 	case SW_BACKEND_TYPE_WAYLAND:
-		if (wl_display_prepare_read(sw->private.wayland.display) != -1) {
-			if (wl_display_read_events(sw->private.wayland.display) == -1) {
+		if (wl_display_prepare_read(priv->wayland.display) != -1) {
+			if (wl_display_read_events(priv->wayland.display) == -1) {
 				return SU_FALSE;
 			}
 		}
-		wl_display_dispatch_pending(sw->private.wayland.display);
+		wl_display_dispatch_pending(priv->wayland.display);
 		break;
-#endif // SW_WITH_WAYLAND
+#endif /* SW_WITH_WAYLAND */
 	default:
-		ASSERT_UNREACHABLE;
+		SU_ASSERT_UNREACHABLE;
 	}
 
 	return SU_TRUE;
 }
 
-SW_EXPORT void sw_set(sw_state_t *sw) {
-	SU_ASSERT(locale_is_utf8());
+SW_EXPORT void sw_set(sw_context_t *sw) {
+	SU_ASSERT(su_locale_is_utf8());
+	SU_ASSERT(sw->in.gp_alloc != NULL);
+	SU_ASSERT(sw->in.scratch_alloc != NULL);
+
+	sw__context = sw;
 
 	if (su_now_ms() >= sw->out.t) {
 		sw->out.t = -1;
 	}
 
-	switch (sw->in.type) {
+	switch (sw->in.backend_type) {
 #if SW_WITH_WAYLAND
-	case SW_BACKEND_TYPE_WAYLAND:
-		for (sw_wayland_surface_t *surface = sw->in.wayland.layers.head; surface; surface = surface->next) {
+	case SW_BACKEND_TYPE_WAYLAND: {
+		sw_wayland_surface_t *surface = sw->in.backend.wayland.layers.head;
+		for ( ; surface; surface = surface->next) {
 			SU_ASSERT(surface->in.type == SW_WAYLAND_SURFACE_TYPE_LAYER);
-			sw__wayland_surface_prepare(surface, NULL, sw);
+			sw__wayland_surface_prepare(surface, NULL);
 		}
 		break;
-#endif // SW_WITH_WAYLAND
+	}
+#endif /* SW_WITH_WAYLAND */
 	default:
-		ASSERT_UNREACHABLE;
+		SU_ASSERT_UNREACHABLE;
 	}
 }
 
-#endif // defined(SW_IMPLEMENTATION) && !defined(SW__REIMPLEMENTATION_GUARD)
+#endif /* defined(SW_IMPLEMENTATION) && !defined(SW__REIMPLEMENTATION_GUARD) */
