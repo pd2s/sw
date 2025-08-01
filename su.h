@@ -11,7 +11,7 @@
 #endif /* !defined(SU_WITH_DEBUG) */
 
 /* TODO: remove */
-/*#define SU_IMPLEMENTATION*/
+#define SU_IMPLEMENTATION
 /*#define SU_STRIP_PREFIXES */
 #if defined(_XOPEN_SOURCE)
 #define SU__USER_XOPEN_SOURCE _XOPEN_SOURCE
@@ -61,12 +61,12 @@
 #if !defined(__cplusplus)
 #define SU_STATIC_ASSERT(x) __extension__ _Static_assert(x, "")
 #endif /* !defined(__cplusplus) */
-#define SU_COMPILETIME_STRLEN __builtin_strlen
+#define SU_STRLEN __builtin_strlen
 #else
 #define SU_ALIGNOF alignof
 #define SU_TYPEOF typeof
 #define SU_THREAD_LOCAL thread_local
-#define SU_COMPILETIME_STRLEN strlen
+#define SU_STRLEN strlen
 #endif
 
 #if !defined(SU_STATIC_ASSERT)
@@ -199,6 +199,7 @@ static void su_array__##type##__resize(su_array__##type##__t *, su_allocator_t *
 static type *su_array__##type##__add(su_array__##type##__t *, su_allocator_t *, type item); \
 static type *su_array__##type##__add_nocheck(su_array__##type##__t *, type item); \
 static type *su_array__##type##__add_uninitialized(su_array__##type##__t *, su_allocator_t *); \
+static type *su_array__##type##__add_nocheck_uninitialized(su_array__##type##__t *); \
 static void su_array__##type##__remove(su_array__##type##__t *, size_t n); \
 static void su_array__##type##__swap(su_array__##type##__t *, size_t idx1, size_t idx2); \
 static void su_array__##type##__insert(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
@@ -260,6 +261,39 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *, ke
 	key_type key; \
 	su_bool32_t occupied; \
 	su_bool32_t tombstone
+
+/* ? TODO: argc, argv as params */
+#define SU_ARGPARSE_BEGIN \
+    for (argv++, argc--; \
+            argv[0] && (argv[0][0] == '-') && argv[0][1]; \
+            argc--, argv++) { \
+		char argc_; \
+		char **argv_; \
+		int brk_; \
+		if ((argv[0][1] == '-') && (argv[0][2] == '\0')) { \
+			argv++; \
+			argc--; \
+			break; \
+		} \
+		for (brk_ = 0, argv[0]++, argv_ = argv; \
+				argv[0][0] && !brk_; \
+				argv[0]++) { \
+			if (argv_ != argv) { \
+                break; \
+            } \
+			argc_ = argv[0][0];
+#define SU_ARGPARSE_END \
+        } \
+    }
+
+#define SU_ARGPARSE_KEY argc_
+
+#define SU_ARGPARSE_VALUE \
+    (((argv[0][1] == '\0') && (argv[1] == NULL)) ? \
+        (char *)0 : \
+        (brk_ = 1, (argv[0][1] != '\0') ? \
+            (&argv[0][1]) : \
+            (argc--, argv++, argv[0])))
 
 #if defined(__cplusplus)
 extern "C" {
@@ -542,9 +576,9 @@ static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *, su_alloc
 static void su_json_ast_reset(su_json_ast_t *);
 
 static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *, su_string_t key);
-static void su_json_tokener_advance_assert(su_json_tokener_t *, su_allocator_t *,
+static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert(su_json_tokener_t *, su_allocator_t *,
 	su_json_token_t *token_out);
-static void su_json_tokener_advance_assert_type(su_json_tokener_t *, su_allocator_t *,
+static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_json_tokener_t *, su_allocator_t *,
 	su_json_token_t *token_out, su_json_token_type_t expected_type);
 
 #if defined(SU_STRIP_PREFIXES)
@@ -556,7 +590,7 @@ static void su_json_tokener_advance_assert_type(su_json_tokener_t *, su_allocato
 #define ALIGNOF SU_ALIGNOF
 #define TYPEOF SU_TYPEOF
 #define THREAD_LOCAL SU_THREAD_LOCAL
-#define COMPILETIME_STRLEN SU_COMPILETIME_STRLEN
+#define STRLEN SU_STRLEN
 #define STATIC_ASSERT SU_STATIC_ASSERT
 #define HAS_INCLUDE SU_HAS_INCLUDE
 #define HAS_ATTRIBUTE SU_HAS_ATTRIBUTE
@@ -601,6 +635,10 @@ static void su_json_tokener_advance_assert_type(su_json_tokener_t *, su_allocato
 #define HASH_TABLE_DEFINE SU_HASH_TABLE_DEFINE
 #define HASH_TABLE_DECLARE_DEFINE SU_HASH_TABLE_DECLARE_DEFINE
 #define HASH_TABLE_FIELDS SU_HASH_TABLE_FIELDS
+#define ARGPARSE_BEGIN SU_ARGPARSE_BEGIN
+#define ARGPARSE_END SU_ARGPARSE_END
+#define ARGPARSE_KEY SU_ARGPARSE_KEY
+#define ARGPARSE_VALUE SU_ARGPARSE_VALUE
 typedef su_bool32_t bool32_t;
 typedef su_fat_ptr_t fat_ptr_t;
 typedef su_string_t string_t;
@@ -787,6 +825,10 @@ static type *su_array__##type##__add_uninitialized(su_array__##type##__t *array,
         su_array__##type##__resize(array, alloc, 8 + array->size * 2); \
     } \
 	return &array->items[array->len++];\
+} \
+\
+static type *su_array__##type##__add_nocheck_uninitialized(su_array__##type##__t *array) { \
+	return &array->items[array->len++]; \
 } \
 \
 static void su_array__##type##__remove(su_array__##type##__t *array, size_t n) { \
@@ -1103,7 +1145,7 @@ static SU_ATTRIBUTE_NORETURN SU_ATTRIBUTE_FORMAT_PRINTF(2, 3) void su_abort(int 
 static inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string(const char *literal) {
 	su_string_t s;
 	s.s = (char *)(uintptr_t)literal;
-	s.len = SU_COMPILETIME_STRLEN(literal);
+	s.len = SU_STRLEN(literal);
 	s.free_contents = SU_FALSE;
 	s.nul_terminated = SU_TRUE;
 
@@ -1712,9 +1754,9 @@ static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, siz
 	size_t i = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
-	__m256i su_abgr_to_argb_mask = _mm256_set_epi8(
-		32,28,29,30,
-		28,24,25,26,
+	__m256i abgr_to_argb_mask = _mm256_set_epi8(
+		31,28,29,30,
+		27,24,25,26,
 		23,20,21,22,
 		19,16,17,18,
 		15,12,13,14,
@@ -1762,7 +1804,7 @@ static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, siz
 		__m256i alpha_lo = _mm256_shuffle_epi8(abgr_lo, extract_alpha_mask);
 		__m256i alpha_hi = _mm256_shuffle_epi8(abgr_hi, extract_alpha_mask);
 
-		__m256i abgr_packed, abgr_premultiplied, argb;
+		__m256i abgr_packed, argb;
 
 		abgr_lo = _mm256_mullo_epi16(abgr_lo, alpha_lo);
 		abgr_hi = _mm256_mullo_epi16(abgr_hi, alpha_hi);
@@ -1774,8 +1816,9 @@ static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, siz
 		abgr_hi = _mm256_mulhi_epu16(abgr_hi, const_257);
 
 		abgr_packed = _mm256_packus_epi16(abgr_lo, abgr_hi);
-		abgr_premultiplied = _mm256_blendv_epi8(abgr_packed, abgr, blend_mask);
-		argb = _mm256_shuffle_epi8(abgr_premultiplied, su_abgr_to_argb_mask); /* TODO: rework */
+		abgr = _mm256_blendv_epi8(abgr_packed, abgr, blend_mask);
+
+		argb = _mm256_shuffle_epi8(abgr, abgr_to_argb_mask);
 
         _mm256_store_si256((__m256i *)(void *)&dest[i], argb);
     }
@@ -1802,8 +1845,8 @@ static void su_abgr_to_argb(uint32_t *dest, uint32_t *src, size_t count) {
 
 #if SU_WITH_SIMD && defined(__AVX2__)
 	__m256i mask = _mm256_set_epi8(
-		32,28,29,30,
-		28,24,25,26,
+		31,28,29,30,
+		27,24,25,26,
 		23,20,21,22,
 		19,16,17,18,
 		15,12,13,14,
@@ -3348,14 +3391,14 @@ static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *node,
 	return NULL;
 }
 
-static void su_json_tokener_advance_assert(su_json_tokener_t *tokener,
+static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert(su_json_tokener_t *tokener,
 		su_allocator_t *alloc, su_json_token_t *token_out) {
 	su_json_tokener_state_t s = su_json_tokener_next(tokener, alloc, token_out);
 	SU_NOTUSED(s);
 	SU_ASSERT(s == SU_JSON_TOKENER_STATE_SUCCESS);
 }
 
-static void su_json_tokener_advance_assert_type(su_json_tokener_t *tokener, su_allocator_t *alloc,
+static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_json_tokener_t *tokener, su_allocator_t *alloc,
 		su_json_token_t *token_out, su_json_token_type_t expected_type) {
 	SU_NOTUSED(expected_type);
 	su_json_tokener_advance_assert(tokener, alloc, token_out);

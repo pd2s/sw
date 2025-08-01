@@ -1031,9 +1031,7 @@ static int sni__watcher_handle_register_host(sd_bus_message *msg, void *data,
 		return ret;
 	}
 
-	s.len = strlen(s.s);
-	s.nul_terminated = TRUE;
-	s.free_contents = FALSE;
+	s = string(s.s);
 
     for ( i = 0; i < sni_server.private.watcher_hosts.len; ++i) {
         if (string_equal(s, su_array__su_string_t__get(&sni_server.private.watcher_hosts, i))) {
@@ -1123,9 +1121,7 @@ static int sni__watcher_handle_lost_service(sd_bus_message *msg, void *data,
         return 0;
     }
 
-	s.len = strlen(s.s);
-	s.free_contents = FALSE;
-	s.nul_terminated = TRUE;
+	s = string(s.s);
 
     for ( i = 0; i < sni_server.private.watcher_items.len; ++i) {
         string_t item = su_array__su_string_t__get(&sni_server.private.watcher_items, i);
@@ -1260,9 +1256,7 @@ static int sni__host_handle_item_registered(sd_bus_message *msg, void *data,
 		return ret;
 	}
 
-	s.len = strlen(s.s);
-	s.free_contents = FALSE;
-	s.nul_terminated = TRUE;
+	s = string(s.s);
 
 	if (s.len > 0) {
 		return sni__host_add_item(s);
@@ -1282,9 +1276,7 @@ static int sni__host_handle_item_unregistered(sd_bus_message *msg, void *data,
 		return ret;
 	}
 
-	s.len = strlen(s.s);
-	s.free_contents = FALSE;
-	s.nul_terminated = TRUE;
+	s = string(s.s);
 
 	if (s.len > 0) {
 		size_t i = 0;

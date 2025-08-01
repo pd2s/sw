@@ -5,7 +5,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <getopt.h>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <time.h>
@@ -24,7 +23,9 @@
 #define WITH_TRAY 1
 #endif /* !defined(WITH_TRAY) */
 
+#if !defined(SU_WITH_DEBUG)
 #define SU_WITH_DEBUG DEBUG
+#endif /* defined(SU_WITH_DEBUG) */
 #define SU_LOG_PREFIX "sw_swaybar: "
 #define SU_IMPLEMENTATION
 #define SU_STRIP_PREFIXES
@@ -1409,10 +1410,10 @@ static output_t *output_create(void) {
 	return output;
 }
 
-static sw_wayland_output_t *output_create_sw(sw_context_t *sw) {
-	output_t *output = output_create();
-	NOTUSED(sw);
-	return &output->_;
+static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_context_t *sw) {
+	output_t *out = output_create();
+	NOTUSED(output); NOTUSED(sw);
+	return &out->_;
 }
 
 static void pointer_destroy_sw(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
@@ -1420,28 +1421,19 @@ static void pointer_destroy_sw(sw_wayland_pointer_t *pointer, sw_context_t *sw) 
 	gp_alloc.free(&gp_alloc, pointer);
 }
 
-static sw_wayland_pointer_t *pointer_create_sw(sw_context_t *sw) {
+static sw_wayland_pointer_t *pointer_create_sw(sw_wayland_seat_t *seat, sw_context_t *sw) {
 	sw_wayland_pointer_t *pointer = gp_alloc.alloc(&gp_alloc, sizeof(*pointer), ALIGNOF(*pointer));
 
-	NOTUSED(sw);
+	NOTUSED(seat); NOTUSED(sw);
 
 	memset(pointer, 0, sizeof(*pointer));
 	pointer->in.destroy = pointer_destroy_sw;
 	return pointer;
 }
 
-static void seat_destroy_sw(sw_wayland_seat_t *seat, sw_context_t *sw) {
-	NOTUSED(sw);
-	gp_alloc.free(&gp_alloc, seat);
-}
-
-static sw_wayland_seat_t *seat_create_sw(sw_context_t *sw) {
-	sw_wayland_seat_t *seat = gp_alloc.alloc(&gp_alloc, sizeof(*seat), ALIGNOF(*seat));
-
+static sw_wayland_seat_t *seat_create_sw(sw_wayland_seat_t *seat, sw_context_t *sw) {
 	NOTUSED(sw);
 
-	memset(seat, 0, sizeof(*seat));
-	seat->in.destroy = seat_destroy_sw;
 	seat->in.pointer_create = pointer_create_sw;
 
 	return seat;
@@ -2399,7 +2391,7 @@ static void config_update(string_t str) {
 	if (string_equal(token.value.s, string("success"))) {
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, SU_JSON_TOKEN_TYPE_BOOL);
 		ASSERT(token.value.b == FALSE);
-		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, SU_JSON_TOKEN_TYPE_STRING);
+		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, SU_JSON_TOKEN_TYPE_KEY);
 		ASSERT(string_equal(token.value.s, string("error")));
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, SU_JSON_TOKEN_TYPE_STRING);
 		su_abort(1, STRING_PF_FMT, STRING_PF_ARGS(token.value.s));
@@ -3149,18 +3141,10 @@ static void handle_signal(int sig) {
 	state.running = FALSE;
 }
 
-static void setup(int argc, char **argv) {
-	static struct option long_options[] = {
-		{ "help",    no_argument,       NULL, 'h' },
-		{ "version", no_argument,       NULL, 'v' },
-		{ "socket",  required_argument, NULL, 's' },
-		{ "bar_id",  required_argument, NULL, 'b' },
-		{ 0,         0,                 0,    0   },
-	};
-
+static void setup(int argc, char *argv[]) {
 	static struct sigaction sigact;
 
-	int c, sway_ipc_fd;
+	int sway_ipc_fd;
 	char sway_ipc_socket_path[PATH_MAX];
 
 	setlocale(LC_ALL, "");
@@ -3170,32 +3154,38 @@ static void setup(int argc, char **argv) {
 	
 	memset(&sway_ipc_socket_path, 0, sizeof(sway_ipc_socket_path));
 
-	while ((c = getopt_long(argc, argv, "hvs:b:p:", long_options, NULL)) != -1) {
-		switch (c) {
-		case 's':
-			strncpy(sway_ipc_socket_path, optarg, sizeof(sway_ipc_socket_path));
+	ARGPARSE_BEGIN {
+		switch (ARGPARSE_KEY) {
+		case 's': {
+			char *s = ARGPARSE_VALUE;
+			if (s) {
+				strncpy(sway_ipc_socket_path, optarg, sizeof(sway_ipc_socket_path));
+			}
 			break;
-		case 'b':
-			state.bar_id.s = optarg;
-			state.bar_id.len = strlen(optarg);
-			state.bar_id.free_contents = FALSE;
-			state.bar_id.nul_terminated = TRUE;
+		}
+		case 'b': {
+			char *s = ARGPARSE_VALUE;
+			if (s) {
+				state.bar_id = string(s);
+			}
 			break;
+		}
 		case 'v':
-			su_abort(0, "%s version", argv[0] ); /* TODO */
+			su_abort(0, "sw_swaybar version" ); /* TODO */
 		default:
-			su_abort(1, "Usage: %s [options...]\n"
+			su_abort( (ARGPARSE_KEY != 'h'),
+				"Usage: sw_swaybar [options...]\n"
 				"\n"
-				"  -h, --help             Show this help message and quit.\n"
-				"  -v, --version          Show the version and quit.\n"
-				"  -s, --socket <path>    Connect to sway via socket specified in <path>.\n"
-				"  -b, --bar_id <id>      Bar ID for which to get the configuration.\n"
+				"  -h,         Show this help message and quit.\n"
+				"  -v,         Show the version and quit.\n"
+				"  -s, <path>  Connect to sway via socket specified in <path>.\n"
+				"  -b, <id>    Bar ID for which to get the configuration.\n"
 				"\n"
 				" PLEASE NOTE that you can use swaybar_command field in your\n"
-				" configuration file to let sway start %s automatically.\n"
-				" You should never need to start it manually.\n", argv[0], argv[0]);
+				" configuration file to let sway start sw_swaybar automatically.\n"
+				" You should never need to start it manually.\n");
 		}
-	}
+	} ARGPARSE_END
 
 	if (state.bar_id.len == 0) {
 		su_abort(1, "No bar_id passed. Provide --bar_id or use swaybar_command in sway config file");
@@ -3234,7 +3224,6 @@ static void setup(int argc, char **argv) {
 
 	state.poll_fds[POLL_FD_SW] = state.sw.out.backend.wayland.pfd;
 
-	memset(&sigact, 0, sizeof(sigact));
 	sigact.sa_handler = handle_signal;
 
 	/* ? TODO: error check */

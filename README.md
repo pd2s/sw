@@ -3,8 +3,9 @@
 This project is currently in early alpha state.
 
 # Plans for near future
-* More examples
-* user-provided buffer backend
+* More examples: json, immediate mode, generic window
+* Scroll blocks, children wrap for composite,text blocks
+* generic window, user-provided buffer backends
 * user-provided renderer
 * replace fcft with freetype+harfbuzz
 * replace pixman

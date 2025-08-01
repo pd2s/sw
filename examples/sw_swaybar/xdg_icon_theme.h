@@ -278,10 +278,7 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 		return FALSE;
 	}
 
-	path.s = abspath_buf;
-	path.len = strlen(abspath_buf);
-	path.free_contents = FALSE;
-	path.nul_terminated = TRUE;
+	path = string(abspath_buf);
 
 	for ( i = cache->basedirs.len - 1; i != SIZE_MAX; --i) {
 		if (string_equal(path, su_array__su_string_t__get(&cache->basedirs, i))) {
@@ -404,10 +401,7 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t
 	if (data_dirs && *data_dirs) {
 		bool32_t next;
 		string_t data_dirs_str, dir, tmp;
-		data_dirs_str.s = data_dirs;
-		data_dirs_str.len = strlen(data_dirs);
-		data_dirs_str.free_contents = FALSE;
-		data_dirs_str.nul_terminated = TRUE;
+		data_dirs_str = string(data_dirs);
 		for (next = string_tok(&data_dirs_str, ':', &dir, &tmp);
 				next == TRUE;
 				next = string_tok(NULL, ':', &dir, &tmp)) {
