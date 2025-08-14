@@ -28,8 +28,8 @@ case "$1" in
     HEADER_INSTALL_PATH="${HEADER_INSTALL_PATH:-/usr/include}"
     LIBRARY_INSTALL_PATH="${LIBRARY_INSTALL_PATH:-/usr/lib64}"
     PKGCONFIG_INSTALL_PATH="${PKGCONFIG_INSTALL_PATH:-/usr/lib64/pkgconfig}"
-    cp -f ${ROOT_PATH}/sw.h ${HEADER_INSTALL_PATH}/sw.h
-    cp -f ${ROOT_PATH}/su.h ${HEADER_INSTALL_PATH}/su.h
+    cp -f ${ROOT_PATH}/swidgets.h ${HEADER_INSTALL_PATH}/swidgets.h
+    cp -f ${ROOT_PATH}/sutil.h ${HEADER_INSTALL_PATH}/sutil.h
     [ -e "${BUILD_PATH}/libsw.so" ] && cp -f ${BUILD_PATH}/libsw.so ${LIBRARY_INSTALL_PATH}/libsw.so
     [ -e "${BUILD_PATH}/libsw.a" ] && cp -f ${BUILD_PATH}/libsw.a ${LIBRARY_INSTALL_PATH}/libsw.a
     echo "
@@ -47,7 +47,7 @@ Cflags: -I${HEADER_INSTALL_PATH} -DSW_EXPORT=extern
     HEADER_INSTALL_PATH="${HEADER_INSTALL_PATH:-/usr/include}"
     LIBRARY_INSTALL_PATH="${LIBRARY_INSTALL_PATH:-/usr/lib64}"
     PKGCONFIG_INSTALL_PATH="${PKGCONFIG_INSTALL_PATH:-/usr/lib64/pkgconfig}"
-    rm -f ${HEADER_INSTALL_PATH}/sw.h ${HEADER_INSTALL_PATH}/su.h \
+    rm -f ${HEADER_INSTALL_PATH}/swidgets.h ${HEADER_INSTALL_PATH}/sutil.h \
       ${LIBRARY_INSTALL_PATH}/libsw.so ${LIBRARY_INSTALL_PATH}/libsw.a \
       ${PKGCONFIG_INSTALL_PATH}/sw.pc
     exit 0
@@ -70,8 +70,8 @@ RESVG_PATH="${RESVG_PATH:-${BUILD_PATH}/resvg}"
 [ ! -d "${BUILD_PATH}" ] && mkdir "${BUILD_PATH}"
 rm -f ${BUILD_PATH}/*.o
 
-ln -sf ${ROOT_PATH}/sw.h ${BUILD_PATH}/sw.h
-ln -sf ${ROOT_PATH}/su.h ${BUILD_PATH}/su.h
+ln -sf ${ROOT_PATH}/swidgets.h ${BUILD_PATH}/swidgets.h
+ln -sf ${ROOT_PATH}/sutil.h ${BUILD_PATH}/sutil.h
 ln -sf ${ROOT_PATH}/stb_sprintf.h ${BUILD_PATH}/stb_sprintf.h
 ln -sf ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/stb_image.h
 
@@ -112,12 +112,12 @@ case "$1" in
     echo $DEPS_FLAGS -I${BUILD_PATH} ${BUILD_PATH}/*.o
     ;;
   shared)
-    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/sw.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
     $CC $CFLAGS -shared $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
     echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -I${BUILD_PATH} -DSW_EXPORT=extern"
     ;;
   static)
-    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/sw.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
     $AR rcs ${BUILD_PATH}/libsw.a ${BUILD_PATH}/*.o
     echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -I${BUILD_PATH} -DSW_EXPORT=extern"
     ;;

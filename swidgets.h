@@ -71,7 +71,7 @@
 #if !defined(SU_WITH_DEBUG)
 #define SU_WITH_DEBUG SW_WITH_DEBUG
 #endif /* !defined(SU_WITH_DEBUG) */
-#include "su.h"
+#include "sutil.h"
 
 SU_STATIC_ASSERT(SW_WITH_WAYLAND); /* TODO */
 
@@ -786,7 +786,7 @@ typedef sw_context_t context_t;
 #if !defined(SU_IMPLEMENTATION)
 #define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
-#include "su.h"
+#include "sutil.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -1554,7 +1554,7 @@ static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *sc
 			SU_ASSERT(data->gif_frame_idx < gif->frames.len);
 			gif->frame_idx = data->gif_frame_idx;
 			frame = su_array__sw__image_gif_frame_t__get(&gif->frames, gif->frame_idx);
-			gif->frame_end = (data->gif_static ? INT64_MAX : (su_now_ms() + frame.delay));
+			gif->frame_end = (data->gif_static ? INT64_MAX : (su_now_ms(CLOCK_MONOTONIC) + frame.delay));
 			image = frame.image;
 		} else {
 			sw__image_data_t *image_data;
@@ -1809,7 +1809,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 					gif->frame_idx = block->in._.image.gif_frame_idx;
 				} else if (gif->frame_end == INT64_MAX) {
 					gif->frame_idx = block->in._.image.gif_frame_idx;
-					gif->frame_end = (su_now_ms() +
+					gif->frame_end = (su_now_ms(CLOCK_MONOTONIC) +
 						su_array__sw__image_gif_frame_t__get(&gif->frames, gif->frame_idx).delay);
 				}
 				priv->content_image = pixman_image_ref(
@@ -2207,7 +2207,7 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 	if (priv->content_image) {
 		sw__image_data_t *image_data = (sw__image_data_t *)pixman_image_get_destroy_data(priv->content_image);
 		if (image_data->type == SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF) {
-			int64_t now_msec = su_now_ms();
+			int64_t now_msec = su_now_ms(CLOCK_MONOTONIC);
 			sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)image_data->data;
 			if (now_msec >= gif->frame_end) {
 				sw__image_gif_frame_t frame;
@@ -3825,7 +3825,7 @@ SW_EXPORT void sw_set(sw_context_t *sw) {
 
 	sw__context = sw;
 
-	if (su_now_ms() >= sw->out.t) {
+	if (su_now_ms(CLOCK_MONOTONIC) >= sw->out.t) {
 		sw->out.t = -1;
 	}
 

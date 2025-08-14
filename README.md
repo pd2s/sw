@@ -1,6 +1,6 @@
-# sw - simple widgets
+## sw - simple widgets
 
-This project is currently in early alpha state.
+This project is currently in pre-alpha state.
 
 # Plans for near future
 * More examples: json, immediate mode, generic window
@@ -57,7 +57,7 @@ RESVG_PATH               # ${BUILD_PATH}/resvg   path to resvg dependency(requir
 ```
 
 To enable/disable specific feature, add `-D FEATURE=1|0` to `CFLAGS`.
-Full list of features with their default values is located at the top of sw.h
+Full list of features with their default values is located at the top of swidgets.h
 
 [wayland-client]: https://gitlab.freedesktop.org/wayland/wayland
 [pixman]: https://gitlab.freedesktop.org/pixman/pixman

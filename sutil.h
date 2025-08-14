@@ -61,7 +61,9 @@
 #if !defined(__cplusplus)
 #define SU_STATIC_ASSERT(x) __extension__ _Static_assert(x, "")
 #endif /* !defined(__cplusplus) */
+
 #define SU_STRLEN __builtin_strlen
+
 #else
 #define SU_ALIGNOF alignof
 #define SU_TYPEOF typeof
@@ -536,8 +538,8 @@ static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t
 static su_bool32_t su_fd_set_nonblock(int);
 static su_bool32_t su_fd_set_cloexec(int);
 
-static int64_t su_timespec_to_ms(struct timespec timespec);
-static int64_t su_now_ms(void);
+static int64_t su_timespec_to_ms(struct timespec);
+static int64_t su_now_ms(clockid_t);
 
 static su_bool32_t su_locale_is_utf8(void);
 static void su_nop(void *notused, ...);
@@ -1924,7 +1926,7 @@ SU_HASH_TABLE_DEFINE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_stri
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
 		su_allocator_t *alloc, su_hash_table__su_file_cache_t__t *cache) {
 	su_file_cache_t *e = NULL;
-	char buf[PATH_MAX];
+	static char buf[PATH_MAX];
 	struct stat sb;
 
 	SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
@@ -2002,9 +2004,9 @@ static int64_t su_timespec_to_ms(struct timespec timespec) {
 	return (timespec.tv_sec * 1000) + (timespec.tv_nsec / 1000000);
 }
 
-static int64_t su_now_ms(void) {
+static int64_t su_now_ms(clockid_t clock_id) {
 	struct timespec ts;
-	int ret = clock_gettime(CLOCK_MONOTONIC, &ts);
+	int ret = clock_gettime(clock_id, &ts);
 	SU_NOTUSED(ret);
 	SU_ASSERT(ret == 0);
 	return su_timespec_to_ms(ts);

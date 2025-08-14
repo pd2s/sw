@@ -23,7 +23,7 @@
 #if !defined(SU_STRIP_PREFIXES)
 #define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
-#include "su.h"
+#include "sutil.h"
 
 /* TODO: nonblock read/write */
 

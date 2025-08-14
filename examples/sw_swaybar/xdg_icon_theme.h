@@ -28,7 +28,7 @@
 #if !defined(SU_STRIP_PREFIXES)
 #define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
-#include "su.h"
+#include "sutil.h"
 
 STATIC_ASSERT(WITH_SVG || WITH_PNG);
 
@@ -266,7 +266,7 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 
 static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 		allocator_t *alloc, string_t path) {
-	char abspath_buf[PATH_MAX];
+	static char abspath_buf[PATH_MAX];
 	DIR *dir;
 	int dir_fd;
 	struct dirent *e;
@@ -355,7 +355,7 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t *alloc) {
 	char *data_home = getenv("XDG_DATA_HOME");
 	char *data_dirs = getenv("XDG_DATA_DIRS");
-	char buf[PATH_MAX];
+	static char buf[PATH_MAX];
 
 	memset(cache, 0, sizeof(*cache));
 

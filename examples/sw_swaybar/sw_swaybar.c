@@ -29,7 +29,7 @@
 #define SU_LOG_PREFIX "sw_swaybar: "
 #define SU_IMPLEMENTATION
 #define SU_STRIP_PREFIXES
-#include "../../su.h"
+#include "../../sutil.h"
 
 #if !defined(SW_WITH_WAYLAND)
 #define SW_WITH_WAYLAND 1
@@ -70,7 +70,7 @@
 
 #define SW_WITH_DEBUG DEBUG
 #define SW_IMPLEMENTATION
-#include "../../sw.h"
+#include "../../swidgets.h"
 
 STATIC_ASSERT(SW_WITH_WAYLAND && SW_WITH_TEXT);
 
@@ -231,6 +231,8 @@ typedef struct status {
 	status_protocol_t protocol;
 
 	/* i3bar */
+	bool32_t block_clicked;
+	PAD32;
 	bool32_t click_events;
 	bool32_t float_event_coords;
 	su__json_tokener_state_t tokener_state;
@@ -333,7 +335,7 @@ static void *gp_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
 	ASSERT(size > 0);
 	ASSERT((alignment > 0) && ((alignment == 1) || ((alignment & (alignment - 1)) == 0)));
 
-	alignment = SU_MAX(alignment, sizeof(void *));
+	alignment = MAX(alignment, sizeof(void *));
 
 	s = posix_memalign(&ptr, alignment, (size + alignment - 1) & ~(alignment - 1));
 	if ( UNLIKELY(s != 0)) {
@@ -1600,6 +1602,11 @@ static void status_i3bar_block_pointer_button(layout_block_t *block,
 	}
 
 	json_writer_init(&writer, &scratch_alloc, 1024);
+	if (state.status.block_clicked) {
+		su__json_buffer_add_string(&writer.buf, &scratch_alloc, string(","));
+	} else {
+		state.status.block_clicked = TRUE;
+	}
 
 	rx = x - block->_.out.dim.x;
 	ry = y - block->_.out.dim.y;
@@ -1652,7 +1659,7 @@ static void status_i3bar_block_pointer_button(layout_block_t *block,
 
 	json_writer_object_end(&writer, &scratch_alloc);
 
-	su__json_buffer_add_string(&writer.buf, &scratch_alloc, string(",\n"));
+	su__json_buffer_add_string(&writer.buf, &scratch_alloc, string("\n"));
 
 	if (write(state.status.write_fd, writer.buf.data, writer.buf.idx) == -1) {
 		status_set_error(string("[failed to write click event]"));
@@ -3145,14 +3152,12 @@ static void setup(int argc, char *argv[]) {
 	static struct sigaction sigact;
 
 	int sway_ipc_fd;
-	char sway_ipc_socket_path[PATH_MAX];
+	static char sway_ipc_socket_path[PATH_MAX];
 
 	setlocale(LC_ALL, "");
 	if (!locale_is_utf8()) {
 		su_abort(1, "failed to set UTF-8 locale");
 	}
-	
-	memset(&sway_ipc_socket_path, 0, sizeof(sway_ipc_socket_path));
 
 	ARGPARSE_BEGIN {
 		switch (ARGPARSE_KEY) {
@@ -3259,11 +3264,11 @@ static void run(void) {
 			if (ret < 0) {
 				su_abort(-ret, "sni_server_get_poll_info: %s", strerror(-ret));
 			}
-			tray_timeout = (absolute_timeout_ms > 0) ? (int)(absolute_timeout_ms - now_ms()) : (int)absolute_timeout_ms;
+			tray_timeout = (absolute_timeout_ms > 0) ? (int)(absolute_timeout_ms - now_ms(CLOCK_MONOTONIC)) : (int)absolute_timeout_ms;
 		}
 #endif /* WITH_TRAY */
 
-		sw_timeout = (state.sw.out.t > 0) ? (int)(state.sw.out.t - now_ms()) : (int)state.sw.out.t;
+		sw_timeout = (state.sw.out.t > 0) ? (int)(state.sw.out.t - now_ms(CLOCK_MONOTONIC)) : (int)state.sw.out.t;
 
 		timeout = ((sw_timeout > 0) && (tray_timeout > 0))
 			? MIN(sw_timeout, tray_timeout) : MAX(sw_timeout, tray_timeout);
@@ -3372,10 +3377,10 @@ static void cleanup(void) {
 	sw_fini(&state.sw);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
 	setup(argc, argv);
 	run();
 	cleanup();
 
-	return EXIT_SUCCESS;
+	return 0;
 }

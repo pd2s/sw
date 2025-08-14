@@ -19,7 +19,7 @@
 #if !defined(SU_STRIP_PREFIXES)
 #define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
-#include "su.h"
+#include "sutil.h"
 
 #if HAS_INCLUDE(<basu/sd-bus.h>)
 #include <basu/sd-bus.h>
@@ -1476,7 +1476,7 @@ static int sni_server_init(void) {
 
     su_array__sni_item_t_ptr__init(&sni_server.out.host_items, alloc, 16);
 
-	return 1;
+	return sni_server_process();
 }
 
 static int sni_server_get_poll_info(struct pollfd *pollfd_out, int64_t *absolute_timeout_ms) {

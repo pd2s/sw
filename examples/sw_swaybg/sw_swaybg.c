@@ -19,7 +19,7 @@
 #define SU_LOG_PREFIX "sw_swaybg: "
 #define SU_IMPLEMENTATION
 #define SU_STRIP_PREFIXES
-#include "../../su.h"
+#include "../../sutil.h"
 
 #if !defined(SW_WITH_WAYLAND)
 #define SW_WITH_WAYLAND 1
@@ -62,7 +62,7 @@
 #define SW_WITH_DEBUG DEBUG
 #endif /* defined(SW_WITH_DEBUG) */
 #define SW_IMPLEMENTATION
-#include "../../sw.h"
+#include "../../swidgets.h"
 
 STATIC_ASSERT(SW_WITH_WAYLAND);
 
@@ -105,7 +105,7 @@ static void *gp_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
 	ASSERT(size > 0);
 	ASSERT((alignment > 0) && ((alignment == 1) || ((alignment & (alignment - 1)) == 0)));
 
-	alignment = SU_MAX(alignment, sizeof(void *));
+	alignment = MAX(alignment, sizeof(void *));
 
 	s = posix_memalign(&ptr, alignment, (size + alignment - 1) & ~(alignment - 1));
 	if ( UNLIKELY(s != 0)) {
@@ -345,11 +345,11 @@ static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_con
 		config_t *config = su_array__config_t__get_ptr(&state.configs, i);
 		if (string_equal(config->output, string("*")) || string_equal(config->output, output->out.name)) {
 			configure_output(output, config);
-			break;
+			return output;
 		}
 	}
 
-    return output;
+    return NULL;
 }
 
 static void handle_signal(int sig) {
