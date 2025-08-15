@@ -1,40 +1,22 @@
 #if !defined(SU_HEADER)
 #define SU_HEADER
 
-/* su - simple utils */
+#if !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE) && !(defined(_XOPEN_SOURCE) && (_XOPEN_SOURCE >= 700))
+#error "_GNU_SOURCE or _DEFAULT_SOURCE or _XOPEN_SOURCE >= 700 must be defined"
+#endif
 
 #if !defined(SU_WITH_SIMD)
 #define SU_WITH_SIMD 1
 #endif /* !defined(SU_WITH_SIMD) */
 #if !defined(SU_WITH_DEBUG)
-#define SU_WITH_DEBUG 0
+#define SU_WITH_DEBUG 1
 #endif /* !defined(SU_WITH_DEBUG) */
 
-/* TODO: remove */
-#define SU_IMPLEMENTATION
-/*#define SU_STRIP_PREFIXES */
-#if defined(_XOPEN_SOURCE)
-#define SU__USER_XOPEN_SOURCE _XOPEN_SOURCE
-#undef _XOPEN_SOURCE
-#endif /* defined(_XOPEN_SOURCE) */
-#define _XOPEN_SOURCE 700
-#include <stdlib.h>
-#include <string.h>
 #include <time.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <uchar.h>
 
-#include <stddef.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdarg.h>
-#include <limits.h>
-
-#if SU_WITH_SIMD && defined(__x86_64__)
-#include <immintrin.h>
-#endif /* SU_WITH_SIMD && defined(__x86_64__) */
 
 #define SU_PRAGMA(x) _Pragma(#x)
 
@@ -46,7 +28,6 @@
 #define SU_IGNORE_WARNINGS_END SU_PRAGMA(GCC diagnostic pop)
 
 #if defined(__GNUC__)
-/* TODO: remove */
 #define inline __inline
 #define restrict __restrict
 
@@ -744,15 +725,24 @@ typedef su_json_ast_t json_ast_t;
 }
 #endif /* defined(__cplusplus) */
 
-#undef _XOPEN_SOURCE
-#if defined(SU__USER_XOPEN_SOURCE)
-#define _XOPEN_SOURCE SU__USER_XOPEN_SOURCE
-#endif /* defined(SU__USER_XOPEN_SOURCE) */
-
 #endif /* !defined(SU_HEADER) */
 
 #if defined(SU_IMPLEMENTATION) && !defined(SU__REIMPLEMENTATION_GUARD)
 #define SU__REIMPLEMENTATION_GUARD
+
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <uchar.h>
+
+#include <limits.h>
+
+#if SU_WITH_SIMD && defined(__x86_64__)
+#include <immintrin.h>
+#endif /* SU_WITH_SIMD && defined(__x86_64__) */
 
 #define STB_SPRINTF_MIN 128
 #define STB_SPRINTF_STATIC

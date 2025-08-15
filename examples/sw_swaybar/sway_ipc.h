@@ -1,10 +1,6 @@
 #if !defined(SWAY_IPC_H)
 #define SWAY_IPC_H
 
-#if !defined(_DEFAULT_SOURCE)
-#define _DEFAULT_SOURCE
-#endif /* !defined(_DEFAULT_SOURCE) */
-
 #include <stdlib.h>
 #include <sys/types.h>
 #include <string.h>

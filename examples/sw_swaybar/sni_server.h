@@ -1,8 +1,6 @@
 #if !defined(SNI_SERVER_H)
 #define SNI_SERVER_H
 
-/* TODO: #define _DEFAULT_SOURCE */
-
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>

@@ -1,24 +1,8 @@
 #define _DEFAULT_SOURCE
-#include <stdlib.h>
-#include <string.h>
-#include <signal.h>
-#include <errno.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <poll.h>
-#include <sys/ioctl.h>
-#include <time.h>
-#include <locale.h>
-#include <linux/input-event-codes.h>
-
-#include <stddef.h>
-#include <stdint.h>
-#include <inttypes.h>
 
 #if !defined(DEBUG)
-#define DEBUG 0
+#define DEBUG 1
 #endif
-
 #if !defined(WITH_TRAY)
 #define WITH_TRAY 1
 #endif /* !defined(WITH_TRAY) */
@@ -31,48 +15,33 @@
 #define SU_STRIP_PREFIXES
 #include "../../sutil.h"
 
-#if !defined(SW_WITH_WAYLAND)
-#define SW_WITH_WAYLAND 1
-#endif /* !defined(SW_WITH_WAYLAND) */
-#if !defined(SW_WITH_TEXT)
+#define SW_WITH_MEMORY_BACKEND 0
+#define SW_WITH_WAYLAND_BACKEND 1
 #define SW_WITH_TEXT 1
-#endif /* !defined(SW_WITH_TEXT) */
 #if !defined(SW_WITH_SVG)
 #define SW_WITH_SVG 1
 #endif /* !defined(SW_WITH_SVG) */
 #if !defined(SW_WITH_PNG)
 #define SW_WITH_PNG 1
 #endif /* !defined(SW_WITH_PNG) */
-#if !defined(SW_WITH_JPG)
 #define SW_WITH_JPG 0
-#endif /* !defined(SW_WITH_JPG) */
-#if !defined(SW_WITH_TGA)
 #define SW_WITH_TGA 0
-#endif /* !defined(SW_WITH_TGA) */
-#if !defined(SW_WITH_BMP)
 #define SW_WITH_BMP 0
-#endif /* !defined(SW_WITH_BMP) */
-#if !defined(SW_WITH_PSD)
 #define SW_WITH_PSD 0
-#endif /* !defined(SW_WITH_PSD) */
-#if !defined(SW_WITH_GIF)
 #define SW_WITH_GIF 0
-#endif /* !defined(SW_WITH_GIF) */
-#if !defined(SW_WITH_HDR)
 #define SW_WITH_HDR 0
-#endif /* !defined(SW_WITH_HDR) */
-#if !defined(SW_WITH_PIC)
 #define SW_WITH_PIC 0
-#endif /* !defined(SW_WITH_PIC) */
-#if !defined(SW_WITH_PNM)
 #define SW_WITH_PNM 0
-#endif /* !defined(SW_WITH_PNM) */
 
 #define SW_WITH_DEBUG DEBUG
 #define SW_IMPLEMENTATION
 #include "../../swidgets.h"
 
-STATIC_ASSERT(SW_WITH_WAYLAND && SW_WITH_TEXT);
+#include <linux/input-event-codes.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <sys/wait.h>
+#include <locale.h>
 
 #include "sway_ipc.h"
 
@@ -2018,6 +1987,7 @@ static bool32_t status_i3bar_process(void) {
 			} else if (errno == EINTR) {
 				continue;
 			} else {
+				DEBUG_LOG("status error 1");
 				status_set_error(string("[error reading from status command]"));
 				return TRUE;
 			}
@@ -2090,6 +2060,7 @@ static bool32_t status_process(void) {
 		errno = 0;
 
 		if (ioctl(status->read_fd, FIONREAD, &available_bytes) == -1) {
+			DEBUG_LOG("status error 2");
 			status_set_error(string("[error reading from status command]"));
 			return TRUE;
 		}
@@ -2102,6 +2073,7 @@ static bool32_t status_process(void) {
 
 		read_bytes = read(status->read_fd, status->buf.data, (size_t)available_bytes);
 		if (read_bytes != available_bytes) {
+			DEBUG_LOG("status error 3");
 			status_set_error(string("[error reading from status command]"));
 			return TRUE;
 		}
@@ -2191,6 +2163,7 @@ protocol_text:
 				} else if (errno == EINTR) {
 					continue;
 				} else {
+					DEBUG_LOG("status error 4");
 					status_set_error(string("[error reading from status command]"));
 					return TRUE;
 				}
@@ -3193,7 +3166,7 @@ static void setup(int argc, char *argv[]) {
 	} ARGPARSE_END
 
 	if (state.bar_id.len == 0) {
-		su_abort(1, "No bar_id passed. Provide --bar_id or use swaybar_command in sway config file");
+		su_abort(1, "No bar id passed. Provide -b or use swaybar_command in sway config file");
 	}
 
 	arena_init(&state.scratch_arena, &gp_alloc, 16384);

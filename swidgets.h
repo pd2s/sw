@@ -2,11 +2,14 @@
 #define SW_HEADER
 
 #if !defined(SW_WITH_DEBUG)
-#define SW_WITH_DEBUG 0
+#define SW_WITH_DEBUG 1
 #endif /* !defined(SW_WITH_DEBUG) */
-#if !defined(SW_WITH_WAYLAND)
-#define SW_WITH_WAYLAND 1
-#endif /* !defined(SW_WITH_WAYLAND) */
+#if !defined(SW_WITH_MEMORY_BACKEND)
+#define SW_WITH_MEMORY_BACKEND 1
+#endif /* !defined(SW_WITH_MEMORY_BACKEND) */
+#if !defined(SW_WITH_WAYLAND_BACKEND)
+#define SW_WITH_WAYLAND_BACKEND 1
+#endif /* !defined(SW_WITH_WAYLAND_BACKEND) */
 #if !defined(SW_WITH_TEXT)
 #define SW_WITH_TEXT 1
 #endif /* !defined(SW_WITH_TEXT) */
@@ -41,39 +44,16 @@
 #define SW_WITH_PNM 1
 #endif /* !defined(SW_WITH_PNM) */
 
-#if !defined(SW_EXPORT)
-#define SW_EXPORT static
+#if !defined(SW_FUNC_DEF)
+#define SW_FUNC_DEF static
 #endif
-
-/* TODO: remove */
-#define SW_IMPLEMENTATION
-/*#define SW_STRIP_PREFIXES*/
-#if defined(_XOPEN_SOURCE)
-#define SW__USER_XOPEN_SOURCE _XOPEN_SOURCE
-#undef _XOPEN_SOURCE
-#endif /* defined(_XOPEN_SOURCE) */
-#define _XOPEN_SOURCE 700
-#include <errno.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <time.h>
-#include <uchar.h>
-#include <poll.h>
-
-#include <stdint.h>
-#include <stddef.h>
-
-#define SW__PRIVATE_FIELDS(size) size_t sw__private[size / sizeof(size_t)]
 
 #if !defined(SU_WITH_DEBUG)
 #define SU_WITH_DEBUG SW_WITH_DEBUG
 #endif /* !defined(SU_WITH_DEBUG) */
 #include "sutil.h"
 
-SU_STATIC_ASSERT(SW_WITH_WAYLAND); /* TODO */
+SU_STATIC_ASSERT(SW_WITH_WAYLAND_BACKEND || SW_WITH_MEMORY_BACKEND);
 
 #if defined(__cplusplus)
 extern "C" {
@@ -81,13 +61,14 @@ extern "C" {
 
 typedef struct sw_context sw_context_t;
 
-SW_EXPORT su_bool32_t sw_init(sw_context_t *);
-SW_EXPORT void sw_fini(sw_context_t *);
-SW_EXPORT void sw_set(sw_context_t *);
+SW_FUNC_DEF su_bool32_t sw_init(sw_context_t *);
+SW_FUNC_DEF void sw_fini(sw_context_t *);
+SW_FUNC_DEF void sw_set(sw_context_t *);
 
-SW_EXPORT su_bool32_t sw_flush(sw_context_t *);
-SW_EXPORT su_bool32_t sw_process(sw_context_t *);
+SW_FUNC_DEF su_bool32_t sw_flush(sw_context_t *);
+SW_FUNC_DEF su_bool32_t sw_process(sw_context_t *);
 
+/* TODO: strings */
 typedef enum sw_status {
 	SW_STATUS_SUCCESS = 0,
 	SW_STATUS_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER = 1,
@@ -100,7 +81,13 @@ typedef enum sw_status {
 #endif /* SW_WITH_TEXT */
 } sw_status_t;
 
-#if SW_WITH_WAYLAND
+typedef struct sw_layout_block sw_layout_block_t;
+
+#define SW__PRIVATE_FIELDS(size) size_t sw__private[size / sizeof(size_t)]
+
+#if SW_WITH_WAYLAND_BACKEND
+
+#include <poll.h>
 
 typedef enum sw_wayland_pointer_button_state {
 	SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED = 0,
@@ -301,8 +288,6 @@ typedef enum sw_wayland_surface_type {
 	SW_WAYLAND_SURFACE_TYPE_POPUP
 } sw_wayland_surface_type_t;
 
-typedef struct sw_layout_block sw_layout_block_t;
-
 typedef void (*sw_wayland_surface_destroy_func_t)(sw_wayland_surface_t *, sw_context_t *);
 typedef void (*sw_wayland_surface_error_func_t)(sw_wayland_surface_t *, sw_context_t *, sw_status_t status);
 
@@ -360,7 +345,7 @@ struct sw_wayland_surface {
 	SU_LLIST_FIELDS(sw_wayland_surface_t);
 };
 
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 
 typedef struct sw_point {
 	/* ? TODO: % */
@@ -621,37 +606,62 @@ struct sw_layout_block {
 };
 
 typedef enum sw_backend_type {
-#if SW_WITH_WAYLAND
-	SW_BACKEND_TYPE_WAYLAND
-#endif /* SW_WITH_WAYLAND */
+	SW_BACKEND_TYPE_INVALID
+#if SW_WITH_MEMORY_BACKEND
+	,SW_BACKEND_TYPE_MEMORY
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
+	,SW_BACKEND_TYPE_WAYLAND
+#endif /* SW_WITH_WAYLAND_BACKEND */
 } sw_backend_type_t;
 
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+typedef struct sw_backend_memory_in {
+	sw_layout_block_t *root;
+	uint32_t width, height;
+	/* TODO: more formats */
+	sw_color_argb32_t *memory; /* width * height * 4 */
+} sw_backend_memory_in_t;
+#endif /* SW_WITH_MEMORY_BACKEND */
+
+#if SW_WITH_WAYLAND_BACKEND
 typedef struct sw_backend_wayland_in {
 	sw_wayland_output_create_func_t output_create; /* may be NULL */
 	sw_wayland_seat_create_func_t seat_create; /* may be NULL */
 	su_llist__sw_wayland_surface_t__t layers;
 } sw_backend_wayland_in_t;
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 
 typedef union sw_backend_in {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	sw_backend_memory_in_t memory;
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	sw_backend_wayland_in_t wayland;
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 } sw_backend_in_t;
 
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+typedef struct sw_backend_memory_out {
+	size_t reserved;
+} sw_backend_memory_out_t;
+#endif /* SW_WITH_MEMORY_BACKEND */
+
+#if SW_WITH_WAYLAND_BACKEND
 typedef struct sw_backend_wayland_out {
-	struct pollfd pfd;
+	struct pollfd pfd; /* TODO: generic structure to support select, epoll, kqueue etc */
 	su_llist__sw_wayland_output_t__t outputs;
 	su_llist__sw_wayland_seat_t__t seats;
 } sw_backend_wayland_out_t;
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 
 typedef union sw_backend_out {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	sw_backend_memory_out_t memory;
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	sw_backend_wayland_out_t wayland;
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 } sw_backend_out_t;
 
 typedef struct sw_context_in {
@@ -677,7 +687,17 @@ struct sw_context {
 
 typedef sw_status_t status_t;
 
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+
+typedef sw_backend_memory_in_t backend_memory_in_t;
+typedef sw_backend_memory_out_t backend_memory_out_t;
+
+#endif /* SW_WITH_MEMORY_BACKEND */
+
+#if SW_WITH_WAYLAND_BACKEND
+
+typedef sw_backend_wayland_in_t backend_wayland_in_t;
+typedef sw_backend_wayland_out_t backend_wayland_out_t;
 
 typedef sw_wayland_output_in_t wayland_output_in_t;
 typedef sw_wayland_output_out_t wayland_output_out_t;
@@ -714,10 +734,7 @@ typedef sw_wayland_surface_t wayland_surface_t;
 typedef sw_wayland_surface_destroy_func_t wayland_surface_destroy_func_t;
 typedef sw_wayland_surface_error_func_t wayland_surface_error_func_t;
 
-typedef sw_backend_wayland_in_t backend_wayland_in_t;
-typedef sw_backend_wayland_out_t backend_wayland_out_t;
-
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 
 typedef sw_pixmap_t pixmap_t;
 typedef sw_point_t point_t;
@@ -771,11 +788,6 @@ typedef sw_context_t context_t;
 #if defined(__cplusplus)
 }
 #endif /* defined(__cplusplus) */
-
-#undef _XOPEN_SOURCE
-#if defined(SW__USER_XOPEN_SOURCE)
-#define _XOPEN_SOURCE SW__USER_XOPEN_SOURCE
-#endif /* defined(SW__USER_XOPEN_SOURCE) */
 
 #endif /* SW_HEADER */
 
@@ -896,7 +908,9 @@ SU_IGNORE_WARNINGS_END
 
 #endif /* SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM */
 
-#if SW_WITH_WAYLAND
+#if SW_WITH_WAYLAND_BACKEND
+
+#include <sys/mman.h>
 
 SU_IGNORE_WARNINGS_START
 
@@ -982,7 +996,7 @@ SU_LLIST_DEFINE(sw_wayland_seat_t)
 SU_ARRAY_DEFINE(sw_wayland_region_t)
 SU_LLIST_DEFINE(sw_wayland_surface_t)
 
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 
 typedef struct sw__layout_block {
 	pixman_image_t *content_image;
@@ -1052,6 +1066,13 @@ typedef struct sw__text_run_cache {
 SU_HASH_TABLE_DECLARE_DEFINE(sw__text_run_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, 16)
 #endif /* SW_WITH_TEXT */
 
+#if SW_WITH_MEMORY_BACKEND
+typedef struct sw__context_memory {
+	pixman_image_t *image;
+} sw__context_memory_t;
+#endif /* SW_WITH_MEMORY_BACKEND */
+
+#if SW_WITH_WAYLAND_BACKEND
 typedef struct sw__context_wayland {
 	struct wl_display *display;
 	struct wl_registry *registry;
@@ -1061,11 +1082,19 @@ typedef struct sw__context_wayland {
 	struct xdg_wm_base *wm_base;
 	struct wp_cursor_shape_manager_v1 *cursor_shape_manager;
 } sw__context_wayland_t;
+#endif /* SW_WITH_WAYLAND_BACKEND */
+
+typedef union sw__context_ {
+#if SW_WITH_MEMORY_BACKEND
+	sw__context_memory_t memory;
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
+	sw__context_wayland_t wayland;
+#endif /* SW_WITH_WAYLAND_BACKEND */
+} sw__context__t;
 
 typedef struct sw__context {
-#if SW_WITH_WAYLAND
-	sw__context_wayland_t wayland;
-#endif /* SW_WITH_WAYLAND */
+	sw__context__t _;
 
 	/* TODO: arena for content: */
 	su_hash_table__sw__image_cache_t__t image_cache;
@@ -1085,14 +1114,18 @@ static SU_THREAD_LOCAL sw_context_t *sw__context;
 #endif /* defined(__cplusplus) */
 
 SU_STATIC_ASSERT(sizeof(sw__context->sw__private) >= sizeof(sw__context_t));
-#if SW_WITH_WAYLAND
+
+#if SW_WITH_WAYLAND_BACKEND
 SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.outputs.head->sw__private) >= sizeof(sw__wayland_output_t));
 SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->sw__private) >= sizeof(sw__wayland_seat_t));
 SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->out.pointer->sw__private) >= sizeof(sw__wayland_pointer_t));
 SU_STATIC_ASSERT(sizeof(sw__context->in.backend.wayland.layers.head->sw__private) >= sizeof(sw__wayland_surface_t));
-/* TODO: assert outside SW_WITH_WAYLAND */
 SU_STATIC_ASSERT(sizeof(sw__context->in.backend.wayland.layers.head->in.root->sw__private) >= sizeof(sw__layout_block_t));
-#endif /* sw__layout_block_t */
+#endif /* SW_WITH_WAYLAND_BACKEND */
+
+#if SW_WITH_MEMORY_BACKEND
+SU_STATIC_ASSERT(sizeof(sw__context->in.backend.memory.root->sw__private) >= sizeof(sw__layout_block_t));
+#endif /* SW_WITH_MEMORY_BACKEND */
 
 #if SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM
 static void *sw__malloc_stbi(size_t size) {
@@ -2411,7 +2444,7 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 	}
 }
 
-#if SW_WITH_WAYLAND
+#if SW_WITH_WAYLAND_BACKEND
 static void sw__wayland_surface_buffer_fini(sw__wayland_surface_buffer_t *buffer) {
 	if (buffer->image) {
 		pixman_image_unref(buffer->image);
@@ -2673,7 +2706,7 @@ generate_shm_name:
 	buffer->image = pixman_image_create_bits_no_clear(PIXMAN_a8r8g8b8, width, height,
 			buffer->pixels, stride);
 
-	wl_shm_pool = wl_shm_create_pool(sw_private->wayland.shm, shm_fd, (int32_t)buffer->size);
+	wl_shm_pool = wl_shm_create_pool(sw_private->_.wayland.shm, shm_fd, (int32_t)buffer->size);
 	buffer->wl_buffer = wl_shm_pool_create_buffer(wl_shm_pool, 0, width,
 			height, stride, WL_SHM_FORMAT_ARGB8888);
 	wl_buffer_add_listener(buffer->wl_buffer, &surface_buffer_listener, surface);
@@ -2849,10 +2882,10 @@ static void sw__wayland_surface_layer_init(sw_wayland_surface_t *surface, sw_way
 	layer->margins[2] = INT32_MIN;
 	layer->margins[3] = INT32_MIN;
 
-	priv->wl_surface = wl_compositor_create_surface(sw_private->wayland.compositor);
+	priv->wl_surface = wl_compositor_create_surface(sw_private->_.wayland.compositor);
 	wl_surface_add_listener(priv->wl_surface, &wl_surface_listener, surface);
 	layer->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-		sw_private->wayland.layer_shell, priv->wl_surface,
+		sw_private->_.wayland.layer_shell, priv->wl_surface,
 		output_private->wl_output, l, "sw");
 	zwlr_layer_surface_v1_add_listener( layer->layer_surface, &layer_surface_listener, surface);
 }
@@ -2881,14 +2914,14 @@ static void sw__wayland_surface_popup_init_stage1(sw_wayland_surface_t *surface,
 	popup->gravity = (sw_wayland_surface_popup_gravity_t)UINT32_MAX;
 	popup->constraint_adjustment = UINT32_MAX;
 
-	priv->wl_surface = wl_compositor_create_surface(sw_private->wayland.compositor);
+	priv->wl_surface = wl_compositor_create_surface(sw_private->_.wayland.compositor);
 	wl_surface_add_listener(priv->wl_surface, &wl_surface_listener, surface);
 
 	popup->xdg_surface = xdg_wm_base_get_xdg_surface(
-		sw_private->wayland.wm_base, priv->wl_surface);
+		sw_private->_.wayland.wm_base, priv->wl_surface);
 	xdg_surface_add_listener(popup->xdg_surface, &xdg_surface_listener, surface);
 
-	popup->xdg_positioner = xdg_wm_base_create_positioner(sw_private->wayland.wm_base);
+	popup->xdg_positioner = xdg_wm_base_create_positioner(sw_private->_.wayland.wm_base);
 }
 
 static void sw__wayland_surface_popup_handle_configure(void *data, struct xdg_popup *xdg_popup,
@@ -3057,7 +3090,7 @@ static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_waylan
 		size_t i;
 		struct wl_region *input_region = NULL;
 		if (surface->in.input_regions.len > 0) {
-			input_region = wl_compositor_create_region(sw_private->wayland.compositor);
+			input_region = wl_compositor_create_region(sw_private->_.wayland.compositor);
 			for ( i = 0; i < surface->in.input_regions.len; ++i) {
 				sw_wayland_region_t region = su_array__sw_wayland_region_t__get(&surface->in.input_regions, i);
 				wl_region_add(input_region, region.x, region.y, region.width, region.height);
@@ -3257,7 +3290,7 @@ static sw_wayland_output_t *sw__wayland_output_create(uint32_t wl_name) {
 	memset(output, 0, sizeof(*output));
 	output->in.destroy = sw__wayland_output_handle_destroy;
 	output->out.scale = 1;
-	priv->wl_output = (SU_TYPEOF(priv->wl_output))wl_registry_bind(sw_private->wayland.registry,
+	priv->wl_output = (SU_TYPEOF(priv->wl_output))wl_registry_bind(sw_private->_.wayland.registry,
 		wl_name, &wl_output_interface, 4);
 	priv->wl_name = wl_name;
 	wl_output_add_listener(priv->wl_output, &output_listener, output);
@@ -3394,9 +3427,9 @@ static sw_wayland_pointer_t *sw__wayland_pointer_create(sw_wayland_seat_t *seat)
 
 		pointer->out.seat = seat;
 		priv->wl_pointer = wl_seat_get_pointer(seat_private->wl_seat);
-		if (sw_private->wayland.cursor_shape_manager) {
+		if (sw_private->_.wayland.cursor_shape_manager) {
 			priv->cursor_shape_device = wp_cursor_shape_manager_v1_get_pointer(
-				sw_private->wayland.cursor_shape_manager, priv->wl_pointer);
+				sw_private->_.wayland.cursor_shape_manager, priv->wl_pointer);
 		} else {
 			priv->cursor_shape_device = NULL;
 		}
@@ -3497,7 +3530,7 @@ static sw_wayland_seat_t *sw__wayland_seat_create(uint32_t wl_name) {
 	memset(seat, 0, sizeof(*seat));
 	seat->in.destroy = sw__wayland_seat_handle_destroy;
 	priv->wl_seat = (SU_TYPEOF(priv->wl_seat))wl_registry_bind(
-		sw_private->wayland.registry, wl_name, &wl_seat_interface, 2);
+		sw_private->_.wayland.registry, wl_name, &wl_seat_interface, 2);
 	priv->wl_name = wl_name;
 	wl_seat_add_listener(priv->wl_seat, &seat_listener, seat);
 
@@ -3507,13 +3540,13 @@ static sw_wayland_seat_t *sw__wayland_seat_create(uint32_t wl_name) {
 static void sw__wayland_wm_base_handle_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial) {
 	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
 	SU_NOTUSED(data); SU_NOTUSED(xdg_wm_base);
-	xdg_wm_base_pong(sw_private->wayland.wm_base, serial);
+	xdg_wm_base_pong(sw_private->_.wayland.wm_base, serial);
 }
 
 static void sw__wayland_registry_handle_global(void *data, struct wl_registry *wl_registry,
 		uint32_t wl_name, const char *interface, uint32_t version) {
 	sw__context_t *sw_private = (sw__context_t *)&sw__context->sw__private;
-	sw__context_wayland_t *wayland = &sw_private->wayland;
+	sw__context_wayland_t *wayland = &sw_private->_.wayland;
 
 	SU_NOTUSED(data); SU_NOTUSED(wl_registry); SU_NOTUSED(version);
 	
@@ -3568,13 +3601,14 @@ static void sw__wayland_registry_handle_global_remove(void *data, struct wl_regi
 	}
 }
 
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
 
-SW_EXPORT su_bool32_t sw_init(sw_context_t *sw) {
+SW_FUNC_DEF su_bool32_t sw_init(sw_context_t *sw) {
 	su_bool32_t ret = SU_TRUE;
 	sw__context_t *priv;
 	sw_context_t *old_context = sw__context;
 
+	SU_ASSERT(sw->in.backend_type != SW_BACKEND_TYPE_INVALID);
 	SU_ASSERT(su_locale_is_utf8());
 	SU_ASSERT(sw->in.gp_alloc != NULL);
 	SU_ASSERT(sw->in.scratch_alloc != NULL);
@@ -3587,9 +3621,23 @@ SW_EXPORT su_bool32_t sw_init(sw_context_t *sw) {
 	sw->out.t = -1;
 
 	switch (sw->in.backend_type) {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	case SW_BACKEND_TYPE_MEMORY: {
+		sw__context_memory_t *memory = &priv->_.memory;
+
+		SU_ASSERT(sw->in.backend.memory.root != NULL);
+		SU_ASSERT((sw->in.backend.memory.width > 0) && (sw->in.backend.memory.height > 0));
+		SU_ASSERT(sw->in.backend.memory.memory != NULL);
+
+		memory->image = pixman_image_create_bits_no_clear(PIXMAN_a8r8g8b8,
+			(int)sw->in.backend.memory.width, (int)sw->in.backend.memory.height,
+			(uint32_t *)sw->in.backend.memory.memory, (int)(sw->in.backend.memory.width * 4));
+		break;
+	}
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	case SW_BACKEND_TYPE_WAYLAND: {
-		sw__context_wayland_t *wayland = &priv->wayland;
+		sw__context_wayland_t *wayland = &priv->_.wayland;
 
 		static struct wl_registry_listener registry_listener = {
 			sw__wayland_registry_handle_global,
@@ -3634,7 +3682,8 @@ SW_EXPORT su_bool32_t sw_init(sw_context_t *sw) {
 		sw->out.backend.wayland.pfd.events = POLLIN;
 		break;
 	}
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
+	case SW_BACKEND_TYPE_INVALID:
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
@@ -3659,12 +3708,13 @@ out:
 	return ret;
 }
 
-SW_EXPORT void sw_fini(sw_context_t *sw) {
+SW_FUNC_DEF void sw_fini(sw_context_t *sw) {
 	sw__context_t *priv = (sw__context_t *)&sw->sw__private;
 	sw_context_t *old_context = sw__context;
 	su_allocator_t *gp_alloc = sw->in.gp_alloc;
 	size_t i;
 
+	SU_ASSERT(sw->in.backend_type != SW_BACKEND_TYPE_INVALID);
 	/*SU_ASSERT(su_locale_is_utf8());*/
 	SU_ASSERT(sw->in.gp_alloc != NULL);
 	SU_ASSERT(sw->in.scratch_alloc != NULL);
@@ -3672,9 +3722,16 @@ SW_EXPORT void sw_fini(sw_context_t *sw) {
 	sw__context = sw;
 
 	switch (sw->in.backend_type) {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	case SW_BACKEND_TYPE_MEMORY: {
+		sw__context_memory_t *memory = &priv->_.memory;
+		pixman_image_unref(memory->image);
+		break;
+	}
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	case SW_BACKEND_TYPE_WAYLAND: {
-		sw__context_wayland_t *wayland = &priv->wayland;
+		sw__context_wayland_t *wayland = &priv->_.wayland;
 		sw_wayland_output_t *output;
 		sw_wayland_seat_t *seat;
 
@@ -3714,7 +3771,8 @@ SW_EXPORT void sw_fini(sw_context_t *sw) {
 		}
 		break;
 	}
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
+	case SW_BACKEND_TYPE_INVALID:
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
@@ -3752,22 +3810,29 @@ SW_EXPORT void sw_fini(sw_context_t *sw) {
 	sw__context = old_context;
 }
 
-SW_EXPORT su_bool32_t sw_flush(sw_context_t *sw) {
+SW_FUNC_DEF su_bool32_t sw_flush(sw_context_t *sw) {
 	su_bool32_t ret = SU_TRUE;
 	sw__context_t *priv = (sw__context_t *)&sw->sw__private;
 	sw_context_t *old_context = sw__context;
 
+	SU_ASSERT(sw->in.backend_type != SW_BACKEND_TYPE_INVALID);
 	/*SU_ASSERT(su_locale_is_utf8()); */
 	/*SU_ASSERT(sw->in.gp_alloc != NULL); */
 	/*SU_ASSERT(sw->in.scratch_alloc != NULL); */
+	SU_NOTUSED(priv);
 
 	sw__context = sw;
 
 	switch (sw->in.backend_type) {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	case SW_BACKEND_TYPE_MEMORY: {
+		break;
+	}
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	case SW_BACKEND_TYPE_WAYLAND:
 		sw->out.backend.wayland.pfd.events = POLLIN;
-		if (wl_display_flush(priv->wayland.display) == -1) {
+		if (wl_display_flush(priv->_.wayland.display) == -1) {
 			if (errno == EAGAIN) {
 				sw->out.backend.wayland.pfd.events = (POLLIN | POLLOUT);
 			} else {
@@ -3775,7 +3840,8 @@ SW_EXPORT su_bool32_t sw_flush(sw_context_t *sw) {
 			}
 		}
 		break;
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
+	case SW_BACKEND_TYPE_INVALID:
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
@@ -3784,44 +3850,53 @@ SW_EXPORT su_bool32_t sw_flush(sw_context_t *sw) {
 	return ret;
 }
 
-SW_EXPORT su_bool32_t sw_process(sw_context_t *sw) {
-	su_bool32_t ret = SU_TRUE;
+SW_FUNC_DEF su_bool32_t sw_process(sw_context_t *sw) {
 	sw__context_t *priv = (sw__context_t *)&sw->sw__private;
 	sw_context_t *old_context = sw__context;
 
+	SU_ASSERT(sw->in.backend_type != SW_BACKEND_TYPE_INVALID);
 	SU_ASSERT(su_locale_is_utf8());
 	SU_ASSERT(sw->in.gp_alloc != NULL);
 	SU_ASSERT(sw->in.scratch_alloc != NULL);
+	SU_NOTUSED(priv);
 
 	sw__context = sw;
 
 	switch (sw->in.backend_type) {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	case SW_BACKEND_TYPE_MEMORY: {
+		break;
+	}
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	case SW_BACKEND_TYPE_WAYLAND:
-		if (wl_display_prepare_read(priv->wayland.display) != -1) {
-			if (wl_display_read_events(priv->wayland.display) == -1) {
-				ret = SU_FALSE;
-				goto out;
+		if (wl_display_prepare_read(priv->_.wayland.display) != -1) {
+			if (wl_display_read_events(priv->_.wayland.display) == -1) {
+				sw__context = old_context;
+				return SU_FALSE;
 			}
 		}
-		wl_display_dispatch_pending(priv->wayland.display);
+		wl_display_dispatch_pending(priv->_.wayland.display);
 		break;
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
+	case SW_BACKEND_TYPE_INVALID:
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
 
-out:
 	sw__context = old_context;
-	return ret;
+	return SU_TRUE;
 }
 
-SW_EXPORT void sw_set(sw_context_t *sw) {
+SW_FUNC_DEF void sw_set(sw_context_t *sw) {
+	sw__context_t *priv = (sw__context_t *)&sw->sw__private;
 	sw_context_t *old_context = sw__context;
 
+	SU_ASSERT(sw->in.backend_type != SW_BACKEND_TYPE_INVALID);
 	SU_ASSERT(su_locale_is_utf8());
 	SU_ASSERT(sw->in.gp_alloc != NULL);
 	SU_ASSERT(sw->in.scratch_alloc != NULL);
+	SU_NOTUSED(priv);
 
 	sw__context = sw;
 
@@ -3830,7 +3905,40 @@ SW_EXPORT void sw_set(sw_context_t *sw) {
 	}
 
 	switch (sw->in.backend_type) {
-#if SW_WITH_WAYLAND
+#if SW_WITH_MEMORY_BACKEND
+	case SW_BACKEND_TYPE_MEMORY: {
+		sw__context_memory_t *memory = &priv->_.memory;
+		int width = pixman_image_get_width(memory->image);
+		int height = pixman_image_get_height(memory->image);
+
+		SU_ASSERT(sw->in.backend.memory.root != NULL);
+		SU_ASSERT((sw->in.backend.memory.width > 0) && (sw->in.backend.memory.height > 0));
+		SU_ASSERT(sw->in.backend.memory.memory != NULL);
+
+		if (((uint32_t)width != sw->in.backend.memory.width) || ((uint32_t)height != sw->in.backend.memory.height)) {
+			pixman_image_unref(memory->image);
+			memory->image = pixman_image_create_bits_no_clear(PIXMAN_a8r8g8b8,
+				(int)sw->in.backend.memory.width, (int)sw->in.backend.memory.height,
+				(uint32_t *)sw->in.backend.memory.memory, (int)(sw->in.backend.memory.width * 4));
+		}
+
+		if (!sw__layout_block_init(sw->in.backend.memory.root)) {
+			return;
+		}
+		if (!sw__layout_block_prepare(sw->in.backend.memory.root, NULL)) {
+			return;
+		}
+		if (!sw__layout_block_expand(sw->in.backend.memory.root,
+				(int32_t)sw->in.backend.memory.width, (int32_t)sw->in.backend.memory.height)) {
+			return;
+		}
+
+		memset(sw->in.backend.memory.memory, 0, (sw->in.backend.memory.width * sw->in.backend.memory.height * 4));
+		sw__layout_block_render(sw->in.backend.memory.root, memory->image);
+		break;
+	}
+#endif /* SW_WITH_MEMORY_BACKEND */
+#if SW_WITH_WAYLAND_BACKEND
 	case SW_BACKEND_TYPE_WAYLAND: {
 		sw_wayland_surface_t *surface = sw->in.backend.wayland.layers.head;
 		for ( ; surface; surface = surface->next) {
@@ -3839,7 +3947,8 @@ SW_EXPORT void sw_set(sw_context_t *sw) {
 		}
 		break;
 	}
-#endif /* SW_WITH_WAYLAND */
+#endif /* SW_WITH_WAYLAND_BACKEND */
+	case SW_BACKEND_TYPE_INVALID:
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}

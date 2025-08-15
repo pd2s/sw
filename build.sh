@@ -10,7 +10,7 @@ DEPS="pixman-1"
 CFLAGS="${CFLAGS:-}"
 
 case "$CFLAGS" in
-  *-D*SW_WITH_WAYLAND=0*) ;;
+  *-D*SW_WITH_WAYLAND_BACKEND=0*) ;;
   *) DEPS="${DEPS} wayland-client" ;;
 esac
 
@@ -34,12 +34,12 @@ case "$1" in
     [ -e "${BUILD_PATH}/libsw.a" ] && cp -f ${BUILD_PATH}/libsw.a ${LIBRARY_INSTALL_PATH}/libsw.a
     echo "
 Name: sw
-Description: simple widgets
+Description: simple/suckless widgets
 Version: 0.0.1
 Requires.private: ${DEPS}
 Libs: -L${LIBRARY_INSTALL_PATH} -lsw
 Libs.private: -lm
-Cflags: -I${HEADER_INSTALL_PATH} -DSW_EXPORT=extern
+Cflags: -I${HEADER_INSTALL_PATH} -DSW_FUNC_DEF=extern
     " > ${PKGCONFIG_INSTALL_PATH}/sw.pc
     exit 0
     ;;
@@ -63,7 +63,7 @@ CC="${CC:-cc}"
 AR="${AR:-ar}"
 
 PKGCONFIG_FLAGS="${PKGCONFIG_FLAGS:-}"
-DEPS_FLAGS=$(pkg-config $PKGCONFIG_FLAGS --cflags --libs ${DEPS})
+DEPS_FLAGS="-lm $(pkg-config $PKGCONFIG_FLAGS --cflags --libs ${DEPS})"
 
 RESVG_PATH="${RESVG_PATH:-${BUILD_PATH}/resvg}"
 
@@ -76,7 +76,7 @@ ln -sf ${ROOT_PATH}/stb_sprintf.h ${BUILD_PATH}/stb_sprintf.h
 ln -sf ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/stb_image.h
 
 case "$CFLAGS" in
-  *-D*SW_WITH_WAYLAND=0*) ;;
+  *-D*SW_WITH_WAYLAND_BACKEND=0*) ;;
   *)
     WAYLAND_SCANNER=$(pkg-config $PKGCONFIG_FLAGS --variable=wayland_scanner wayland-scanner)
     WAYLAND_PROTOCOLS_DIR=$(pkg-config $PKGCONFIG_FLAGS --variable=pkgdatadir wayland-protocols)
@@ -88,10 +88,10 @@ case "$CFLAGS" in
     $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/cursor-shape-v1.h"
     $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/xdg-shell.h"
     $WAYLAND_SCANNER client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/wlr-layer-shell-unstable-v1.h"
-    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/wlr-layer-shell-unstable-v1.c -o ${BUILD_PATH}/wlr-layer-shell-unstable-v1.o
-    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/xdg-shell.c -o ${BUILD_PATH}/xdg-shell.o
-    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/cursor-shape-v1.c -o ${BUILD_PATH}/cursor-shape-v1.o
-    $CC $CFLAGS -std=c99 -Wno-missing-variable-declarations -c ${BUILD_PATH}/tablet-unstable-v2.c -o ${BUILD_PATH}/tablet-unstable-v2.o
+    $CC -std=c99 -w -c ${BUILD_PATH}/wlr-layer-shell-unstable-v1.c -o ${BUILD_PATH}/wlr-layer-shell-unstable-v1.o
+    $CC -std=c99 -w -c ${BUILD_PATH}/xdg-shell.c -o ${BUILD_PATH}/xdg-shell.o
+    $CC -std=c99 -w -c ${BUILD_PATH}/cursor-shape-v1.c -o ${BUILD_PATH}/cursor-shape-v1.o
+    $CC -std=c99 -w -c ${BUILD_PATH}/tablet-unstable-v2.c -o ${BUILD_PATH}/tablet-unstable-v2.o
     ;;
 esac
 
@@ -112,13 +112,13 @@ case "$1" in
     echo $DEPS_FLAGS -I${BUILD_PATH} ${BUILD_PATH}/*.o
     ;;
   shared)
-    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
     $CC $CFLAGS -shared $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
-    echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -I${BUILD_PATH} -DSW_EXPORT=extern"
+    echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -I${BUILD_PATH} -DSW_FUNC_DEF=extern"
     ;;
   static)
-    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_EXPORT=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
     $AR rcs ${BUILD_PATH}/libsw.a ${BUILD_PATH}/*.o
-    echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -I${BUILD_PATH} -DSW_EXPORT=extern"
+    echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -I${BUILD_PATH} -DSW_FUNC_DEF=extern"
     ;;
 esac

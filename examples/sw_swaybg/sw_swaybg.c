@@ -1,16 +1,7 @@
 #define _DEFAULT_SOURCE
-#include <stdlib.h>
-#include <string.h>
-#include <locale.h>
-#include <errno.h>
-#include <signal.h>
-#include <poll.h>
-
-#include <stdint.h>
-#include <stddef.h>
 
 #if !defined(DEBUG)
-#define DEBUG 0
+#define DEBUG 1
 #endif
 
 #if !defined(SU_WITH_DEBUG)
@@ -21,12 +12,9 @@
 #define SU_STRIP_PREFIXES
 #include "../../sutil.h"
 
-#if !defined(SW_WITH_WAYLAND)
-#define SW_WITH_WAYLAND 1
-#endif /* !defined(SW_WITH_WAYLAND) */
-#if !defined(SW_WITH_TEXT)
+#define SW_WITH_MEMORY_BACKEND 0
+#define SW_WITH_WAYLAND_BACKEND 1
 #define SW_WITH_TEXT 0
-#endif /* !defined(SW_WITH_TEXT) */
 #if !defined(SW_WITH_SVG)
 #define SW_WITH_SVG 1
 #endif /* !defined(SW_WITH_SVG) */
@@ -64,7 +52,8 @@
 #define SW_IMPLEMENTATION
 #include "../../swidgets.h"
 
-STATIC_ASSERT(SW_WITH_WAYLAND);
+#include <locale.h>
+#include <signal.h>
 
 typedef enum background_mode {
 	BACKGROUND_MODE_STRETCH,
@@ -269,6 +258,25 @@ static void surface_destroy_sw(sw_wayland_surface_t *surface, sw_context_t *sw) 
 	gp_alloc.free(&gp_alloc, surface);
 }
 
+static ATTRIBUTE_NORETURN void surface_handle_error(sw_wayland_surface_t *surface, sw_context_t *sw, sw_status_t status) {
+	NOTUSED(sw); NOTUSED(status);
+	su_abort(errno, "Failed to create surface for output " STRING_PF_FMT,
+		STRING_PF_ARGS(surface->in._.layer.output->out.name));
+}
+
+static void layout_block_handle_error(sw_layout_block_t *block, sw_context_t *sw, sw_status_t status) {
+	size_t i = 0;
+	
+	NOTUSED(sw); NOTUSED(status);
+
+	for ( ; i < state.configs.len; ++i) {
+		config_t *config = su_array__config_t__get_ptr(&state.configs, i);
+		if (config->loaded_image.ptr == block->in._.image.data.ptr) {
+			su_abort(errno, "Failed to load image: " STRING_PF_FMT, STRING_PF_ARGS(config->image_path));
+		}
+	}
+}
+
 static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	sw_wayland_surface_t *surface = gp_alloc.alloc(&gp_alloc, sizeof(*surface), ALIGNOF(*surface));
 	static sw_wayland_region_t empty_input_region = { 0, 0, 0, 0 };
@@ -281,6 +289,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	layer->anchor = SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL;
 	layer->layer = SW_WAYLAND_SURFACE_LAYER_LAYER_BACKGROUND;
 
+	surface->in.error = surface_handle_error;
 	surface->in.destroy = surface_destroy_sw;
 	su_array__sw_wayland_region_t__init(&surface->in.input_regions, &gp_alloc, 1);
 	su_array__sw_wayland_region_t__add_nocheck(&surface->in.input_regions, empty_input_region);
@@ -292,6 +301,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	case BACKGROUND_MODE_STRETCH: {
 		sw_layout_block_t *image = gp_alloc.alloc(&gp_alloc, sizeof(*image), ALIGNOF(*image));
 		memset(image, 0, sizeof(*image));
+		image->in.error = layout_block_handle_error;
 		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		image->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
 		image->in._.image.data = config->loaded_image;
@@ -304,6 +314,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	case BACKGROUND_MODE_CENTER: {
 		sw_layout_block_t *image = gp_alloc.alloc(&gp_alloc, sizeof(*image), ALIGNOF(*image));
 		memset(image, 0, sizeof(*image));
+		image->in.error = layout_block_handle_error;
 		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		image->in._.image.data = config->loaded_image;
 		su_llist__sw_layout_block_t__insert_tail(&root->in._.composite.children, image);
@@ -380,7 +391,7 @@ static void setup(int argc, char *argv[]) {
             char *s = ARGPARSE_VALUE;
             if (!parse_sway_color(s, &config.color)) {
                 su_abort( 1,
-                    "%s is not a valid color for swaybg. Color should be specified as rrggbb or #rrggbb (no alpha).", s);
+                    "%s is not a valid color for sw_swaybg. Color should be specified as rrggbb or #rrggbb (no alpha).", s);
             }
             break;
         }
@@ -441,8 +452,8 @@ static void setup(int argc, char *argv[]) {
 				: BACKGROUND_MODE_SOLID_COLOR);
 		}
 		if (c->image_path.len > 0) {
-			if (!read_entire_file(c->image_path, &c->loaded_image, &gp_alloc)) {
-				su_abort(errno, "Failed to load image: " STRING_PF_FMT, STRING_PF_ARGS(c->image_path));
+			if (!su_read_entire_file(c->image_path, &c->loaded_image, &gp_alloc)) {
+				su_abort(errno, "Failed to read file: " STRING_PF_FMT, STRING_PF_ARGS(c->image_path));
 			}
 		}
     }
@@ -459,7 +470,6 @@ static void setup(int argc, char *argv[]) {
     }
 
 	sigact.sa_handler = handle_signal;
-
 	/* ? TODO: error check */
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);

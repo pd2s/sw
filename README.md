@@ -1,23 +1,25 @@
-## sw - simple widgets
+## sw - simple/suckless widgets
 
 This project is currently in pre-alpha state.
+In the future, this project will be rebranded to "simple/suckless libraries" and will contain a broad collection of libraries, including sw.
 
 # Plans for near future
-* More examples: json, immediate mode, generic window
-* Scroll blocks, wrap for composite,text blocks
-* generic window, user-provided buffer backends
+* msvc, windows support
+* more examples: json, immediate mode, generic window
+* scroll blocks, content wrap for composite,text blocks
+* generic window backend
 * user-provided renderer
-* replace fcft with freetype+harfbuzz
-* replace pixman
-* rebrand this project to "simple utils", make sw a part of it
+* replace fcft dependency with freetype+harfbuzz
+* replace pixman dependency with SIMD software renderer
+* glue .h dependencies with ```cc -P -E -dD -dU input.h -o output.h``` to produce a real single-header library
 
 # Interfaces
-* header-only
-* shared
-* static
+* .h
+* .so
+* .a
 
 # Backends
-* user-provided buffer (NOT IMPLEMENTED YET)
+* user-provided buffer
 * generic window (cross-platform) (NOT IMPLEMENTED YET)
 * all windowing systems (ONLY WAYLAND IS PARTIALLY IMPLEMENTED)
 
