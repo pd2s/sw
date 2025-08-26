@@ -10,7 +10,7 @@
 #define SU_LOG_PREFIX "sw_swaybg: "
 #define SU_IMPLEMENTATION
 #define SU_STRIP_PREFIXES
-#include "../../sutil.h"
+#include <sutil.h>
 
 #define SW_WITH_MEMORY_BACKEND 0
 #define SW_WITH_WAYLAND_BACKEND 1
@@ -50,7 +50,7 @@
 #define SW_WITH_DEBUG DEBUG
 #endif /* defined(SW_WITH_DEBUG) */
 #define SW_IMPLEMENTATION
-#include "../../swidgets.h"
+#include <swidgets.h>
 
 #include <locale.h>
 #include <signal.h>

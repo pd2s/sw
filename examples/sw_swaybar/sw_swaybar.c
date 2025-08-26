@@ -9,11 +9,11 @@
 
 #if !defined(SU_WITH_DEBUG)
 #define SU_WITH_DEBUG DEBUG
-#endif /* defined(SU_WITH_DEBUG) */
+#endif /* !defined(SU_WITH_DEBUG) */
 #define SU_LOG_PREFIX "sw_swaybar: "
 #define SU_IMPLEMENTATION
 #define SU_STRIP_PREFIXES
-#include "../../sutil.h"
+#include <sutil.h>
 
 #define SW_WITH_MEMORY_BACKEND 0
 #define SW_WITH_WAYLAND_BACKEND 1
@@ -33,9 +33,11 @@
 #define SW_WITH_PIC 0
 #define SW_WITH_PNM 0
 
+#if !defined(SW_WITH_DEBUG)
 #define SW_WITH_DEBUG DEBUG
+#endif /* !defined(SW_WITH_DEBUG) */
 #define SW_IMPLEMENTATION
-#include "../../swidgets.h"
+#include <swidgets.h>
 
 #include <linux/input-event-codes.h>
 #include <signal.h>
@@ -1987,7 +1989,6 @@ static bool32_t status_i3bar_process(void) {
 			} else if (errno == EINTR) {
 				continue;
 			} else {
-				DEBUG_LOG("status error 1");
 				status_set_error(string("[error reading from status command]"));
 				return TRUE;
 			}
@@ -2060,7 +2061,6 @@ static bool32_t status_process(void) {
 		errno = 0;
 
 		if (ioctl(status->read_fd, FIONREAD, &available_bytes) == -1) {
-			DEBUG_LOG("status error 2");
 			status_set_error(string("[error reading from status command]"));
 			return TRUE;
 		}
@@ -2073,7 +2073,6 @@ static bool32_t status_process(void) {
 
 		read_bytes = read(status->read_fd, status->buf.data, (size_t)available_bytes);
 		if (read_bytes != available_bytes) {
-			DEBUG_LOG("status error 3");
 			status_set_error(string("[error reading from status command]"));
 			return TRUE;
 		}
@@ -2163,7 +2162,6 @@ protocol_text:
 				} else if (errno == EINTR) {
 					continue;
 				} else {
-					DEBUG_LOG("status error 4");
 					status_set_error(string("[error reading from status command]"));
 					return TRUE;
 				}

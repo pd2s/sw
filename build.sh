@@ -65,15 +65,16 @@ AR="${AR:-ar}"
 PKGCONFIG_FLAGS="${PKGCONFIG_FLAGS:-}"
 DEPS_FLAGS="-lm $(pkg-config $PKGCONFIG_FLAGS --cflags --libs ${DEPS})"
 
-RESVG_PATH="${RESVG_PATH:-${BUILD_PATH}/resvg}"
+RESVG_DEP_PATH="${RESVG_DEP_PATH:-${BUILD_PATH}/resvg}"
+RESVG_DEP_FLAGS="${RESVG_DEP_FLAGS:-}"
 
-[ ! -d "${BUILD_PATH}" ] && mkdir "${BUILD_PATH}"
+[ ! -d "${BUILD_PATH}/include" ] && mkdir -p "${BUILD_PATH}/include"
 rm -f ${BUILD_PATH}/*.o
 
-ln -sf ${ROOT_PATH}/swidgets.h ${BUILD_PATH}/swidgets.h
-ln -sf ${ROOT_PATH}/sutil.h ${BUILD_PATH}/sutil.h
-ln -sf ${ROOT_PATH}/stb_sprintf.h ${BUILD_PATH}/stb_sprintf.h
-ln -sf ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/stb_image.h
+cp -f ${ROOT_PATH}/swidgets.h ${BUILD_PATH}/include/swidgets.h
+cp -f ${ROOT_PATH}/sutil.h ${BUILD_PATH}/include/sutil.h
+cp -f ${ROOT_PATH}/stb_sprintf.h ${BUILD_PATH}/include/stb_sprintf.h
+cp -f ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/include/stb_image.h
 
 case "$CFLAGS" in
   *-D*SW_WITH_WAYLAND_BACKEND=0*) ;;
@@ -85,9 +86,9 @@ case "$CFLAGS" in
     $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/cursor-shape-v1.c"
     $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/tablet/tablet-unstable-v2.xml" "${BUILD_PATH}/tablet-unstable-v2.c"
     $WAYLAND_SCANNER private-code "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/wlr-layer-shell-unstable-v1.c"
-    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/cursor-shape-v1.h"
-    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/xdg-shell.h"
-    $WAYLAND_SCANNER client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/wlr-layer-shell-unstable-v1.h"
+    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.h"
+    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.h"
+    $WAYLAND_SCANNER client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.h"
     $CC -std=c99 -w -c ${BUILD_PATH}/wlr-layer-shell-unstable-v1.c -o ${BUILD_PATH}/wlr-layer-shell-unstable-v1.o
     $CC -std=c99 -w -c ${BUILD_PATH}/xdg-shell.c -o ${BUILD_PATH}/xdg-shell.o
     $CC -std=c99 -w -c ${BUILD_PATH}/cursor-shape-v1.c -o ${BUILD_PATH}/cursor-shape-v1.o
@@ -98,27 +99,29 @@ esac
 case "$CFLAGS" in
   *-D*SW_WITH_SVG=0*) ;;
   *)
-    # TODO: use pkg-config
-    [ ! -d "${RESVG_PATH}" ] && git clone --quiet https://github.com/linebender/resvg "${RESVG_PATH}"
-    cargo build --quiet --manifest-path="${RESVG_PATH}/Cargo.toml" --workspace --release
-    cp -f "${RESVG_PATH}/crates/c-api/resvg.h" "${BUILD_PATH}/resvg.h"
+    [ ! -d "${RESVG_DEP_PATH}" ] && git clone https://github.com/linebender/resvg "${RESVG_DEP_PATH}" >> ${BUILD_PATH}/resvg.log 2>&1
+    cargo build --manifest-path="${RESVG_DEP_PATH}/crates/c-api/Cargo.toml" $RESVG_DEP_FLAGS >> ${BUILD_PATH}/resvg.log 2>&1
+    cp -f "${RESVG_DEP_PATH}/crates/c-api/resvg.h" "${BUILD_PATH}/include/resvg.h"
     cd "${BUILD_PATH}"
-    $AR x "${RESVG_PATH}/target/release/libresvg.a"
-    ;;
+    # TODO: more robust check
+    case "$RESVG_DEP_FLAGS" in
+      *--release*) $AR x "${RESVG_DEP_PATH}/target/release/libresvg.a" ;;
+      *) $AR x "${RESVG_DEP_PATH}/target/debug/libresvg.a" ;;
+    esac
 esac
 
 case "$1" in
   header)
-    echo $DEPS_FLAGS -I${BUILD_PATH} ${BUILD_PATH}/*.o
+    echo $DEPS_FLAGS -isystem${BUILD_PATH}/include ${BUILD_PATH}/*.o
     ;;
   shared)
-    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
     $CC $CFLAGS -shared $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
-    echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -I${BUILD_PATH} -DSW_FUNC_DEF=extern"
+    echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -isystem${BUILD_PATH}/include -DSW_FUNC_DEF=extern"
     ;;
   static)
-    $CC $CFLAGS $DEPS_FLAGS -I${BUILD_PATH} -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/swidgets.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
     $AR rcs ${BUILD_PATH}/libsw.a ${BUILD_PATH}/*.o
-    echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -I${BUILD_PATH} -DSW_FUNC_DEF=extern"
+    echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_FUNC_DEF=extern"
     ;;
 esac

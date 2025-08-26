@@ -1,17 +1,7 @@
 ## sw - simple/suckless widgets
 
 This project is currently in pre-alpha state.
-In the future, this project will be rebranded to "simple/suckless libraries" and will contain a broad collection of libraries, including sw.
-
-# Plans for near future
-* msvc, windows support
-* more examples: json, immediate mode, generic window
-* scroll blocks, content wrap for composite,text blocks
-* generic window backend
-* user-provided renderer
-* replace fcft dependency with freetype+harfbuzz
-* replace pixman dependency with SIMD software renderer
-* glue .h dependencies with ```cc -P -E -dD -dU input.h -o output.h``` to produce a real single-header library
+In the future, this project will be rebranded to "sl"(simple/suckless libraries) and will contain a broad collection of libraries, including sw.
 
 # Interfaces
 * .h
@@ -55,11 +45,22 @@ HEADER_INSTALL_PATH      # /usr/include
 LIBRARY_INSTALL_PATH     # /usr/lib64
 PKGCONFIG_INSTALL_PATH   # /usr/lib64/pkgconfig
 PKGCONFIG_FLAGS
-RESVG_PATH               # ${BUILD_PATH}/resvg   path to resvg dependency(required if SW_WITH_SVG=1), if left at default, git clone is used
+RESVG_DEP_PATH           # ${BUILD_PATH}/resvg   path to resvg dependency(required if SW_WITH_SVG=1), if left at default, git clone is used
+RESVG_DEP_FLAGS          #   flags that are passed directly to cargo when building resvg dependency
 ```
 
 To enable/disable specific feature, add `-D FEATURE=1|0` to `CFLAGS`.
 Full list of features with their default values is located at the top of swidgets.h
+
+# Plans for near future
+* msvc, windows support
+* more examples: json, immediate mode, generic window
+* scroll blocks, content wrap for composite,text blocks
+* generic window backend
+* user-provided renderer
+* replace fcft dependency with freetype+harfbuzz
+* replace pixman dependency with SIMD software renderer
+* glue .h dependencies with ```cc -P -E -dD -dU input.h -o output.h``` to produce a real single-header library
 
 [wayland-client]: https://gitlab.freedesktop.org/wayland/wayland
 [pixman]: https://gitlab.freedesktop.org/pixman/pixman

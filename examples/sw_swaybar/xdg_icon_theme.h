@@ -24,7 +24,7 @@
 #if !defined(SU_STRIP_PREFIXES)
 #define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
-#include "sutil.h"
+#include <sutil.h>
 
 STATIC_ASSERT(WITH_SVG || WITH_PNG);
 

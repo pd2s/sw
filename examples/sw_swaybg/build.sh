@@ -7,4 +7,4 @@ CFLAGS="${CFLAGS:-}"
 
 CFLAGS="${CFLAGS} -DSW_WITH_TEXT=0"
 
-$CC $CFLAGS `${ROOT_PATH}/../../build.sh header` ${ROOT_PATH}/sw_swaybg.c -o ${ROOT_PATH}/sw_swaybg
+$CC $CFLAGS $(${ROOT_PATH}/../../build.sh header) ${ROOT_PATH}/sw_swaybg.c -o ${ROOT_PATH}/sw_swaybg

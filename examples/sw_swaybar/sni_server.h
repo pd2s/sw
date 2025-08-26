@@ -17,7 +17,7 @@
 #if !defined(SU_STRIP_PREFIXES)
 #define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
-#include "sutil.h"
+#include <sutil.h>
 
 #if HAS_INCLUDE(<basu/sd-bus.h>)
 #include <basu/sd-bus.h>

@@ -51,7 +51,7 @@
 #if !defined(SU_WITH_DEBUG)
 #define SU_WITH_DEBUG SW_WITH_DEBUG
 #endif /* !defined(SU_WITH_DEBUG) */
-#include "sutil.h"
+#include <sutil.h>
 
 SU_STATIC_ASSERT(SW_WITH_WAYLAND_BACKEND || SW_WITH_MEMORY_BACKEND);
 
@@ -798,7 +798,7 @@ typedef sw_context_t context_t;
 #if !defined(SU_IMPLEMENTATION)
 #define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
-#include "sutil.h"
+#include <sutil.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -825,13 +825,7 @@ SU_IGNORE_WARNING("-Wc++98-compat-pedantic")
 #endif /* SW_WITH_TEXT */
 
 #if SW_WITH_SVG
-#if SU_HAS_INCLUDE(<resvg/resvg.h>)
-#include <resvg/resvg.h>
-#elif SU_HAS_INCLUDE(<resvg.h>)
 #include <resvg.h>
-#else
-#include "resvg.h"
-#endif
 #endif /* SW_WITH_SVG */
 
 SU_IGNORE_WARNINGS_END
@@ -880,31 +874,7 @@ static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size)
 #define STBI_NO_PNM
 #endif /* !SW_WITH_PNM */
 
-SU_IGNORE_WARNINGS_START
-
-SU_IGNORE_WARNING("-Wduplicated-branches")
-SU_IGNORE_WARNING("-Warith-conversion")
-SU_IGNORE_WARNING("-Wconversion")
-SU_IGNORE_WARNING("-Wsuggest-attribute=pure")
-SU_IGNORE_WARNING("-Walloc-zero")
-SU_IGNORE_WARNING("-Wpadded")
-SU_IGNORE_WARNING("-Wsign-conversion")
-SU_IGNORE_WARNING("-Wcast-align")
-SU_IGNORE_WARNING("-Wdouble-promotion")
-SU_IGNORE_WARNING("-Wextra-semi-stmt")
-SU_IGNORE_WARNING("-Wswitch-default")
-SU_IGNORE_WARNING("-Wimplicit-int-conversion")
-SU_IGNORE_WARNING("-Wimplicit-fallthrough")
-SU_IGNORE_WARNING("-Wmissing-prototypes")
-SU_IGNORE_WARNING("-Wcomment")
-SU_IGNORE_WARNING("-Wcomma")
-SU_IGNORE_WARNING("-Wzero-as-null-pointer-constant")
-SU_IGNORE_WARNING("-Wcast-qual")
-SU_IGNORE_WARNING("-Wuseless-cast")
-
-#include "stb_image.h"
-
-SU_IGNORE_WARNINGS_END
+#include <stb_image.h>
 
 #endif /* SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM */
 
@@ -924,9 +894,9 @@ SU_IGNORE_WARNING("-Wcast-qual")
 #include <wayland-client.h>
 #endif
 
-#include "wlr-layer-shell-unstable-v1.h"
-#include "xdg-shell.h"
-#include "cursor-shape-v1.h"
+#include <wlr-layer-shell-unstable-v1.h>
+#include <xdg-shell.h>
+#include <cursor-shape-v1.h>
 
 SU_IGNORE_WARNINGS_END
 
@@ -1320,7 +1290,7 @@ static pixman_image_t *sw__image_create( su_allocator_t *gp_alloc,
 	stride = width * 4;
 	size = (size_t)height * (size_t)stride;
 
-	/* ? TODO: preallocate (size % 64) == 0 */
+	/* ? TODO: preallocate (size % 32) == 0 */
 	data->pixels = (SU_TYPEOF(data->pixels))gp_alloc->alloc(gp_alloc, size, 64);
 	memset(data->pixels, 0, size);
 
@@ -1703,6 +1673,8 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
 	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
 	sw_status_t status = SW_STATUS_SUCCESS;
+
+	SU_NOTUSED(scratch_alloc);
 
 	sw__layout_block_fini(block, sw__context);
 	memset(priv, 0 , sizeof(*priv));

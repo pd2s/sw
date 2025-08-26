@@ -749,28 +749,7 @@ typedef su_json_ast_t json_ast_t;
 #define STB_SPRINTF_IMPLEMENTATION
 #define STB_SPRINTF_NOUNALIGNED
 
-SU_IGNORE_WARNINGS_START
-
-SU_IGNORE_WARNING("-Wcast-align")
-SU_IGNORE_WARNING("-Wextra-semi-stmt")
-SU_IGNORE_WARNING("-Wsign-conversion")
-SU_IGNORE_WARNING("-Wdouble-promotion")
-SU_IGNORE_WARNING("-Wpadded")
-SU_IGNORE_WARNING("-Wimplicit-fallthrough")
-SU_IGNORE_WARNING("-Wconditional-uninitialized")
-SU_IGNORE_WARNING("-Wsign-compare")
-SU_IGNORE_WARNING("-Warith-conversion")
-SU_IGNORE_WARNING("-Wconversion")
-SU_IGNORE_WARNING("-Wcomment")
-SU_IGNORE_WARNING("-Wlong-long")
-SU_IGNORE_WARNING("-Wc++98-compat-pedantic")
-SU_IGNORE_WARNING("-Wzero-as-null-pointer-constant")
-SU_IGNORE_WARNING("-Wcast-qual")
-SU_IGNORE_WARNING("-Wuseless-cast")
-
-#include "stb_sprintf.h"
-
-SU_IGNORE_WARNINGS_END
+#include <stb_sprintf.h>
 
 #define SU_ARRAY_DEFINE(type) \
 static void su_array__##type##__init(su_array__##type##__t *array, su_allocator_t *alloc, size_t initial_size) { \

@@ -22,4 +22,4 @@ case "$CFLAGS" in
     ;;
 esac
 
-$CC $CFLAGS $DEPS_FLAGS `${ROOT_PATH}/../../build.sh header` ${ROOT_PATH}/sw_swaybar.c -o ${ROOT_PATH}/sw_swaybar
+$CC $CFLAGS $DEPS_FLAGS $(${ROOT_PATH}/../../build.sh header) ${ROOT_PATH}/sw_swaybar.c -o ${ROOT_PATH}/sw_swaybar
