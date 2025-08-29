@@ -80,18 +80,18 @@ static char sway_ipc__magic[] = {'i', '3', '-', 'i', 'p', 'c'};
 static bool32_t sway_ipc_get_socket_path(char out[PATH_MAX]) {
 	char *sock = getenv("SWAYSOCK");
 	if (sock && *sock) {
-		size_t len = strlen(sock) + 1;
+		size_t len = STRLEN(sock) + 1;
 		if (len < PATH_MAX) {
-			memcpy(out, sock, len + 1);
+			MEMCPY(out, sock, len + 1);
 			return TRUE;
 		}
 	}
 	/* TODO: sway --get-socketpath 2>/dev/null */
 	sock = getenv("I3SOCK");
 	if (sock && *sock) {
-		size_t len = strlen(sock) + 1;
+		size_t len = STRLEN(sock) + 1;
 		if (len < PATH_MAX) {
-			memcpy(out, sock, len + 1);
+			MEMCPY(out, sock, len + 1);
 			return TRUE;
 		}
 	}
@@ -107,8 +107,8 @@ static int sway_ipc_connect(char socket_path[PATH_MAX]) {
 		return -1;
 	}
 	addr.sun_family = AF_UNIX;
-	len = MIN((sizeof(addr.sun_path) - 1), strlen(socket_path));
-	strncpy(addr.sun_path, socket_path, len);
+	len = MIN((sizeof(addr.sun_path) - 1), STRLEN(socket_path));
+	STRNCPY(addr.sun_path, socket_path, len);
 	addr.sun_path[len] = '\0';
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
 		return -1;
@@ -122,9 +122,9 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
 	uint32_t len = payload ? (uint32_t)payload->len : 0;
 	size_t total = 0;
 
-	memcpy(header, sway_ipc__magic, sizeof(sway_ipc__magic));
-	memcpy(header + sizeof(sway_ipc__magic), &len, sizeof(len));
-	memcpy(header + sizeof(sway_ipc__magic) + sizeof(len), &type, sizeof(type));
+	MEMCPY(header, sway_ipc__magic, sizeof(sway_ipc__magic));
+	MEMCPY(header + sizeof(sway_ipc__magic), &len, sizeof(len));
+	MEMCPY(header + sizeof(sway_ipc__magic) + sizeof(len), &type, sizeof(type));
 
 	while (total < sizeof(header)) {
 		ssize_t written_bytes = write(fd, &header[total], sizeof(header) - total);
@@ -148,7 +148,7 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
 
 static void sway_ipc_response_free(sway_ipc_response_t *response, allocator_t *alloc) {
 	string_fini(&response->payload, alloc);
-	alloc->free(alloc, response);
+	FREE(alloc, response);
 }
 
 static sway_ipc_response_t *sway_ipc_receive(int fd, allocator_t *alloc) {
@@ -173,11 +173,11 @@ static sway_ipc_response_t *sway_ipc_receive(int fd, allocator_t *alloc) {
 		}
 	}
 
-	response = alloc->alloc(alloc, sizeof(*response), ALIGNOF(*response));
+	ALLOCT(response, alloc);
 
-	memcpy(&len, header + sizeof(sway_ipc__magic), sizeof(uint32_t));
-	memcpy(&response->type, header + sizeof(sway_ipc__magic) + sizeof(uint32_t), sizeof(uint32_t));
-	response->payload.s = alloc->alloc(alloc, len + 1, ALIGNOF(*response->payload.s));
+	MEMCPY(&len, header + sizeof(sway_ipc__magic), sizeof(uint32_t));
+	MEMCPY(&response->type, header + sizeof(sway_ipc__magic) + sizeof(uint32_t), sizeof(uint32_t));
+	ALLOCTS(response->payload.s, alloc, len + 1);
 	response->payload.len = len;
 	response->payload.free_contents = TRUE;
 	response->payload.nul_terminated = TRUE;

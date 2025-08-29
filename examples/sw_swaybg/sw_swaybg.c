@@ -85,43 +85,7 @@ typedef struct state {
 
 static state_t state;
 
-static void *gp_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
-	void *ptr;
-	int s;
-
-	NOTUSED(alloc);
-
-	ASSERT(size > 0);
-	ASSERT((alignment > 0) && ((alignment == 1) || ((alignment & (alignment - 1)) == 0)));
-
-	alignment = MAX(alignment, sizeof(void *));
-
-	s = posix_memalign(&ptr, alignment, (size + alignment - 1) & ~(alignment - 1));
-	if ( UNLIKELY(s != 0)) {
-		su_abort(s, "posix_memalign: %s", strerror(s));
-	}
-	ASSERT(((uintptr_t)ptr % alignment) == 0);
-	return ptr;
-}
-
-static void gp_alloc_free(allocator_t *alloc, void *ptr) {
-	NOTUSED(alloc);
-	free(ptr);
-}
-
-static void *gp_alloc_realloc(allocator_t *alloc, void *ptr, size_t new_size, size_t new_alignment) {
-	void *ret = realloc(ptr, new_size); /* TODO: alignment */
-
-	NOTUSED(alloc);
-	NOTUSED(new_alignment);
-
-	if (UNLIKELY(!ret)) {
-		su_abort(errno, "realloc: %s", strerror(errno));
-	}
-	return ret;
-}
-
-static allocator_t gp_alloc = { gp_alloc_alloc, gp_alloc_realloc, gp_alloc_free };
+static allocator_t gp_alloc = { libc_alloc, libc_free };
 
 static void *scratch_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
 	void *ret = arena_alloc(&state.scratch_arena, &gp_alloc, size, alignment);
@@ -133,18 +97,7 @@ static void scratch_alloc_free(allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 
-static void *scratch_alloc_realloc(allocator_t *alloc, void *ptr, size_t new_size, size_t new_alignment) {
-	void *ret = arena_alloc(&state.scratch_arena, &gp_alloc, new_size, new_alignment);
-
-	NOTUSED(alloc);
-
-	if (ptr) {
-		memcpy(ret, ptr, MIN(new_size, arena_alloc_get_size(ptr)));
-	}
-	return ret;
-}
-
-static allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_realloc, scratch_alloc_free };
+static allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
 static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
 	char *p;
@@ -152,7 +105,7 @@ static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
 	uint32_t rgba;
 	uint8_t a, r ,g ,b;
 
-    if (!cstr || ((len = strlen(cstr)) == 0)) {
+    if (!cstr || ((len = STRLEN(cstr)) == 0)) {
         return FALSE;
     }
 
@@ -192,17 +145,17 @@ static background_mode_t parse_background_mode(char *cstr) {
         return BACKGROUND_MODE_INVALID;
     }
 
-	if (strcmp(cstr, "stretch") == 0) {
+	if (STRCMP(cstr, "stretch") == 0) {
 		return BACKGROUND_MODE_STRETCH;
-	} else if (strcmp(cstr, "fill") == 0) {
+	} else if (STRCMP(cstr, "fill") == 0) {
 		return BACKGROUND_MODE_FILL;
-	} else if (strcmp(cstr, "fit") == 0) {
+	} else if (STRCMP(cstr, "fit") == 0) {
 		return BACKGROUND_MODE_FIT;
-	} else if (strcmp(cstr, "center") == 0) {
+	} else if (STRCMP(cstr, "center") == 0) {
 		return BACKGROUND_MODE_CENTER;
-	} else if (strcmp(cstr, "tile") == 0) {
+	} else if (STRCMP(cstr, "tile") == 0) {
 		return BACKGROUND_MODE_TILE;
-	} else if (strcmp(cstr, "solid_color") == 0) {
+	} else if (STRCMP(cstr, "solid_color") == 0) {
 		return BACKGROUND_MODE_SOLID_COLOR;
 	} else {
         return BACKGROUND_MODE_INVALID;
@@ -247,15 +200,15 @@ static void surface_destroy_sw(sw_wayland_surface_t *surface, sw_context_t *sw) 
 		if (image->out.fini) {
 			image->out.fini(image, sw);
 		}
-		gp_alloc.free(&gp_alloc, image);
+		FREE(&gp_alloc, image);
 	}
 
 	if (root->out.fini) {
 		root->out.fini(root, sw);
 	}
-	gp_alloc.free(&gp_alloc, root);
+	FREE(&gp_alloc, root);
 
-	gp_alloc.free(&gp_alloc, surface);
+	FREE(&gp_alloc, surface);
 }
 
 static ATTRIBUTE_NORETURN void surface_handle_error(sw_wayland_surface_t *surface, sw_context_t *sw, sw_status_t status) {
@@ -278,29 +231,32 @@ static void layout_block_handle_error(sw_layout_block_t *block, sw_context_t *sw
 }
 
 static void configure_output(sw_wayland_output_t *output, config_t *config) {
-	sw_wayland_surface_t *surface = gp_alloc.alloc(&gp_alloc, sizeof(*surface), ALIGNOF(*surface));
+	sw_wayland_surface_t *surface;
 	static sw_wayland_region_t empty_input_region = { 0, 0, 0, 0 };
-	sw_layout_block_t *root = gp_alloc.alloc(&gp_alloc, sizeof(*root), ALIGNOF(*root));
+	sw_layout_block_t *root;
+	sw_wayland_surface_layer_t *layer;
 
-	sw_wayland_surface_layer_t *layer = &surface->in._.layer;
-	memset(surface, 0, sizeof(*surface));
-	layer->output = output;
-	layer->exclusive_zone = -1;
-	layer->anchor = SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL;
-	layer->layer = SW_WAYLAND_SURFACE_LAYER_LAYER_BACKGROUND;
+	ALLOCCT(surface, &gp_alloc);
+	ALLOCCT(root, &gp_alloc);
 
 	surface->in.error = surface_handle_error;
 	surface->in.destroy = surface_destroy_sw;
 	su_array__sw_wayland_region_t__init(&surface->in.input_regions, &gp_alloc, 1);
 	su_array__sw_wayland_region_t__add_nocheck(&surface->in.input_regions, empty_input_region);
 
-	memset(root, 0, sizeof(*root));
+	layer = &surface->in._.layer;
+	layer->output = output;
+	layer->exclusive_zone = -1;
+	layer->anchor = SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL;
+	layer->layer = SW_WAYLAND_SURFACE_LAYER_LAYER_BACKGROUND;
+
 	switch (config->mode) {
 	case BACKGROUND_MODE_FILL: /* TODO */
 	case BACKGROUND_MODE_FIT: /* TODO */
 	case BACKGROUND_MODE_STRETCH: {
-		sw_layout_block_t *image = gp_alloc.alloc(&gp_alloc, sizeof(*image), ALIGNOF(*image));
-		memset(image, 0, sizeof(*image));
+		sw_layout_block_t *image;
+		ALLOCCT(image, &gp_alloc);
+		
 		image->in.error = layout_block_handle_error;
 		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		image->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
@@ -312,8 +268,8 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 		break;
 	}
 	case BACKGROUND_MODE_CENTER: {
-		sw_layout_block_t *image = gp_alloc.alloc(&gp_alloc, sizeof(*image), ALIGNOF(*image));
-		memset(image, 0, sizeof(*image));
+		sw_layout_block_t *image;
+		ALLOCCT(image, &gp_alloc);
 		image->in.error = layout_block_handle_error;
 		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		image->in._.image.data = config->loaded_image;
@@ -365,6 +321,7 @@ static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_con
 
 static void handle_signal(int sig) {
 	NOTUSED(sig);
+	DEBUG_LOG("%d: %s", sig, strsignal(sig));
 	state.running = FALSE;
 }
 
@@ -380,7 +337,7 @@ static void setup(int argc, char *argv[]) {
 
     su_array__config_t__init(&state.configs, &gp_alloc, 8);
 
-    memset(&config, 0, sizeof(config));
+    MEMSET(&config, 0, sizeof(config));
     config.mode = BACKGROUND_MODE_INVALID;
     config.output = string("*");
 
@@ -413,7 +370,7 @@ static void setup(int argc, char *argv[]) {
             char *s = ARGPARSE_VALUE;
             if (s) {
                 store_config(&config);
-                memset(&config, 0, sizeof(config));
+                MEMSET(&config, 0, sizeof(config));
                 config.mode = BACKGROUND_MODE_INVALID;
                 config.output = string(s);
             }
@@ -460,21 +417,16 @@ static void setup(int argc, char *argv[]) {
 
     arena_init(&state.scratch_arena, &gp_alloc, 8192);
 
-	state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
-	state.sw.in.gp_alloc = &gp_alloc;
-	state.sw.in.scratch_alloc = &scratch_alloc;
-	state.sw.in.backend.wayland.output_create = output_create_sw;
-
-    if (!sw_init(&state.sw)) {
-        su_abort(errno, "sw_init: %s", strerror(errno));
-    }
-
 	sigact.sa_handler = handle_signal;
 	/* ? TODO: error check */
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
 	sigaction(SIGPIPE, &sigact, NULL);
 
+	state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
+	state.sw.in.gp_alloc = &gp_alloc;
+	state.sw.in.scratch_alloc = &scratch_alloc;
+	state.sw.in.backend.wayland.output_create = output_create_sw;
     state.update = TRUE;
     state.running = TRUE;
 }
@@ -482,7 +434,9 @@ static void setup(int argc, char *argv[]) {
 static void run(void) {
     while (state.running) {
 		if (state.update) {
-			sw_set(&state.sw);
+			if (!sw_set(&state.sw)) {
+				su_abort(errno, "sw_set: %s", strerror(errno));
+			}
 			state.update = FALSE;
 		}
 		if (!sw_flush(&state.sw)) {
@@ -498,18 +452,16 @@ static void run(void) {
 		if (!sw_process(&state.sw)) {
 			su_abort(errno, "sw_process: %s", strerror(errno));
 		}
-
-
     }
 }
 
 static void cleanup(void) {
-    sw_fini(&state.sw);
+    sw_cleanup(&state.sw);
 #if DEBUG
 	{
 		size_t i = 0;
 		for ( ; i < state.configs.len; ++i) {
-			gp_alloc.free(&gp_alloc, su_array__config_t__get(&state.configs, i).loaded_image.ptr);
+			FREE(&gp_alloc, su_array__config_t__get(&state.configs, i).loaded_image.ptr);
 		}
     	su_array__config_t__fini(&state.configs, &gp_alloc);
 		arena_fini(&state.scratch_arena, &gp_alloc);

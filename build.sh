@@ -71,10 +71,10 @@ RESVG_DEP_FLAGS="${RESVG_DEP_FLAGS:-}"
 [ ! -d "${BUILD_PATH}/include" ] && mkdir -p "${BUILD_PATH}/include"
 rm -f ${BUILD_PATH}/*.o
 
-cp -f ${ROOT_PATH}/swidgets.h ${BUILD_PATH}/include/swidgets.h
-cp -f ${ROOT_PATH}/sutil.h ${BUILD_PATH}/include/sutil.h
-cp -f ${ROOT_PATH}/stb_sprintf.h ${BUILD_PATH}/include/stb_sprintf.h
-cp -f ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/include/stb_image.h
+ln -sf ${ROOT_PATH}/swidgets.h ${BUILD_PATH}/include/swidgets.h
+ln -sf ${ROOT_PATH}/sutil.h ${BUILD_PATH}/include/sutil.h
+ln -sf ${ROOT_PATH}/stb_sprintf.h ${BUILD_PATH}/include/stb_sprintf.h
+ln -sf ${ROOT_PATH}/stb_image.h ${BUILD_PATH}/include/stb_image.h
 
 case "$CFLAGS" in
   *-D*SW_WITH_WAYLAND_BACKEND=0*) ;;
@@ -82,17 +82,13 @@ case "$CFLAGS" in
     WAYLAND_SCANNER=$(pkg-config $PKGCONFIG_FLAGS --variable=wayland_scanner wayland-scanner)
     WAYLAND_PROTOCOLS_DIR=$(pkg-config $PKGCONFIG_FLAGS --variable=pkgdatadir wayland-protocols)
     # TODO: parallel
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/xdg-shell.c"
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/cursor-shape-v1.c"
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/tablet/tablet-unstable-v2.xml" "${BUILD_PATH}/tablet-unstable-v2.c"
-    $WAYLAND_SCANNER private-code "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/wlr-layer-shell-unstable-v1.c"
+    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.c"
+    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.c"
+    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/tablet/tablet-unstable-v2.xml" "${BUILD_PATH}/include/tablet-unstable-v2.c"
+    $WAYLAND_SCANNER private-code "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.c"
     $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.h"
     $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.h"
     $WAYLAND_SCANNER client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.h"
-    $CC -std=c99 -w -c ${BUILD_PATH}/wlr-layer-shell-unstable-v1.c -o ${BUILD_PATH}/wlr-layer-shell-unstable-v1.o
-    $CC -std=c99 -w -c ${BUILD_PATH}/xdg-shell.c -o ${BUILD_PATH}/xdg-shell.o
-    $CC -std=c99 -w -c ${BUILD_PATH}/cursor-shape-v1.c -o ${BUILD_PATH}/cursor-shape-v1.o
-    $CC -std=c99 -w -c ${BUILD_PATH}/tablet-unstable-v2.c -o ${BUILD_PATH}/tablet-unstable-v2.o
     ;;
 esac
 
@@ -115,12 +111,12 @@ case "$1" in
     echo $DEPS_FLAGS -isystem${BUILD_PATH}/include ${BUILD_PATH}/*.o
     ;;
   shared)
-    $CC $CFLAGS $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -D_XOPEN_SOURCE=700 -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
     $CC $CFLAGS -shared $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
     echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -isystem${BUILD_PATH}/include -DSW_FUNC_DEF=extern"
     ;;
   static)
-    $CC $CFLAGS $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
+    $CC $CFLAGS $DEPS_FLAGS -D_XOPEN_SOURCE=700 -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
     $AR rcs ${BUILD_PATH}/libsw.a ${BUILD_PATH}/*.o
     echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_FUNC_DEF=extern"
     ;;

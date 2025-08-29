@@ -201,7 +201,7 @@ typedef struct sni__item {
 struct sni_item {
 	sni_item_in_t in;
 	sni_item_out_t out;
-	sni__item_t private;
+	sni__item_t priv;
 };
 
 typedef sni_item_t* sni_item_t_ptr;
@@ -226,7 +226,7 @@ typedef struct sni__server {
 typedef struct sni_server {
 	sni_server_in_t in;
 	sni_server_out_t out;
-	sni__server_t private;
+	sni__server_t priv;
 } sni_server_t;
 
 static sni_server_t sni_server;
@@ -277,8 +277,8 @@ static void sni__item_read_pixmap(sd_bus_message *msg, su_array__sni_pixmap_t_pt
 		sd_bus_message_read_array(msg, 'y', &bytes, &nbytes);
 		if (((size_t)width * (size_t)height * 4) == nbytes) {
 			int i;
-			sni_pixmap_t *pixmap = sni_server.in.alloc->alloc(sni_server.in.alloc,
-				sizeof(*pixmap) - sizeof(pixmap->pixels) + nbytes, 64);
+			sni_pixmap_t *pixmap;
+			ALLOCTS(pixmap, sni_server.in.alloc, (sizeof(*pixmap) - sizeof(pixmap->pixels) + nbytes));
 			pixmap->width = width;
 			pixmap->height = height;
 			for ( i = 0; i < (width * height); ++i) {
@@ -306,15 +306,13 @@ static void sni__item_properties_destroy(sni_item_properties_t *properties) {
 	string_fini(&properties->icon_name, alloc);
 	string_fini(&properties->icon_theme_path, alloc);
 	for ( i = 0; i < properties->icon_pixmap.len; ++i) {
-		alloc->free(alloc,
-			su_array__sni_pixmap_t_ptr__get(&properties->icon_pixmap, i));
+		FREE(alloc, su_array__sni_pixmap_t_ptr__get(&properties->icon_pixmap, i));
 	}
 	su_array__sni_pixmap_t_ptr__fini(&properties->icon_pixmap, alloc);
 	string_fini(&properties->menu, alloc);
 	string_fini(&properties->attention_icon_name, alloc);
 	for ( i = 0; i < properties->attention_icon_pixmap.len; ++i) {
-		alloc->free(alloc,
-			su_array__sni_pixmap_t_ptr__get(&properties->attention_icon_pixmap, i));
+		FREE(alloc, su_array__sni_pixmap_t_ptr__get(&properties->attention_icon_pixmap, i));
 	}
 	su_array__sni_pixmap_t_ptr__fini(&properties->attention_icon_pixmap, alloc);
 	string_fini(&properties->id, alloc);
@@ -322,26 +320,24 @@ static void sni__item_properties_destroy(sni_item_properties_t *properties) {
 	string_fini(&properties->attention_movie_name, alloc);
 	string_fini(&properties->overlay_icon_name, alloc);
 	for ( i = 0; i < properties->overlay_icon_pixmap.len; ++i) {
-		alloc->free(alloc,
-			su_array__sni_pixmap_t_ptr__get(&properties->overlay_icon_pixmap, i));
+		FREE(alloc, su_array__sni_pixmap_t_ptr__get(&properties->overlay_icon_pixmap, i));
 	}
 	su_array__sni_pixmap_t_ptr__fini(&properties->overlay_icon_pixmap, alloc);
 	for ( i = 0; i < properties->tooltip.icon_pixmap.len; ++i) {
-		alloc->free(alloc,
-			su_array__sni_pixmap_t_ptr__get(&properties->tooltip.icon_pixmap, i));
+		FREE(alloc, su_array__sni_pixmap_t_ptr__get(&properties->tooltip.icon_pixmap, i));
 	}
 	su_array__sni_pixmap_t_ptr__fini(&properties->tooltip.icon_pixmap, alloc);
 	string_fini(&properties->tooltip.icon_name, alloc);
 	string_fini(&properties->tooltip.title, alloc);
 	string_fini(&properties->tooltip.text, alloc);
 
-	alloc->free(alloc, properties);
+	FREE(alloc, properties);
 }
 
 static void sni__slot_free(sni__slot_t *slot) {
 	sd_bus_slot_unref(slot->slot);
-	su_llist__sni__slot_t__pop(&slot->item->private.slots, slot);
-	sni_server.in.alloc->free(sni_server.in.alloc, slot);
+	su_llist__sni__slot_t__pop(&slot->item->priv.slots, slot);
+	FREE(sni_server.in.alloc, slot);
 }
 
 static void sni__dbusmenu_menu_destroy(sni_dbusmenu_menu_t *menu) {
@@ -362,11 +358,11 @@ static void sni__dbusmenu_menu_destroy(sni_dbusmenu_menu_t *menu) {
 		sni__dbusmenu_menu_destroy(menu_item.submenu);
 		string_fini(&menu_item.label, alloc);
 		string_fini(&menu_item.icon_name, alloc);
-		alloc->free(alloc, menu_item.icon_data.bytes);
+		FREE(alloc, menu_item.icon_data.bytes);
 	}
 	su_array__sni_dbusmenu_menu_item_t__fini(&menu->menu_items, alloc);
 
-	alloc->free(alloc, menu);
+	FREE(alloc, menu);
 }
 
 static void sni__dbusmenu_properties_destroy(sni_dbusmenu_properties_t *properties) {
@@ -381,7 +377,7 @@ static void sni__dbusmenu_properties_destroy(sni_dbusmenu_properties_t *properti
 	}
 	su_array__su_string_t__fini(&properties->icon_theme_path, sni_server.in.alloc);
 
-	sni_server.in.alloc->free(sni_server.in.alloc, properties);
+	FREE(sni_server.in.alloc, properties);
 }
 
 static void sni__dbusmenu_destroy(sni_dbusmenu_t *dbusmenu) {
@@ -392,7 +388,7 @@ static void sni__dbusmenu_destroy(sni_dbusmenu_t *dbusmenu) {
 	sni__dbusmenu_menu_destroy(dbusmenu->menu);
 	sni__dbusmenu_properties_destroy(dbusmenu->properties);
 
-	sni_server.in.alloc->free(sni_server.in.alloc, dbusmenu);
+	FREE(sni_server.in.alloc, dbusmenu);
 }
 
 static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
@@ -400,12 +396,12 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 	/* TODO: remove recursion */
 	su_allocator_t *alloc = sni_server.in.alloc;
 
-	sni_dbusmenu_menu_t *menu = alloc->alloc(
-		alloc, sizeof(*menu), ALIGNOF(*menu));
+	sni_dbusmenu_menu_t *menu;
+	ALLOCT(menu, alloc);
 	menu->dbusmenu = dbusmenu;
 	menu->parent_menu_item = parent_menu_item;
 	menu->depth = (parent_menu_item ? (parent_menu_item->parent_menu->depth + 1) : 0);
-	memset(&menu->menu_items, 0, sizeof(menu->menu_items));
+	MEMSET(&menu->menu_items, 0, sizeof(menu->menu_items));
 
 	su_array__sni_dbusmenu_menu_item_t__init(&menu->menu_items, alloc, 32);
 
@@ -414,7 +410,7 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 		bool32_t children = FALSE;
 
 		sni_dbusmenu_menu_item_t menu_item;
-		memset(&menu_item, 0, sizeof(menu_item));
+		MEMSET(&menu_item, 0, sizeof(menu_item));
 		menu_item.parent_menu = menu;
 		/*menu_item.type = SNI_DBUSMENU_MENU_ITEM_TYPE_STANDARD;*/
 		menu_item.enabled = 1;
@@ -432,7 +428,7 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 		while (sd_bus_message_enter_container(msg, 'e', "sv") == 1) {
 			string_t s;
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) == 0) {
+			if ((s.len = STRLEN(s.s)) == 0) {
 				goto exit_con;
 			}
 			s.free_contents = FALSE;
@@ -440,7 +436,7 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 			sd_bus_message_enter_container(msg, 'v', NULL);
 			if (string_equal(s, string("type"))) {
 				sd_bus_message_read_basic(msg, 's', &s.s);
-				s.len = strlen(s.s);
+				s.len = STRLEN(s.s);
 				if (string_equal(s, string("separator"))) {
 					menu_item.type = SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR;
 				}
@@ -449,10 +445,8 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				char *c;
 				char *label;
 				sd_bus_message_read_basic(msg, 's', &label);
-				c = label;
-				menu_item.label.s = alloc->alloc(alloc,
-					strlen(label) + 1, ALIGNOF(*menu_item.label.s));
-				for ( ; *c; ++c) {
+				ALLOCTS(menu_item.label.s, alloc, STRLEN(label) + 1);
+				for ( c = label; *c; ++c) {
 					if ((*c == '_') && (!*++c)) {
 						break;
 					}
@@ -469,18 +463,18 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				sd_bus_message_read_basic(msg, 'b', &menu_item.visible);
 			} else if (string_equal(s, string("icon-name"))) {
 				sd_bus_message_read_basic(msg, 's', &s.s);
-				if ((s.len = strlen(s.s)) > 0) {
+				if ((s.len = STRLEN(s.s)) > 0) {
 					string_init_len(&menu_item.icon_name, alloc, s.s, s.len, TRUE);
 				}
 			} else if (string_equal(s, string("icon-data"))) {
 				const void *bytes;
 				sd_bus_message_read_array(msg, 'y', &bytes, &menu_item.icon_data.nbytes);
-				menu_item.icon_data.bytes = alloc->alloc( alloc, menu_item.icon_data.nbytes, 64);
-				memcpy(menu_item.icon_data.bytes, bytes, menu_item.icon_data.nbytes);
+				ALLOCTSA(menu_item.icon_data.bytes, alloc, menu_item.icon_data.nbytes, 64);
+				MEMCPY(menu_item.icon_data.bytes, bytes, menu_item.icon_data.nbytes);
 			/*} else if (string_equal(key_str, string("shortcut"))) { */
 			} else if (string_equal(s, string("toggle-type"))) {
 				sd_bus_message_read_basic(msg, 's', &s.s);
-				if ((s.len = strlen(s.s)) > 0) {
+				if ((s.len = STRLEN(s.s)) > 0) {
 					if (string_equal(s, string("checkmark"))) {
 						menu_item.toggle_type = SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_CHECKMARK;
 					} else if (string_equal(s, string("radio"))) {
@@ -491,13 +485,13 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				sd_bus_message_read_basic(msg, 'i', &menu_item.toggle_state);
 			} else if (string_equal(s, string("children-display"))) {
 				sd_bus_message_read_basic(msg, 's', &s.s);
-				s.len = strlen(s.s);
+				s.len = STRLEN(s.s);
 				if (string_equal(s, string("submenu"))) {
 					children = TRUE;
 				}
 			} else if (string_equal(s, string("disposition"))) {
 				sd_bus_message_read_basic(msg, 's', &s.s);
-				if ((s.len = strlen(s.s)) > 0) {
+				if ((s.len = STRLEN(s.s)) > 0) {
 					if (string_equal(s, string("normal"))) {
 						menu_item.disposition = SNI_DBUSMENU_MENU_ITEM_DISPOSITION_NORNAL;
 					} else if (string_equal(s, string("informative"))) {
@@ -535,7 +529,7 @@ exit_con:
 
 static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
-	sni__slot_t *slot = data;
+	sni__slot_t *slot = (sni__slot_t *)data;
 	sni_item_t *item = slot->item;
 	sni_dbusmenu_t *dbusmenu = item->out.dbusmenu;
 	struct sni_dbusmenu_menu *old_menu = dbusmenu->menu;
@@ -563,19 +557,21 @@ static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
 }
 
 static int sni__dbusmenu_get_layout(sni_dbusmenu_t *dbusmenu) {
+	int ret;
 	su_allocator_t *alloc = sni_server.in.alloc;
 	sni_item_t *item = dbusmenu->item;
-	sni__slot_t *slot = alloc->alloc(alloc, sizeof(*slot), ALIGNOF(*slot));
-	int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
+	sni__slot_t *slot;
+	ALLOCT(slot, alloc);
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
 			item->out.properties->menu.s, sni__dbusmenu_interface, "GetLayout",
 			sni__dbusmenu_handle_get_layout, slot, "iias", 0, -1, NULL);
 	if (ret < 0) {
-		alloc->free(alloc, slot);
+		FREE(alloc, slot);
 		return ret;
 	}
 
 	slot->item = item;
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 
 	return 1;
 }
@@ -583,7 +579,7 @@ static int sni__dbusmenu_get_layout(sni_dbusmenu_t *dbusmenu) {
 static int sni__dbusmenu_handle_signal(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
 	/* ? TODO: error check */
-	sni__slot_t *slot = data;
+	sni__slot_t *slot = (sni__slot_t *)data;
 
 	NOTUSED(msg); NOTUSED(ret_error);
 
@@ -595,7 +591,7 @@ static int sni__dbusmenu_handle_signal(sd_bus_message *msg, void *data,
 
 static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
-	sni__slot_t *slot = data;
+	sni__slot_t *slot = (sni__slot_t *)data;
 	su_allocator_t *alloc;
 	sni_dbusmenu_t *dbusmenu = slot->item->out.dbusmenu;
 	sni_dbusmenu_properties_t *props;
@@ -612,12 +608,12 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 
 	alloc = sni_server.in.alloc;
 
-	props = alloc->alloc(alloc, sizeof(*props), ALIGNOF(*props));
-	memset(props, 0, sizeof(*props));
+	ALLOCCT(props, alloc);
+
 	while (sd_bus_message_enter_container(msg, 'e', "sv") == 1) {
 		string_t s;
 		sd_bus_message_read_basic(msg, 's', &s.s);
-		if ((s.len = strlen(s.s)) == 0) {
+		if ((s.len = STRLEN(s.s)) == 0) {
 			goto exit_con;
 		}
 		s.free_contents = FALSE;
@@ -632,7 +628,7 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 				for ( ; *p != NULL; ++p) {
 					char *path = *p;
 					size_t len;
-					if ((len = strlen(path)) > 0) {
+					if ((len = STRLEN(path)) > 0) {
 						string_init_len(
 							su_array__su_string_t__add_uninitialized(&props->icon_theme_path, alloc),
 							alloc, path, len, TRUE);
@@ -644,7 +640,7 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 			}
 		} else if (string_equal(s, string("Status"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				if (string_equal(s, string("normal"))) {
 					props->status = SNI_DBUSMENU_STATUS_NORMAL;
 				} else if (string_equal(s, string("notice"))) {
@@ -653,7 +649,7 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
 			}
 		} else if (string_equal(s, string("TextDirection"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				if (string_equal(s, string("ltr"))) {
 					props->text_direction = SNI_DBUSMENU_TEXT_DIRECTION_LEFT_TO_RIGHT;
 				} else if (string_equal(s, string("rtl"))) {
@@ -686,44 +682,44 @@ static sni_dbusmenu_t *sni__dbusmenu_create(sni_item_t *item) {
 
 	alloc = sni_server.in.alloc;
 
-	slot1 = alloc->alloc(alloc, sizeof(*slot1), ALIGNOF(*slot1));
-	ret = sd_bus_call_method_async(sni_server.private.bus, &slot1->slot, item->private.service.s,
+	ALLOCT(slot1, alloc);
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot1->slot, item->priv.service.s,
 			item->out.properties->menu.s, "org.freedesktop.DBus.Properties", "GetAll",
 			sni__dbusmenu_handle_get_properties, slot1, "s", sni__dbusmenu_interface);
 	if (ret < 0) {
 		goto error_1;
 	}
 
-	slot2 = alloc->alloc(alloc, sizeof(*slot2), ALIGNOF(*slot2));
-	ret = sd_bus_match_signal_async(sni_server.private.bus, &slot2->slot, item->private.service.s,
+	ALLOCT(slot2, alloc);
+	ret = sd_bus_match_signal_async(sni_server.priv.bus, &slot2->slot, item->priv.service.s,
 			item->out.properties->menu.s, sni__dbusmenu_interface, NULL,
 			sni__dbusmenu_handle_signal, sni__dbusmenu_handle_signal, slot2);
 	if (ret < 0) {
 		goto error_2;
 	}
 
-	dbusmenu = alloc->alloc(alloc, sizeof(*dbusmenu), ALIGNOF(*dbusmenu));
+	ALLOCT(dbusmenu, alloc);
 	dbusmenu->item = item;
 	dbusmenu->properties = NULL;
 	dbusmenu->menu = NULL;
 
 	slot1->item = item;
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot1);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot1);
 	slot2->item = item;
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot2);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot2);
 
 	return dbusmenu;
 error_2:
 	sd_bus_slot_unref(slot1->slot);
-	alloc->free(alloc, slot2);
+	FREE(alloc, slot2);
 error_1:
-	alloc->free(alloc, slot1);
+	FREE(alloc, slot1);
 	return NULL;
 }
 
 static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
-	sni__slot_t *slot = data;
+	sni__slot_t *slot = (sni__slot_t *)data;
 	sni_item_t *item = slot->item;
 	sni_item_properties_t *props;
 	su_allocator_t *alloc = sni_server.in.alloc;
@@ -739,9 +735,7 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 		item->out.properties = NULL;
 		goto out;
 	} else {
-		item->out.properties = alloc->alloc(alloc,
-			sizeof(*item->out.properties), ALIGNOF(*item->out.properties));
-		memset(item->out.properties, 0, sizeof(*item->out.properties));
+		ALLOCCT(item->out.properties, alloc);
 		ret = 1;
 	}
 
@@ -749,7 +743,7 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 	while (sd_bus_message_enter_container(msg, 'e', "sv") == 1) {
 		string_t s;
 		sd_bus_message_read_basic(msg, 's', &s.s);
-		if ((s.len = strlen(s.s)) == 0) {
+		if ((s.len = STRLEN(s.s)) == 0) {
 			goto exit_con;
 		}
 		s.free_contents = FALSE;
@@ -757,19 +751,19 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 		sd_bus_message_enter_container(msg, 'v', NULL);
 		if (string_equal(s, string("IconName"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->icon_name, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("IconThemePath"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->icon_theme_path, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("IconPixmap"))) {
 			sni__item_read_pixmap(msg, &props->icon_pixmap);
 		} else if (string_equal(s, string("Status"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				if (string_equal(s, string("Active"))) {
 					props->status = SNI_ITEM_STATUS_ACTIVE;
 				} else if (string_equal(s, string("Passive"))) {
@@ -780,7 +774,7 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 			}
 		} else if (string_equal(s, string("Category"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				if (string_equal(s, string("ApplicationStatus"))) {
 					props->category = SNI_ITEM_CATEGORY_APPLICATION_STATUS;
 				} else if (string_equal(s, string("Communications"))) {
@@ -793,12 +787,12 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 			}
 		} else if (string_equal(s, string("Menu"))) {
 			sd_bus_message_read_basic(msg, 'o', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->menu, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("AttentionIconName"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->attention_icon_name, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("AttentionIconPixmap"))) {
@@ -809,22 +803,22 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 			sd_bus_message_read_basic(msg, 'i', &props->window_id);
 		} else if (string_equal(s, string("Id"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->id, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("Title"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->title, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("AttentionMovieName"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->attention_movie_name, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("OverlayIconName"))) {
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->overlay_icon_name, alloc, s.s, s.len, TRUE);
 			}
 		} else if (string_equal(s, string("OverlayIconPixmap"))) {
@@ -832,16 +826,16 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 		} else if (string_equal(s, string("ToolTip"))) {
 			sd_bus_message_enter_container(msg, 'r', "sa(iiay)ss");
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->tooltip.icon_name, alloc, s.s, s.len, TRUE);
 			}
 			sni__item_read_pixmap(msg, &props->tooltip.icon_pixmap);
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->tooltip.title, alloc, s.s, s.len, TRUE);
 			}
 			sd_bus_message_read_basic(msg, 's', &s.s);
-			if ((s.len = strlen(s.s)) > 0) {
+			if ((s.len = STRLEN(s.s)) > 0) {
 				string_init_len(&props->tooltip.text, alloc, s.s, s.len, TRUE);
 			}
 			sd_bus_message_exit_container(msg);
@@ -869,22 +863,23 @@ out:
 static int sni__item_handle_signal(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
 	/* ? TODO: error check */
-	sni_item_t *item = data;
+	sni_item_t *item = (sni_item_t *)data;
 	su_allocator_t *alloc = sni_server.in.alloc;
-	sni__slot_t *slot = alloc->alloc(
-		alloc, sizeof(*slot), ALIGNOF(*slot));
+	sni__slot_t *slot;
 	int ret;
 
 	NOTUSED(msg); NOTUSED(ret_error);
 
-	ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
-			item->private.path.s, "org.freedesktop.DBus.Properties", "GetAll",
+	ALLOCT(slot, alloc);
+
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
+			item->priv.path.s, "org.freedesktop.DBus.Properties", "GetAll",
 			sni__item_handle_get_properties, slot, "s", sni__item_interface);
 	if (ret >= 0) {
 		slot->item = item;
-		su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+		su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 	} else {
-		alloc->free(alloc, slot);
+		FREE(alloc, slot);
 	}
 
 	return 1;
@@ -892,11 +887,11 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
 
 static void sni__item_destroy(sni_item_t *item) {
 	su_allocator_t *alloc = sni_server.in.alloc;
-	sni__slot_t *slot = item->private.slots.head;
+	sni__slot_t *slot = item->priv.slots.head;
 	for ( ; slot; ) {
 		sni__slot_t *next = slot->next;
         sd_bus_slot_unref(slot->slot);
-        alloc->free(alloc, slot);
+        FREE(alloc, slot);
         slot = next;
 	}
 
@@ -904,9 +899,9 @@ static void sni__item_destroy(sni_item_t *item) {
 
 	sni__item_properties_destroy(item->out.properties);
 
-    string_fini(&item->private.watcher_id, alloc);
-	string_fini(&item->private.service, alloc);
-	string_fini(&item->private.path, alloc);
+    string_fini(&item->priv.watcher_id, alloc);
+	string_fini(&item->priv.service, alloc);
+	string_fini(&item->priv.path, alloc);
 
 	if (item->in.destroy) {
 		item->in.destroy(item);
@@ -930,9 +925,9 @@ static sni_item_t *sni__item_create(string_t id) {
 	}
 
 	alloc = sni_server.in.alloc;
-	string_init_len(&item->private.service, alloc, id.s, id.len - path.len, TRUE);
+	string_init_len(&item->priv.service, alloc, id.s, id.len - path.len, TRUE);
 
-	ret = sd_bus_match_signal_async(sni_server.private.bus, &slot_, item->private.service.s,
+	ret = sd_bus_match_signal_async(sni_server.priv.bus, &slot_, item->priv.service.s,
 			path.s, sni__item_interface, NULL,
 			sni__item_handle_signal, sni__item_handle_signal, item);
 	if (ret < 0) {
@@ -940,17 +935,17 @@ static sni_item_t *sni__item_create(string_t id) {
 		return NULL;
 	}
 
-	slot = alloc->alloc( alloc, sizeof(*slot), ALIGNOF(*slot));
+	ALLOCT(slot, alloc);
 	slot->item = item;
 	slot->slot = slot_;
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 
 	if (id.free_contents) {
-		item->private.watcher_id = id;
-		item->private.path = path;
+		item->priv.watcher_id = id;
+		item->priv.path = path;
 	} else {
-		string_init_string(&item->private.watcher_id, alloc, id);
-		string_init_string(&item->private.path, alloc, path);
+		string_init_string(&item->priv.watcher_id, alloc, id);
+		string_init_string(&item->priv.path, alloc, path);
 	}
 
 	return item;
@@ -971,7 +966,7 @@ static int sni__watcher_handle_register_item(sd_bus_message *msg, void *data,
 		return ret;
 	}
 
-	/*if (strlen(service_or_path) == 0) { */
+	/*if (STRLEN(service_or_path) == 0) { */
 	/*	return -EINVAL; */
 	/*} */
 
@@ -984,23 +979,23 @@ static int sni__watcher_handle_register_item(sd_bus_message *msg, void *data,
 	}
 
 	string_init_format(&id, sni_server.in.alloc, "%s%s", service, path);
-    for ( i = 0; i < sni_server.private.watcher_items.len; ++i) {
-        if (string_equal(id, su_array__su_string_t__get(&sni_server.private.watcher_items, i))) {
+    for ( i = 0; i < sni_server.priv.watcher_items.len; ++i) {
+        if (string_equal(id, su_array__su_string_t__get(&sni_server.priv.watcher_items, i))) {
             string_fini(&id, sni_server.in.alloc);
             return -EEXIST;
         }
     }
 
-    ret = sd_bus_emit_signal(sni_server.private.bus, sni__watcher_obj_path, sni__watcher_interface,
+    ret = sd_bus_emit_signal(sni_server.priv.bus, sni__watcher_obj_path, sni__watcher_interface,
 			"StatusNotifierItemRegistered", "s", id.s);
     if (ret < 0) {
         string_fini(&id, sni_server.in.alloc);
         return ret;
     }
 
-    su_array__su_string_t__add(&sni_server.private.watcher_items, sni_server.in.alloc, id);
+    su_array__su_string_t__add(&sni_server.priv.watcher_items, sni_server.in.alloc, id);
 
-	/*ret = sd_bus_emit_properties_changed(sni_server.private.bus, */
+	/*ret = sd_bus_emit_properties_changed(sni_server.priv.bus, */
 	/*	sni__watcher_obj_path, sni__watcher_interface, */
 	/*	"RegisteredStatusNotifierItems", NULL); */
 	/*if (ret < 0) { */
@@ -1031,14 +1026,14 @@ static int sni__watcher_handle_register_host(sd_bus_message *msg, void *data,
 
 	s = string(s.s);
 
-    for ( i = 0; i < sni_server.private.watcher_hosts.len; ++i) {
-        if (string_equal(s, su_array__su_string_t__get(&sni_server.private.watcher_hosts, i))) {
+    for ( i = 0; i < sni_server.priv.watcher_hosts.len; ++i) {
+        if (string_equal(s, su_array__su_string_t__get(&sni_server.priv.watcher_hosts, i))) {
             return -EEXIST;
         }
     }
 
-	/*if (sni_server.private.watcher_hosts.len == 0) { */
-	/*	ret = sd_bus_emit_properties_changed(sni_server.private.bus, */
+	/*if (sni_server.priv.watcher_hosts.len == 0) { */
+	/*	ret = sd_bus_emit_properties_changed(sni_server.priv.bus, */
 	/*		sni__watcher_obj_path, sni__watcher_interface, */
 	/*		"IsStatusNotifierHostRegistered", NULL); */
 	/*	if (ret < 0) { */
@@ -1046,14 +1041,14 @@ static int sni__watcher_handle_register_host(sd_bus_message *msg, void *data,
 	/*	} */
 	/*} */
 
-    ret = sd_bus_emit_signal(sni_server.private.bus, sni__watcher_obj_path, sni__watcher_interface,
+    ret = sd_bus_emit_signal(sni_server.priv.bus, sni__watcher_obj_path, sni__watcher_interface,
 			"StatusNotifierHostRegistered", "");
     if (ret < 0) {
         return ret;
     }
 
 	string_init_string(&s, sni_server.in.alloc, s);
-    su_array__su_string_t__add(&sni_server.private.watcher_hosts, sni_server.in.alloc, s);
+    su_array__su_string_t__add(&sni_server.priv.watcher_hosts, sni_server.in.alloc, s);
 
     ret = sd_bus_reply_method_return(msg, "");
     if (ret < 0) {
@@ -1068,19 +1063,20 @@ static int sni__watcher_handle_get_registered_items(sd_bus *b, const char *path,
 		void *data, sd_bus_error *ret_error) {
 	/* ? TODO: scratch alloc */
 	su_allocator_t *alloc = sni_server.in.alloc;
-	char **array = alloc->alloc(alloc,
-		(sni_server.private.watcher_items.len + 1) * sizeof(*array), ALIGNOF(*array));
+	char **array;
 	size_t i = 0;
 	int ret;
 
 	NOTUSED(b); NOTUSED(path); NOTUSED(iface); NOTUSED(prop); NOTUSED(data); NOTUSED(ret_error);
 
-	for ( ; i < sni_server.private.watcher_items.len; ++i) {
-		array[i] = su_array__su_string_t__get(&sni_server.private.watcher_items, i).s;
+	ALLOCTS(array, alloc, (sni_server.priv.watcher_items.len + 1) * sizeof(*array));
+
+	for ( ; i < sni_server.priv.watcher_items.len; ++i) {
+		array[i] = su_array__su_string_t__get(&sni_server.priv.watcher_items, i).s;
 	}
-	array[sni_server.private.watcher_items.len] = NULL;
+	array[sni_server.priv.watcher_items.len] = NULL;
 	ret = sd_bus_message_append_strv(reply, array);
-	alloc->free(alloc, array);
+	FREE(alloc, array);
     if (ret < 0) {
 		return ret;
     }
@@ -1091,7 +1087,7 @@ static int sni__watcher_handle_get_registered_items(sd_bus *b, const char *path,
 static int sni__watcher_handle_is_host_registered(sd_bus *b, const char *path,
 		const char *iface, const char *prop, sd_bus_message *reply,
 		void *data, sd_bus_error *ret_error) {
-	int registered = (sni_server.private.watcher_hosts.len > 0);
+	int registered = (sni_server.priv.watcher_hosts.len > 0);
 	int ret = sd_bus_message_append_basic(reply, 'b', &registered);
 
 	NOTUSED(b); NOTUSED(path); NOTUSED(iface); NOTUSED(prop); NOTUSED(data); NOTUSED(ret_error);
@@ -1121,17 +1117,17 @@ static int sni__watcher_handle_lost_service(sd_bus_message *msg, void *data,
 
 	s = string(s.s);
 
-    for ( i = 0; i < sni_server.private.watcher_items.len; ++i) {
-        string_t item = su_array__su_string_t__get(&sni_server.private.watcher_items, i);
+    for ( i = 0; i < sni_server.priv.watcher_items.len; ++i) {
+        string_t item = su_array__su_string_t__get(&sni_server.priv.watcher_items, i);
         if (string_compare(item, s, s.len) == 0) {
-            ret = sd_bus_emit_signal(sni_server.private.bus, sni__watcher_obj_path, sni__watcher_interface,
+            ret = sd_bus_emit_signal(sni_server.priv.bus, sni__watcher_obj_path, sni__watcher_interface,
 					"StatusNotifierItemUnregistered", "s", item.s);
             if (ret < 0) {
                 return ret;
             }
             string_fini(&item, sni_server.in.alloc);
-            su_array__su_string_t__pop_swapback(&sni_server.private.watcher_items, i);
-			/*ret = sd_bus_emit_properties_changed(sni_server.private.bus,*/
+            su_array__su_string_t__pop_swapback(&sni_server.priv.watcher_items, i);
+			/*ret = sd_bus_emit_properties_changed(sni_server.priv.bus,*/
 			/*	sni__watcher_obj_path, sni__watcher_interface,*/
 			/*	"RegisteredStatusNotifierItems", NULL);*/
 			/*if (ret < 0) {*/
@@ -1141,24 +1137,24 @@ static int sni__watcher_handle_lost_service(sd_bus_message *msg, void *data,
         }
     }
 
-    for ( i = 0; i < sni_server.private.watcher_hosts.len; ++i) {
-        string_t host = su_array__su_string_t__get(&sni_server.private.watcher_hosts, i);
+    for ( i = 0; i < sni_server.priv.watcher_hosts.len; ++i) {
+        string_t host = su_array__su_string_t__get(&sni_server.priv.watcher_hosts, i);
         if (string_equal(s, host)) {
-			/*if (sni_server.private.watcher_hosts.len == 1) { */
-			/*	ret = sd_bus_emit_properties_changed(sni_server.private.bus, */
+			/*if (sni_server.priv.watcher_hosts.len == 1) { */
+			/*	ret = sd_bus_emit_properties_changed(sni_server.priv.bus, */
 			/*		sni__watcher_obj_path, sni__watcher_interface, */
 			/*		"IsStatusNotifierHostRegistered", NULL); */
 			/*	if (ret < 0) { */
 			/*		return ret; */
 			/*	} */
 			/*} */
-            ret = sd_bus_emit_signal(sni_server.private.bus, sni__watcher_obj_path, sni__watcher_interface,
+            ret = sd_bus_emit_signal(sni_server.priv.bus, sni__watcher_obj_path, sni__watcher_interface,
 					"StatusNotifierHostUnregistered", "");
 			if (ret < 0) {
                 return ret;
             }
             string_fini(&host, sni_server.in.alloc);
-            su_array__su_string_t__pop_swapback(&sni_server.private.watcher_hosts, i);
+            su_array__su_string_t__pop_swapback(&sni_server.priv.watcher_hosts, i);
             return 0;
         }
     }
@@ -1171,13 +1167,13 @@ static int sni__host_add_item(string_t id) {
 	size_t i = 0;
 	for ( ; i < sni_server.out.host_items.len; ++i) {
 		item = su_array__sni_item_t_ptr__get(&sni_server.out.host_items, i);
-		if (string_equal(id, item->private.watcher_id)) {
+		if (string_equal(id, item->priv.watcher_id)) {
 			return -EEXIST;
 		}
 	}
 
 	if ((item = sni__item_create(id))) {
-		ASSERT(string_equal(item->private.watcher_id, id));
+		ASSERT(string_equal(item->priv.watcher_id, id));
 		su_array__sni_item_t_ptr__add(&sni_server.out.host_items, sni_server.in.alloc, item);
 		return 1;
 	} else {
@@ -1208,7 +1204,7 @@ static int sni__host_handle_get_registered_items(sd_bus_message *msg, void *data
 			char *id = *s;
 			string_t str;
 			str.s = id;
-			str.len = strlen(str.s);
+			str.len = STRLEN(str.s);
 			str.free_contents = TRUE;
 			str.nul_terminated = TRUE;
 			if ((str.len == 0) || (0 > sni__host_add_item(str))) {
@@ -1223,15 +1219,15 @@ static int sni__host_handle_get_registered_items(sd_bus_message *msg, void *data
 
 static int sni__host_register_to_watcher(void) {
 	/* ? TODO: slots */
-	int ret = sd_bus_call_method_async(sni_server.private.bus, NULL,
+	int ret = sd_bus_call_method_async(sni_server.priv.bus, NULL,
 			sni__watcher_interface, sni__watcher_obj_path, sni__watcher_interface,
 			"RegisterStatusNotifierHost", NULL, NULL,
-			"s", sni_server.private.host_interface.s);
+			"s", sni_server.priv.host_interface.s);
 	if (ret < 0) {
 		return ret;
 	}
 
-	ret = sd_bus_call_method_async(sni_server.private.bus, NULL,
+	ret = sd_bus_call_method_async(sni_server.priv.bus, NULL,
 			sni__watcher_interface, sni__watcher_obj_path,
 			"org.freedesktop.DBus.Properties", "Get",
 			sni__host_handle_get_registered_items, NULL, "ss",
@@ -1280,7 +1276,7 @@ static int sni__host_handle_item_unregistered(sd_bus_message *msg, void *data,
 		size_t i = 0;
 		for ( ; i < sni_server.out.host_items.len; ++i) {
 			sni_item_t *item = su_array__sni_item_t_ptr__get(&sni_server.out.host_items, i);
-			if (string_equal(item->private.watcher_id, s)) {
+			if (string_equal(item->priv.watcher_id, s)) {
 				su_array__sni_item_t_ptr__pop(&sni_server.out.host_items, i);
 				sni__item_destroy(item);
 				break;
@@ -1302,7 +1298,7 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
 		return ret;
 	}
 
-	if (strcmp(service, sni__watcher_interface) == 0) {
+	if (STRCMP(service, sni__watcher_interface) == 0) {
 		size_t i;
         ret = sni__host_register_to_watcher();
 		if (ret < 0) {
@@ -1328,22 +1324,22 @@ static void sni_server_fini(void) {
 	}
 	su_array__sni_item_t_ptr__fini(&sni_server.out.host_items, alloc);
 
-	sd_bus_flush_close_unref(sni_server.private.bus);
+	sd_bus_flush_close_unref(sni_server.priv.bus);
 
-	string_fini(&sni_server.private.host_interface, alloc);
-	for ( i = 0; i < sni_server.private.watcher_items.len; ++i) {
+	string_fini(&sni_server.priv.host_interface, alloc);
+	for ( i = 0; i < sni_server.priv.watcher_items.len; ++i) {
 		string_fini(
-			su_array__su_string_t__get_ptr(&sni_server.private.watcher_items, i), alloc);
+			su_array__su_string_t__get_ptr(&sni_server.priv.watcher_items, i), alloc);
 	}
-	for ( i = 0; i < sni_server.private.watcher_hosts.len; ++i) {
+	for ( i = 0; i < sni_server.priv.watcher_hosts.len; ++i) {
 		string_fini(
-			su_array__su_string_t__get_ptr(&sni_server.private.watcher_hosts, i), alloc);
+			su_array__su_string_t__get_ptr(&sni_server.priv.watcher_hosts, i), alloc);
 	}
-	su_array__su_string_t__fini(&sni_server.private.watcher_items, alloc);
-	su_array__su_string_t__fini(&sni_server.private.watcher_hosts, alloc);
+	su_array__su_string_t__fini(&sni_server.priv.watcher_items, alloc);
+	su_array__su_string_t__fini(&sni_server.priv.watcher_hosts, alloc);
 
-	memset(&sni_server.out, 0, sizeof(sni_server.out));
-	memset(&sni_server.private, 0, sizeof(sni_server.private));
+	MEMSET(&sni_server.out, 0, sizeof(sni_server.out));
+	MEMSET(&sni_server.priv, 0, sizeof(sni_server.priv));
 }
 
 static int sni_server_init(void) {
@@ -1351,15 +1347,15 @@ static int sni_server_init(void) {
 	su_allocator_t *alloc = sni_server.in.alloc;
 	static sd_bus_vtable watcher_vtable[11];
 
-	memset(&sni_server.out, 0, sizeof(sni_server.out));
-	memset(&sni_server.private, 0, sizeof(sni_server.private));
+	MEMSET(&sni_server.out, 0, sizeof(sni_server.out));
+	MEMSET(&sni_server.priv, 0, sizeof(sni_server.priv));
 
-	ret = sd_bus_open_user(&sni_server.private.bus);
+	ret = sd_bus_open_user(&sni_server.priv.bus);
     if (ret < 0) {
 		return ret;
     }
 
-	ret = sd_bus_request_name(sni_server.private.bus, sni__watcher_interface, SD_BUS_NAME_QUEUE);
+	ret = sd_bus_request_name(sni_server.priv.bus, sni__watcher_interface, SD_BUS_NAME_QUEUE);
 	if (ret < 0) {
         return ret;
     }
@@ -1422,27 +1418,27 @@ static int sni_server_init(void) {
 	watcher_vtable[10].flags = 0;
 	watcher_vtable[10].x.start.element_size = 0;
 
-    ret = sd_bus_add_object_vtable(sni_server.private.bus, NULL, sni__watcher_obj_path,
+    ret = sd_bus_add_object_vtable(sni_server.priv.bus, NULL, sni__watcher_obj_path,
             sni__watcher_interface, watcher_vtable,
 			&sni__watcher_protocol_version);
     if (ret < 0) {
         return ret;
     }
 
-    ret = sd_bus_match_signal(sni_server.private.bus, NULL, "org.freedesktop.DBus",
+    ret = sd_bus_match_signal(sni_server.priv.bus, NULL, "org.freedesktop.DBus",
 			"/org/freedesktop/DBus", "org.freedesktop.DBus",
 			"NameOwnerChanged", sni__watcher_handle_lost_service, NULL);
     if (ret < 0) {
         return ret;
     }
 
-    su_array__su_string_t__init(&sni_server.private.watcher_items, alloc, 16);
-    su_array__su_string_t__init(&sni_server.private.watcher_hosts, alloc, 4);
+    su_array__su_string_t__init(&sni_server.priv.watcher_items, alloc, 16);
+    su_array__su_string_t__init(&sni_server.priv.watcher_hosts, alloc, 4);
 
 
-	string_init_format(&sni_server.private.host_interface, alloc,
+	string_init_format(&sni_server.priv.host_interface, alloc,
 		"org.kde.StatusNotifierHost-%d", getpid());
-    ret = sd_bus_request_name(sni_server.private.bus, sni_server.private.host_interface.s, 0); /* ? TODO: SD_BUS_NAME_QUEUE */
+    ret = sd_bus_request_name(sni_server.priv.bus, sni_server.priv.host_interface.s, 0); /* ? TODO: SD_BUS_NAME_QUEUE */
     if (ret < 0) {
         return ret;
     }
@@ -1452,20 +1448,20 @@ static int sni_server_init(void) {
         return ret;
     }
 
-    ret = sd_bus_match_signal(sni_server.private.bus, NULL, sni__watcher_interface,
+    ret = sd_bus_match_signal(sni_server.priv.bus, NULL, sni__watcher_interface,
 			sni__watcher_obj_path, sni__watcher_interface,
 			"StatusNotifierItemRegistered", sni__host_handle_item_registered, NULL);
 	if (ret < 0) {
 		return ret;
 	}
-	ret = sd_bus_match_signal(sni_server.private.bus, NULL, sni__watcher_interface,
+	ret = sd_bus_match_signal(sni_server.priv.bus, NULL, sni__watcher_interface,
 			sni__watcher_obj_path, sni__watcher_interface,
 			"StatusNotifierItemUnregistered", sni__host_handle_item_unregistered, NULL);
 	if (ret < 0) {
 		return ret;
 	}
 
-	ret = sd_bus_match_signal(sni_server.private.bus, NULL, "org.freedesktop.DBus",
+	ret = sd_bus_match_signal(sni_server.priv.bus, NULL, "org.freedesktop.DBus",
 			"/org/freedesktop/DBus", "org.freedesktop.DBus", "NameOwnerChanged",
 			sni__host_handle_new_watcher, NULL);
 	if (ret < 0) {
@@ -1481,17 +1477,17 @@ static int sni_server_get_poll_info(struct pollfd *pollfd_out, int64_t *absolute
 	uint64_t usec;
 	int fd, events, ret;
 
-	fd = sd_bus_get_fd(sni_server.private.bus);
+	fd = sd_bus_get_fd(sni_server.priv.bus);
 	if (fd < 0) {
 		return fd;
 	}
 
-	events = sd_bus_get_events(sni_server.private.bus);
+	events = sd_bus_get_events(sni_server.priv.bus);
 	if (events < 0) {
 		return events;
 	}
 
-	ret = sd_bus_get_timeout(sni_server.private.bus, &usec);
+	ret = sd_bus_get_timeout(sni_server.priv.bus, &usec);
 	if (ret < 0) {
 		return ret;
 	}
@@ -1515,7 +1511,7 @@ static int sni_server_get_poll_info(struct pollfd *pollfd_out, int64_t *absolute
 
 static int sni_server_process(void) {
 	int ret;
-    while ((ret = sd_bus_process(sni_server.private.bus, NULL)) > 0)
+    while ((ret = sd_bus_process(sni_server.priv.bus, NULL)) > 0)
 	{
 	}
 	if (ret < 0) {
@@ -1527,15 +1523,15 @@ static int sni_server_process(void) {
 
 static int sni__item_handle_method(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
-	sni__slot_t *slot = data;
+	sni__slot_t *slot = (sni__slot_t *)data;
 	NOTUSED(msg); NOTUSED(ret_error);
 	sni__slot_free(slot);
 	return 1;
 }
 
 static int sni_item_context_menu(sni_item_t *item, int x, int y) {
-	int ret = sd_bus_call_method(sni_server.private.bus, item->private.service.s,
-		item->private.path.s, sni__item_interface, "ContextMenu",
+	int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
+		item->priv.path.s, sni__item_interface, "ContextMenu",
 		NULL, NULL, "ii", x, y);
 	if (ret < 0) {
 		return ret;
@@ -1545,27 +1541,28 @@ static int sni_item_context_menu(sni_item_t *item, int x, int y) {
 }
 
 static int sni_item_context_menu_async(sni_item_t *item, int x, int y) {
+	int ret;
 	su_allocator_t *alloc = sni_server.in.alloc;
-	sni__slot_t *slot = alloc->alloc(
-		alloc, sizeof(*slot), ALIGNOF(*slot));
-	int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
-			item->private.path.s, sni__item_interface, "ContextMenu",
+	sni__slot_t *slot;
+	ALLOCT(slot, alloc);
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
+			item->priv.path.s, sni__item_interface, "ContextMenu",
 			sni__item_handle_method, slot, "ii", x, y);
 	if (ret < 0) {
-		alloc->free(alloc, slot);
+		FREE(alloc, slot);
 		return ret;
 	} else {
 		slot->item = item;
 	}
 
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 
 	return 1;
 }
 
 static int sni_item_activate(sni_item_t *item, int x, int y) {
-	int ret = sd_bus_call_method(sni_server.private.bus, item->private.service.s,
-		item->private.path.s, sni__item_interface, "Activate",
+	int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
+		item->priv.path.s, sni__item_interface, "Activate",
 		NULL, NULL, "ii", x, y);
 	if (ret < 0) {
 		return ret;
@@ -1575,27 +1572,28 @@ static int sni_item_activate(sni_item_t *item, int x, int y) {
 }
 
 static int sni_item_activate_async(sni_item_t *item, int x, int y) {
+	int ret;
 	su_allocator_t *alloc = sni_server.in.alloc;
-	sni__slot_t *slot = alloc->alloc(
-		alloc, sizeof(*slot), ALIGNOF(*slot));
-	int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
-			item->private.path.s, sni__item_interface, "Activate",
+	sni__slot_t *slot;
+	ALLOCT(slot, alloc);
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
+			item->priv.path.s, sni__item_interface, "Activate",
 			sni__item_handle_method, slot, "ii", x, y);
 	if (ret < 0) {
-		alloc->free(alloc, slot);
+		FREE(alloc, slot);
 		return ret;
 	} else {
 		slot->item = item;
 	}
 
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 
 	return 1;
 }
 
 static int sni_item_secondary_activate(sni_item_t *item, int x, int y) {
-	int ret = sd_bus_call_method(sni_server.private.bus, item->private.service.s,
-		item->private.path.s, sni__item_interface, "SecondaryActivate",
+	int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
+		item->priv.path.s, sni__item_interface, "SecondaryActivate",
 		NULL, NULL, "ii", x, y);
 	if (ret < 0) {
 		return ret;
@@ -1605,27 +1603,28 @@ static int sni_item_secondary_activate(sni_item_t *item, int x, int y) {
 }
 
 static int sni_item_secondary_activate_async(sni_item_t *item, int x, int y) {
+	int ret;
 	su_allocator_t *alloc = sni_server.in.alloc;
-	sni__slot_t *slot = alloc->alloc(
-		alloc, sizeof(*slot), ALIGNOF(*slot));
-	int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
-			item->private.path.s, sni__item_interface, "SecondaryActivate",
+	sni__slot_t *slot;
+	ALLOCT(slot, alloc);
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
+			item->priv.path.s, sni__item_interface, "SecondaryActivate",
 			sni__item_handle_method, slot, "ii", x, y);
 	if (ret < 0) {
-		alloc->free(alloc, slot);
+		FREE(alloc, slot);
 		return ret;
 	} else {
 		slot->item = item;
 	}
 
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 
 	return 1;
 }
 
 static int sni_item_scroll(sni_item_t *item, int delta, sni_item_scroll_orientation_t orientation) {
-	int ret = sd_bus_call_method(sni_server.private.bus, item->private.service.s,
-		item->private.path.s, sni__item_interface, "Scroll", NULL, NULL,
+	int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
+		item->priv.path.s, sni__item_interface, "Scroll", NULL, NULL,
 		"is", delta, (orientation == SNI_ITEM_SCROLL_ORIENTATION_VERTICAL) ? "vertical" : "horizontal");
 	if (ret < 0) {
 		return ret;
@@ -1635,20 +1634,21 @@ static int sni_item_scroll(sni_item_t *item, int delta, sni_item_scroll_orientat
 }
 
 static int sni_item_scroll_async(sni_item_t *item, int delta, sni_item_scroll_orientation_t orientation) {
+	int ret;
 	su_allocator_t *alloc = sni_server.in.alloc;
-	sni__slot_t *slot = alloc->alloc(
-		alloc, sizeof(*slot), ALIGNOF(*slot));
-	int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
-			item->private.path.s, sni__item_interface, "Scroll", sni__item_handle_method, slot,
+	sni__slot_t *slot;
+	ALLOCT(slot, alloc);
+	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
+			item->priv.path.s, sni__item_interface, "Scroll", sni__item_handle_method, slot,
 			"is", delta, (orientation == SNI_ITEM_SCROLL_ORIENTATION_VERTICAL) ? "vertical" : "horizontal");
 	if (ret < 0) {
-		alloc->free(alloc, slot);
+		FREE(alloc, slot);
 		return ret;
 	} else {
 		slot->item = item;
 	}
 
-	su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+	su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 
 	return 1;
 }
@@ -1673,22 +1673,23 @@ static int sni_dbusmenu_menu_item_event(sni_dbusmenu_menu_item_t *menu_item,
 	}
 
 	if (async) {
+		int ret;
 		su_allocator_t *alloc = sni_server.in.alloc;
-		sni__slot_t *slot = alloc->alloc(
-			alloc, sizeof(*slot), ALIGNOF(*slot));
-		int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
+		sni__slot_t *slot;
+		ALLOCT(slot, alloc);
+		ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
 				item->out.properties->menu.s, sni__dbusmenu_interface, "Event",
 				sni__item_handle_method, slot, "isvu",
 				menu_item->id, event_types[type], "y", 0, time(NULL));
 		if (ret < 0) {
-			alloc->free(alloc, slot);
+			FREE(alloc, slot);
 			return ret;
 		} else {
 			slot->item = item;
-			su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+			su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 		}
 	} else {
-		int ret = sd_bus_call_method(sni_server.private.bus, item->private.service.s,
+		int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
 				item->out.properties->menu.s, sni__dbusmenu_interface, "Event",
 				NULL, NULL, "isvu", menu_item->id, event_types[type], "y", 0, time(NULL));
 		if (ret < 0) {
@@ -1701,7 +1702,7 @@ static int sni_dbusmenu_menu_item_event(sni_dbusmenu_menu_item_t *menu_item,
 
 static int sni__dbusmenu_menu_handle_about_to_show(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
-	sni__slot_t *slot = data;
+	sni__slot_t *slot = (sni__slot_t *)data;
 	sni_dbusmenu_t *dbusmenu = slot->item->out.dbusmenu;
 	int need_update, ret;	
 	
@@ -1729,21 +1730,22 @@ static int sni_dbusmenu_menu_about_to_show(sni_dbusmenu_menu_t *menu, bool32_t a
 	}
 
 	if (async) {
+		int ret;
 		su_allocator_t *alloc = sni_server.in.alloc;
-		sni__slot_t *slot = alloc->alloc(
-			alloc, sizeof(*slot), ALIGNOF(*slot));
-		int ret = sd_bus_call_method_async(sni_server.private.bus, &slot->slot, item->private.service.s,
+		sni__slot_t *slot;
+		ALLOCT(slot, alloc);
+		ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
 				item->out.properties->menu.s, sni__dbusmenu_interface, "AboutToShow",
 				sni__dbusmenu_menu_handle_about_to_show, slot, "i", menu->parent_menu_item->id);
 		if (ret < 0) {
-			alloc->free(alloc, slot);
+			FREE(alloc, slot);
 			return ret;
 		} else {
 			slot->item = item;
-			su_llist__sni__slot_t__insert_head(&item->private.slots, slot);
+			su_llist__sni__slot_t__insert_head(&item->priv.slots, slot);
 		}
 	} else {
-		int ret = sd_bus_call_method(sni_server.private.bus, item->private.service.s,
+		int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
 				item->out.properties->menu.s, sni__dbusmenu_interface, "AboutToShow",
 				NULL, NULL, "i", menu->parent_menu_item->id);
 		if (ret < 0) {

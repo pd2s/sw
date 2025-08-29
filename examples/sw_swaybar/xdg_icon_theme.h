@@ -144,14 +144,14 @@ static void xdg_icon_theme__theme_populate(xdg_icon_theme__theme_t *theme, strin
 			continue;
 		}
 
-		d_name_len = strlen(e->d_name);
+		d_name_len = STRLEN(e->d_name);
 		if (UNLIKELY((path.len + d_name_len + 2) > PATH_MAX)) {
 			continue;
 		}
 
-		memcpy(buf, path.s, path.len);
+		MEMCPY(buf, path.s, path.len);
 		buf[path.len] = '/';
-		memcpy(&buf[path.len + 1], e->d_name, d_name_len + 1);
+		MEMCPY(&buf[path.len + 1], e->d_name, d_name_len + 1);
 
 		new_path.s = buf;
 		new_path.len = path.len + d_name_len + 1;
@@ -196,18 +196,8 @@ static void *xdg_icon_theme__theme_alloc_alloc(allocator_t *alloc, size_t size, 
 	return ret;
 }
 
-static void *xdg_icon_theme__theme_alloc_realloc(allocator_t *alloc,
-		void *ptr, size_t new_size, size_t new_alignment) {
-	xdg_icon_theme__theme_t *theme = (xdg_icon_theme__theme_t *)alloc;
-	void *ret = arena_alloc(&theme->arena, theme->user_alloc, new_size, new_alignment);
-	if (ptr) {
-		memcpy(ret, ptr, MIN(new_size, arena_alloc_get_size(ptr)));
-	}
-	return ret;
-}
-
 static void *xdg_icon_theme__theme_populate_thread(void *data) {
-	xdg_icon_theme__theme_t *theme = data;
+	xdg_icon_theme__theme_t *theme = (xdg_icon_theme__theme_t *)data;
 	string_t path;
 
 	/* TODO: rework */
@@ -233,11 +223,10 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 	}
 
 	if (!theme) {
-		theme = alloc->alloc(alloc, sizeof(*theme), ALIGNOF(*theme));
+		ALLOCT(theme, alloc);
 		pthread_mutex_init(&theme->lock, NULL);
 		theme->user_alloc = alloc;
 		theme->alloc.alloc = xdg_icon_theme__theme_alloc_alloc;
-		theme->alloc.realloc = xdg_icon_theme__theme_alloc_realloc;
 		arena_init(&theme->arena, alloc, 67108864);
 		su_hash_table__xdg_icon_theme__icon_t__init(&theme->icons, alloc, 65536);
 		string_init_string(&theme->name, &theme->alloc, name);
@@ -299,14 +288,14 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 			continue;
 		}
 
-		d_name_len = strlen(e->d_name);
+		d_name_len = STRLEN(e->d_name);
 		if (UNLIKELY((path.len + d_name_len + 2) > PATH_MAX)) {
 			continue;
 		}
 
-		memcpy(buf, path.s, path.len);
+		MEMCPY(buf, path.s, path.len);
 		buf[path.len] = '/';
-		memcpy(&buf[path.len + 1], e->d_name, d_name_len + 1);
+		MEMCPY(&buf[path.len + 1], e->d_name, d_name_len + 1);
 
 		new_path.s = buf;
 		new_path.len = path.len + 1 + d_name_len;
@@ -353,11 +342,10 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t
 	char *data_dirs = getenv("XDG_DATA_DIRS");
 	static char buf[PATH_MAX];
 
-	memset(cache, 0, sizeof(*cache));
+	MEMSET(cache, 0, sizeof(*cache));
 
 	arena_init(&cache->unthemed.arena, alloc, 67108864);
 	cache->unthemed.alloc.alloc = xdg_icon_theme__theme_alloc_alloc;
-	cache->unthemed.alloc.realloc = xdg_icon_theme__theme_alloc_realloc;
 	cache->unthemed.user_alloc = alloc;
 	su_hash_table__xdg_icon_theme__icon_t__init(&cache->unthemed.icons, alloc, 65536);
 	pthread_mutex_init(&cache->unthemed.lock, NULL);
@@ -366,29 +354,29 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t
 	su_array__pthread_t__init(&cache->threads, alloc, 64);
 
 	if (data_home && *data_home) {
-		size_t len = strlen(data_home);
+		size_t len = STRLEN(data_home);
 		if ((len + STRING_LITERAL_LENGTH("/icons") + 1) <= sizeof(buf)) {
 			string_t s;
 			s.s = buf;
 			s.len = len + STRING_LITERAL_LENGTH("/icons");
 			s.nul_terminated = TRUE;
 			s.free_contents = FALSE;
-			memcpy(buf, data_home, len);
-			memcpy(&buf[len], "/icons", STRING_LITERAL_LENGTH("/icons") + 1);
+			MEMCPY(buf, data_home, len);
+			MEMCPY(&buf[len], "/icons", STRING_LITERAL_LENGTH("/icons") + 1);
 			xdg_icon_theme_cache_add_basedir(cache, alloc, s);
 		}
 	} else {
 		char *home = getenv("HOME");
 		if (home && *home) {
-			size_t len = strlen(home);
+			size_t len = STRLEN(home);
 			if ((len + STRING_LITERAL_LENGTH("/.local/share/icons") + 1) <= sizeof(buf)) {
 				string_t s;
 				s.s = buf;
 				s.len = len + STRING_LITERAL_LENGTH("/.local/share/icons");
 				s.nul_terminated = TRUE;
 				s.free_contents = FALSE;
-				memcpy(buf, home, len);
-				memcpy(&buf[len], "/.local/share/icons", STRING_LITERAL_LENGTH("/.local/share/icons") + 1);
+				MEMCPY(buf, home, len);
+				MEMCPY(&buf[len], "/.local/share/icons", STRING_LITERAL_LENGTH("/.local/share/icons") + 1);
 				xdg_icon_theme_cache_add_basedir(cache, alloc, s);
 			}
 		}
@@ -407,8 +395,8 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t
 				s.len = dir.len + STRING_LITERAL_LENGTH("/icons");
 				s.nul_terminated = TRUE;
 				s.free_contents = FALSE;
-				memcpy(buf, dir.s, dir.len);
-				memcpy(&buf[dir.len], "/icons", STRING_LITERAL_LENGTH("/icons") + 1);
+				MEMCPY(buf, dir.s, dir.len);
+				MEMCPY(&buf[dir.len], "/icons", STRING_LITERAL_LENGTH("/icons") + 1);
 				xdg_icon_theme_cache_add_basedir(cache, alloc, s);
 			}
 		}
@@ -443,7 +431,7 @@ static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, allocator_t
 		arena_fini(&theme->arena, alloc);
 		pthread_mutex_destroy(&theme->lock);
 		su_hash_table__xdg_icon_theme__icon_t__fini(&theme->icons, alloc);
-		alloc->free(alloc, theme);
+		FREE(alloc, theme);
 		theme = next;
 	}
 }
