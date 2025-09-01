@@ -113,6 +113,12 @@
 
 #define SU_UNREACHABLE 0
 
+#if defined(__has_feature)
+#define SU_HAS_FEATURE(x) __has_feature(x)
+#else
+#define SU_HAS_FEATURE(x) 0
+#endif
+
 #if defined(__has_include)
 #define SU_HAS_INCLUDE(x) __has_include(x)
 #else
@@ -238,32 +244,19 @@ static type *su_array__##type##__add(su_array__##type##__t *, su_allocator_t *, 
 static type *su_array__##type##__add_nocheck(su_array__##type##__t *, type item); \
 static type *su_array__##type##__add_uninitialized(su_array__##type##__t *, su_allocator_t *); \
 static type *su_array__##type##__add_nocheck_uninitialized(su_array__##type##__t *); \
+static type *su_array__##type##__put(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
+static type *su_array__##type##__put_nocheck(su_array__##type##__t *array, type item, size_t idx); \
+static type *su_array__##type##__put_uninitialized(su_array__##type##__t *array, su_allocator_t *alloc, size_t idx); \
+static type *su_array__##type##__put_nocheck_uninitialized(su_array__##type##__t *array, size_t idx); \
+static void su_array__##type##__insert(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
+/* TODO: insert_nocheck, insert_uninitialized, insert_nocheck_uninitialized */ \
 static void su_array__##type##__remove(su_array__##type##__t *, size_t n); \
 static void su_array__##type##__swap(su_array__##type##__t *, size_t idx1, size_t idx2); \
-static void su_array__##type##__insert(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
 static void su_array__##type##__pop(su_array__##type##__t *, size_t idx); \
 static void su_array__##type##__pop_swapback(su_array__##type##__t *, size_t idx); \
-static type *su_array__##type##__put(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
 static type su_array__##type##__get(su_array__##type##__t *, size_t idx); \
 static type *su_array__##type##__get_ptr(su_array__##type##__t *, size_t idx); \
 static void su_array__##type##__qsort(su_array__##type##__t *, int compare(const void *, const void *))
-
-/* TODO: rework */
-#define SU_STACK_DECLARE(type) \
-\
-SU_ARRAY_DECLARE(type); \
-\
-typedef struct su_stack__##type { \
-	su_array__##type##__t data; \
-} su_stack__##type##__t; \
-\
-static void su_stack__##type##__init(su_stack__##type##__t *, su_allocator_t *, size_t initial_size); \
-static void su_stack__##type##__fini(su_stack__##type##__t *, su_allocator_t *); \
-static void su_stack__##type##__resize(su_stack__##type##__t *, su_allocator_t *, size_t new_size); \
-static type *su_stack__##type##__push(su_stack__##type##__t *, su_allocator_t *, type item); \
-static type *su_stack__##type##__push_nocheck(su_stack__##type##__t *, type item); \
-static type su_stack__##type##__pop(su_stack__##type##__t *); \
-static type su_stack__##type##__get(su_stack__##type##__t *)
 
 #define SU_LLIST_DECLARE(type) \
 typedef struct su_llist__##type { \
@@ -421,11 +414,11 @@ typedef enum su__json_writer_state {
 	SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA
 } su__json_writer_state_t;
 
-SU_STACK_DECLARE(su__json_writer_state_t);
+SU_ARRAY_DECLARE(su__json_writer_state_t);
 
 typedef struct su_json_writer {
 	su_json_buffer_t buf;
-	su_stack__su__json_writer_state_t__t state;
+	su_array__su__json_writer_state_t__t state;
 } su_json_writer_t;
 
 typedef enum su__json_tokener_state {
@@ -445,7 +438,7 @@ typedef enum su__json_tokener_state {
 	SU__JSON_TOKENER_STATE_TRUE
 } su__json_tokener_state_t;
 
-SU_STACK_DECLARE(su__json_tokener_state_t);
+SU_ARRAY_DECLARE(su__json_tokener_state_t);
 
 typedef struct su_json_tokener {
 	su_string_t str;
@@ -453,7 +446,7 @@ typedef struct su_json_tokener {
 	su_json_buffer_t buf;
 	size_t last_escape_idx; /* in buf */
 	size_t depth;
-	su_stack__su__json_tokener_state_t__t state;
+	su_array__su__json_tokener_state_t__t state;
 } su_json_tokener_t;
 
 typedef enum su_json_tokener_state {
@@ -671,6 +664,7 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_js
 #define STRLEN SU_STRLEN
 #define STRNLEN SU_STRNLEN
 
+#define HAS_FEATURE SU_HAS_FEATURE
 #define HAS_INCLUDE SU_HAS_INCLUDE
 #define HAS_ATTRIBUTE SU_HAS_ATTRIBUTE
 #define HAS_BUILTIN SU_HAS_BUILTIN
@@ -714,10 +708,6 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_js
 #define ARRAY_DECLARE SU_ARRAY_DECLARE
 #define ARRAY_DEFINE SU_ARRAY_DEFINE
 #define ARRAY_DECLARE_DEFINE SU_ARRAY_DECLARE_DEFINE
-
-#define STACK_DECLARE SU_STACK_DECLARE
-#define STACK_DEFINE SU_STACK_DEFINE
-#define STACK_DECLARE_DEFINE SU_STACK_DECLARE_DEFINE
 
 #define LLIST_DECLARE SU_LLIST_DECLARE
 #define LLIST_DEFINE SU_LLIST_DEFINE
@@ -914,6 +904,10 @@ typedef su_json_ast_t json_ast_t;
 #include <limits.h>
 #include <float.h>
 
+#if SU_HAS_FEATURE(address_sanitizer)
+#include <sanitizer/asan_interface.h>
+#endif
+
 #if SU_WITH_SIMD && defined(__x86_64__)
 #include <immintrin.h>
 #endif /* SU_WITH_SIMD && defined(__x86_64__) */
@@ -1026,6 +1020,32 @@ static type *su_array__##type##__put(su_array__##type##__t *array, su_allocator_
 	return &array->items[idx]; \
 } \
 \
+static type *su_array__##type##__put_nocheck(su_array__##type##__t *array, type item, size_t idx) { \
+    if (idx == array->len) { \
+        array->len++; \
+    } \
+	array->items[idx] = item; \
+	return &array->items[idx]; \
+} \
+\
+static type *su_array__##type##__put_uninitialized(su_array__##type##__t *array, su_allocator_t *alloc, size_t idx) { \
+	SU_ASSERT(idx <= array->len); \
+    if (idx == array->len) { \
+        if (array->size == array->len) { \
+            su_array__##type##__resize(array, alloc, array->size * 2); \
+        } \
+        array->len++; \
+    } \
+	return &array->items[idx]; \
+} \
+\
+static type *su_array__##type##__put_nocheck_uninitialized(su_array__##type##__t *array, size_t idx) { \
+    if (idx == array->len) { \
+        array->len++; \
+    } \
+	return &array->items[idx]; \
+} \
+\
 static SU_ATTRIBUTE_PURE type su_array__##type##__get(su_array__##type##__t *array, size_t idx) { \
     SU_ASSERT(idx < array->len); \
 	return array->items[idx]; \
@@ -1038,40 +1058,6 @@ static SU_ATTRIBUTE_PURE type *su_array__##type##__get_ptr(su_array__##type##__t
 \
 static void su_array__##type##__qsort(su_array__##type##__t *array, int compare(const void *, const void *)) { \
     qsort(array->items, array->len, sizeof(type), compare); \
-}
-
-#define SU_STACK_DEFINE(type) \
-\
-SU_ARRAY_DEFINE(type) \
-\
-static void su_stack__##type##__init(su_stack__##type##__t *stack, su_allocator_t *alloc, size_t initial_size) { \
-	su_array__##type##__init(&stack->data, alloc, initial_size); \
-} \
-\
-static void su_stack__##type##__fini(su_stack__##type##__t *stack, su_allocator_t *alloc) { \
-	su_array__##type##__fini(&stack->data, alloc); \
-} \
-\
-static void su_stack__##type##__resize(su_stack__##type##__t *stack, su_allocator_t *alloc, size_t new_size) { \
-	su_array__##type##__resize(&stack->data, alloc, new_size); \
-} \
-\
-static type *su_stack__##type##__push(su_stack__##type##__t *stack, su_allocator_t *alloc, type item) { \
-	return su_array__##type##__add(&stack->data, alloc, item); \
-} \
-\
-static type *su_stack__##type##__push_nocheck(su_stack__##type##__t *stack, type item) { \
-	return su_array__##type##__add_nocheck(&stack->data, item); \
-} \
-\
-static type su_stack__##type##__pop(su_stack__##type##__t *stack) { \
-	type ret = su_array__##type##__get(&stack->data, stack->data.len - 1); \
-	su_array__##type##__remove(&stack->data, 1); \
-	return ret; \
-} \
-\
-static SU_ATTRIBUTE_PURE type su_stack__##type##__get(su_stack__##type##__t *stack) { \
-	return su_array__##type##__get(&stack->data, stack->data.len - 1); \
 }
 
 #define SU_LLIST_DEFINE(type) \
@@ -1215,10 +1201,6 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, 
 	SU_ARRAY_DECLARE(type); \
 	SU_ARRAY_DEFINE(type)
 
-#define SU_STACK_DECLARE_DEFINE(type) \
-	SU_STACK_DECLARE(type); \
-	SU_STACK_DEFINE(type)
-
 #define SU_LLIST_DECLARE_DEFINE(type) \
 	SU_LLIST_DECLARE(type); \
 	SU_LLIST_DEFINE(type)
@@ -1229,8 +1211,8 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, 
 
 SU_ARRAY_DEFINE(su_string_t)
 SU_ARRAY_DEFINE(su_arena_block_t)
-SU_STACK_DEFINE(su__json_writer_state_t)
-SU_STACK_DEFINE(su__json_tokener_state_t)
+SU_ARRAY_DEFINE(su__json_writer_state_t)
+SU_ARRAY_DEFINE(su__json_tokener_state_t)
 SU_ARRAY_DEFINE(su_json_ast_node_t)
 SU_ARRAY_DEFINE(su_json_ast_key_value_t)
 
@@ -1259,15 +1241,24 @@ static void su_libc_free(su_allocator_t *alloc, void *ptr) {
 }
 
 static void *su_page_alloc(size_t size) {
-	void *ret = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	void *ret = mmap(NULL, size, (PROT_READ | PROT_WRITE), (MAP_ANONYMOUS | MAP_PRIVATE), -1, 0);
 	if (SU_UNLIKELY(ret == MAP_FAILED)) {
 		su_abort(errno, "mmap: %s", strerror(errno));
 	}
+#if SU_HAS_FEATURE(address_sanitizer)
+	ASAN_POISON_MEMORY_REGION(ret, size);
+#endif
 	return ret;
 }
 
 static void su_page_free(void *ptr, size_t size) {
-	int r = munmap(ptr, size);
+	int r;
+
+#if SU_HAS_FEATURE(address_sanitizer)
+	ASAN_UNPOISON_MEMORY_REGION(ptr, size);
+#endif
+	
+	r = munmap(ptr, size);
 	SU_ASSERT(r == 0);
 	SU_NOTUSED(r);
 }
@@ -1729,7 +1720,11 @@ static void su_arena_init(su_arena_t *arena, su_allocator_t *alloc, size_t initi
 static void su_arena_fini(su_arena_t *arena, su_allocator_t *alloc) {
 	size_t i = 0;
 	for ( ; i < arena->blocks.len; ++i) {
-		SU_FREE(alloc, su_array__su_arena_block_t__get(&arena->blocks, i).data);
+		su_arena_block_t block = su_array__su_arena_block_t__get(&arena->blocks, i);
+#if SU_HAS_FEATURE(address_sanitizer)
+		ASAN_UNPOISON_MEMORY_REGION(block.data, block.size);
+#endif
+		SU_FREE(alloc, block.data);
 	}
 	su_array__su_arena_block_t__fini(&arena->blocks, alloc);
 }
@@ -1742,6 +1737,10 @@ static su_arena_block_t *su_arena_add_block(su_arena_t *arena, su_allocator_t *a
 	SU_ALLOCTSA(block.data, alloc, size, 4096);
 	block.size = size;
 	block.ptr = 0;
+
+#if SU_HAS_FEATURE(address_sanitizer)
+	ASAN_POISON_MEMORY_REGION(block.data, block.size);
+#endif
 
 	return su_array__su_arena_block_t__add(&arena->blocks, alloc, block);
 }
@@ -1771,9 +1770,14 @@ static void *su_arena_alloc(su_arena_t *arena, su_allocator_t *alloc, size_t siz
 	new_ptr = (sizeof(size_t) + (alignment - 1)) & ~(alignment - 1);
 
 out:
+#if SU_HAS_FEATURE(address_sanitizer)
+	ASAN_UNPOISON_MEMORY_REGION(&block->data[new_ptr - sizeof(size_t)], size + sizeof(size_t));
+#endif
+
 	SU_MEMCPY(&block->data[new_ptr - sizeof(size_t)], &size, sizeof(size));
 	ret = &block->data[new_ptr];
-	block->ptr = new_ptr + size;
+	block->ptr = (new_ptr + size);
+
 	SU_ASSERT(((uintptr_t)ret % alignment) == 0);
 	return ret;
 }
@@ -1793,6 +1797,9 @@ static void su_arena_reset(su_arena_t *arena, su_allocator_t *alloc) {
 
 	for ( ; i < arena->blocks.len; ++i) {
 		su_arena_block_t block = su_array__su_arena_block_t__get(&arena->blocks, i);
+#if SU_HAS_FEATURE(address_sanitizer)
+		ASAN_UNPOISON_MEMORY_REGION(block.data, block.size);
+#endif
 		size += block.size;
 		SU_FREE(alloc, block.data);
 	}
@@ -1800,12 +1807,20 @@ static void su_arena_reset(su_arena_t *arena, su_allocator_t *alloc) {
 
 	SU_ASSERT((size % 4096) == 0);
 
+#if SU_HAS_FEATURE(address_sanitizer)
+	ASAN_UNPOISON_MEMORY_REGION(first_block->data, first_block->size);
+#endif
+
 	if (size > first_block->size) {
 		SU_FREE(alloc, first_block->data);
 		SU_ALLOCTSA(first_block->data, alloc, size, 4096);
 		first_block->size = size;
 	}
 	first_block->ptr = 0;
+
+#if SU_HAS_FEATURE(address_sanitizer)
+	ASAN_POISON_MEMORY_REGION(first_block->data, first_block->size);
+#endif
 }
 
 /*static SU_ATTRIBUTE_PURE size_t su_sdbm_hash(su_string_t s) {
@@ -2384,8 +2399,8 @@ static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, su_allocato
 }
 
 static su__json_writer_state_t su__json_writer_get_state(su_json_writer_t *writer) {
-	if (writer->state.data.len > 0) {
-		return su_stack__su__json_writer_state_t__get(&writer->state);
+	if (writer->state.len > 0) {
+		return su_array__su__json_writer_state_t__get(&writer->state, writer->state.len - 1);
 	}
 
 	return SU__JSON_WRITER_STATE_ROOT;
@@ -2396,17 +2411,15 @@ static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *al
 	case SU__JSON_WRITER_STATE_ROOT:
 		break;
 	case SU__JSON_WRITER_STATE_OBJECT:
-		su_stack__su__json_writer_state_t__pop(&writer->state);
-		su_stack__su__json_writer_state_t__push(&writer->state, alloc,
-				SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA);
+		su_array__su__json_writer_state_t__put(&writer->state, alloc,
+				SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA, writer->state.len - 1);
 		break;
 	case SU__JSON_WRITER_STATE_ARRAY:
-		su_stack__su__json_writer_state_t__pop(&writer->state);
-		su_stack__su__json_writer_state_t__push(&writer->state, alloc,
-				SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA);
+		su_array__su__json_writer_state_t__put(&writer->state, alloc,
+				SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA, writer->state.len - 1);
 		break;
 	case SU__JSON_WRITER_STATE_KEY:
-		su_stack__su__json_writer_state_t__pop(&writer->state);
+		su_array__su__json_writer_state_t__remove(&writer->state, 1);
 		break;
 	case SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA:
 	case SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA:
@@ -2418,7 +2431,7 @@ static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *al
 }
 
 static void su_json_writer_init(su_json_writer_t *writer, su_allocator_t *alloc, size_t initial_bufsize) {
-	su_stack__su__json_writer_state_t__init(&writer->state, alloc, 128);
+	su_array__su__json_writer_state_t__init(&writer->state, alloc, 128);
 	SU_ALLOCTS(writer->buf.data, alloc, initial_bufsize);
 	writer->buf.size = initial_bufsize;
 	writer->buf.idx = 0;
@@ -2426,12 +2439,12 @@ static void su_json_writer_init(su_json_writer_t *writer, su_allocator_t *alloc,
 
 static void su_json_writer_fini(su_json_writer_t *writer, su_allocator_t *alloc) {
 	SU_FREE(alloc, writer->buf.data);
-	su_stack__su__json_writer_state_t__fini(&writer->state, alloc);
+	su_array__su__json_writer_state_t__fini(&writer->state, alloc);
 }
 
 static void su_json_writer_reset(su_json_writer_t *writer) {
 	writer->buf.idx = 0;
-	writer->state.data.len = 0;
+	writer->state.len = 0;
 }
 
 static void su_json_writer_object_begin(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2440,7 +2453,7 @@ static void su_json_writer_object_begin(su_json_writer_t *writer, su_allocator_t
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_writer_element(writer, alloc);
 	su__json_buffer_add_char(&writer->buf, alloc, '{');
-	su_stack__su__json_writer_state_t__push(&writer->state, alloc, SU__JSON_WRITER_STATE_OBJECT);
+	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_OBJECT);
 }
 
 static void su_json_writer_object_end(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2448,7 +2461,7 @@ static void su_json_writer_object_end(su_json_writer_t *writer, su_allocator_t *
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_buffer_add_char(&writer->buf, alloc, '}');
-	su_stack__su__json_writer_state_t__pop(&writer->state);
+	su_array__su__json_writer_state_t__remove(&writer->state, 1);
 }
 
 static void su_json_writer_object_key_escape(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t key) {
@@ -2460,7 +2473,7 @@ static void su_json_writer_object_key_escape(su_json_writer_t *writer, su_alloca
 	su__json_buffer_add_string_escape(&writer->buf, alloc, key);
 	su__json_buffer_add_char(&writer->buf, alloc, '"');
 	su__json_buffer_add_char(&writer->buf, alloc, ':');
-	su_stack__su__json_writer_state_t__push(&writer->state, alloc, SU__JSON_WRITER_STATE_KEY);
+	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
 static void su_json_writer_object_key(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t key) {
@@ -2472,7 +2485,7 @@ static void su_json_writer_object_key(su_json_writer_t *writer, su_allocator_t *
 	su__json_buffer_add_string(&writer->buf, alloc, key);
 	su__json_buffer_add_char(&writer->buf, alloc, '"');
 	su__json_buffer_add_char(&writer->buf, alloc, ':');
-	su_stack__su__json_writer_state_t__push(&writer->state, alloc, SU__JSON_WRITER_STATE_KEY);
+	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
 static void su_json_writer_array_begin(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2481,7 +2494,7 @@ static void su_json_writer_array_begin(su_json_writer_t *writer, su_allocator_t 
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_writer_element(writer, alloc);
 	su__json_buffer_add_char(&writer->buf, alloc, '[');
-	su_stack__su__json_writer_state_t__push(&writer->state, alloc, SU__JSON_WRITER_STATE_ARRAY);
+	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_ARRAY);
 }
 
 static void su_json_writer_array_end(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2489,7 +2502,7 @@ static void su_json_writer_array_end(su_json_writer_t *writer, su_allocator_t *a
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_ARRAY) || (state == SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA));
 	su__json_buffer_add_char(&writer->buf, alloc, ']');
-	su_stack__su__json_writer_state_t__pop(&writer->state);
+	su_array__su__json_writer_state_t__remove(&writer->state, 1);
 }
 
 static void su_json_writer_null(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2877,31 +2890,30 @@ static void su_json_tokener_set_string(su_json_tokener_t *tokener, su_allocator_
 		tokener->buf.size = new_size;
 	}
 
-	su_stack__su__json_tokener_state_t__resize(&tokener->state, alloc, tokener->state.data.size + str.len);
+	su_array__su__json_tokener_state_t__resize(&tokener->state, alloc, tokener->state.size + str.len + 1);
 
 	tokener->pos = 0;
 	tokener->str = str;
 }
 
 static su__json_tokener_state_t su__json_tokener_get_state(su_json_tokener_t *tokener) {
-	if (tokener->state.data.len > 0) {
-		return su_stack__su__json_tokener_state_t__get(&tokener->state);
+	if (tokener->state.len > 0) {
+		return su_array__su__json_tokener_state_t__get(&tokener->state, tokener->state.len - 1);
 	}
 
 	return SU__JSON_TOKENER_STATE_ROOT;
 }
 
 static void su__json_tokener_value_end(su_json_tokener_t *tokener) {
-	su_stack__su__json_tokener_state_t__pop(&tokener->state);
+	su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
 	switch (su__json_tokener_get_state(tokener)) {
 	case SU__JSON_TOKENER_STATE_VALUE:
-		su_stack__su__json_tokener_state_t__pop(&tokener->state);
+		su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
 		break;
 	case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 	case SU__JSON_TOKENER_STATE_ARRAY:
-		su_stack__su__json_tokener_state_t__pop(&tokener->state);
-		su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-			SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA);
+		su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+			SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
 		break;
 	case SU__JSON_TOKENER_STATE_ROOT:
 		break;
@@ -2997,26 +3009,24 @@ _string: {
 		}
 
 _string_end:
-		su_stack__su__json_tokener_state_t__pop(&tokener->state);
+		su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
 		switch (su__json_tokener_get_state(tokener)) {
 		case SU__JSON_TOKENER_STATE_OBJECT_EMPTY:
 		case SU__JSON_TOKENER_STATE_OBJECT:
-			su_stack__su__json_tokener_state_t__pop(&tokener->state);
-			su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA);
-			su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+			su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+				SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA, tokener->state.len - 1);
+			su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 				SU__JSON_TOKENER_STATE_KEY);
 			out->type = SU_JSON_TOKEN_TYPE_KEY;
 			break;
 		case SU__JSON_TOKENER_STATE_VALUE:
-			su_stack__su__json_tokener_state_t__pop(&tokener->state);
+			su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
 			out->type = SU_JSON_TOKEN_TYPE_STRING;
 			break;
 		case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 		case SU__JSON_TOKENER_STATE_ARRAY:
-			su_stack__su__json_tokener_state_t__pop(&tokener->state);
-			su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA);
+			su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+				SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
 			out->type = SU_JSON_TOKEN_TYPE_STRING;
 			break;
 		case SU__JSON_TOKENER_STATE_ROOT:
@@ -3233,18 +3243,16 @@ _false: {
 			case SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA:
 				return SU_JSON_TOKENER_STATE_ERROR;
 			case SU__JSON_TOKENER_STATE_VALUE:
-				su_stack__su__json_tokener_state_t__pop(&tokener->state);
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_OBJECT_EMPTY);
+				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+					SU__JSON_TOKENER_STATE_OBJECT_EMPTY, tokener->state.len - 1);
 				break;
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 			case SU__JSON_TOKENER_STATE_ARRAY:
-				su_stack__su__json_tokener_state_t__pop(&tokener->state);
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA);
+				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+					SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
 				SU_ATTRIBUTE_FALLTHROUGH;
 			case SU__JSON_TOKENER_STATE_ROOT:
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 					SU__JSON_TOKENER_STATE_OBJECT_EMPTY);
 				break;
 			case SU__JSON_TOKENER_STATE_NULL:
@@ -3269,18 +3277,16 @@ _false: {
 			case SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA:
 				return SU_JSON_TOKENER_STATE_ERROR;
 			case SU__JSON_TOKENER_STATE_VALUE:
-				su_stack__su__json_tokener_state_t__pop(&tokener->state);
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EMPTY);
+				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+					SU__JSON_TOKENER_STATE_ARRAY_EMPTY, tokener->state.len - 1);
 				break;
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 			case SU__JSON_TOKENER_STATE_ARRAY:
-				su_stack__su__json_tokener_state_t__pop(&tokener->state);
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA);
+				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+					SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
 				SU_ATTRIBUTE_FALLTHROUGH;
 			case SU__JSON_TOKENER_STATE_ROOT:
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 					SU__JSON_TOKENER_STATE_ARRAY_EMPTY);
 				break;
 			case SU__JSON_TOKENER_STATE_NULL:
@@ -3300,7 +3306,7 @@ _false: {
 			if (SU_UNLIKELY((state != SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA) && (state != SU__JSON_TOKENER_STATE_OBJECT_EMPTY))) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_stack__su__json_tokener_state_t__pop(&tokener->state);
+			su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
 			tokener->pos++;
 			tokener->depth--;
 			out->depth = tokener->depth;
@@ -3310,7 +3316,7 @@ _false: {
 			if (SU_UNLIKELY((state != SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA) && (state != SU__JSON_TOKENER_STATE_ARRAY_EMPTY))) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_stack__su__json_tokener_state_t__pop(&tokener->state);
+			su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
 			tokener->pos++;
 			tokener->depth--;
 			out->depth = tokener->depth;
@@ -3322,7 +3328,7 @@ _false: {
 					|| (state == SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA))) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+			su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 				SU__JSON_TOKENER_STATE_STRING);
 			tokener->pos++;
 			goto _string;
@@ -3331,23 +3337,20 @@ _false: {
 			if (SU_UNLIKELY(state != SU__JSON_TOKENER_STATE_KEY)) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_stack__su__json_tokener_state_t__pop(&tokener->state);
-			su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_VALUE);
+			su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+				SU__JSON_TOKENER_STATE_VALUE, tokener->state.len - 1);
 			state = SU__JSON_TOKENER_STATE_VALUE;
 			continue;
 		case ',':
 			switch (state) {
 			case SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA:
-				su_stack__su__json_tokener_state_t__pop(&tokener->state);
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_OBJECT);
+				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+					SU__JSON_TOKENER_STATE_OBJECT, tokener->state.len - 1);
 				state = SU__JSON_TOKENER_STATE_OBJECT;
 				continue;
 			case SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA:
-				su_stack__su__json_tokener_state_t__pop(&tokener->state);
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY);
+				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
+					SU__JSON_TOKENER_STATE_ARRAY, tokener->state.len - 1);
 				state = SU__JSON_TOKENER_STATE_ARRAY;
 				continue;
 			case SU__JSON_TOKENER_STATE_ROOT:
@@ -3372,7 +3375,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 					SU__JSON_TOKENER_STATE_NULL);
 				goto _null;
 			case SU__JSON_TOKENER_STATE_OBJECT:
@@ -3395,7 +3398,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 					SU__JSON_TOKENER_STATE_TRUE);
 				goto _true;
 			case SU__JSON_TOKENER_STATE_OBJECT:
@@ -3418,7 +3421,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 					SU__JSON_TOKENER_STATE_FALSE);
 				goto _false;
 			case SU__JSON_TOKENER_STATE_OBJECT:
@@ -3451,7 +3454,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_stack__su__json_tokener_state_t__push_nocheck(&tokener->state,
+				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
 					SU__JSON_TOKENER_STATE_NUMBER);
 				goto _number;
 			case SU__JSON_TOKENER_STATE_OBJECT:

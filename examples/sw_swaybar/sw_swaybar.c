@@ -1969,8 +1969,7 @@ static bool32_t status_i3bar_process(void) {
 	json_tokener_set_string(&tok, &scratch_alloc, str);
 
 	if (status->tokener_state) {
-		su_stack__su__json_tokener_state_t__push(&tok.state,
-			&scratch_alloc, status->tokener_state);
+		su_array__su__json_tokener_state_t__add_nocheck(&tok.state, status->tokener_state);
 		tok.depth = 1;
 	} else {
 		json_token_t token;
@@ -1998,7 +1997,7 @@ static bool32_t status_i3bar_process(void) {
 		}
 	}
 
-	status->tokener_state = su_stack__su__json_tokener_state_t__get(&tok.state);
+	status->tokener_state = su_array__su__json_tokener_state_t__get(&tok.state, tok.state.len - 1);
 
 	return TRUE;
 }

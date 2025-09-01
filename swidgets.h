@@ -998,9 +998,8 @@ typedef sw_context_in_t context_in_t;
 typedef sw_context_out_t context_out_t;
 typedef sw_context_t context_t;
 
-/*#define init sw_init */
-/*#define fini sw_fini */
 /*#define set sw_set */
+/*#define cleanup sw_cleanup */
 /*#define flush sw_flush */
 /*#define process sw_process */
 

@@ -18,7 +18,12 @@ SW_FLAGS=$(${ROOT_PATH}/build.sh header)
 FREETYPE_DEP_PATH="${FREETYPE_DEP_PATH:-${BUILD_PATH}/freetype}"
 FREETYPE_DEP_FLAGS="${FREETYPE_DEP_FLAGS:-}"
 
-[ ! -d "${FREETYPE_DEP_PATH}" ] && git clone https://github.com/freetype/freetype "${FREETYPE_DEP_PATH}" >> ${BUILD_PATH}/freetype.log 2>&1
+fail() {
+  cat $1 >&2
+  exit 1
+}
+
+[ ! -d "${FREETYPE_DEP_PATH}" ] && git clone https://github.com/freetype/freetype "${FREETYPE_DEP_PATH}"
 cd "${FREETYPE_DEP_PATH}"
 # TODO: more robust check
 case "$FREETYPE_DEP_FLAGS" in
@@ -27,13 +32,13 @@ case "$FREETYPE_DEP_FLAGS" in
 esac
 # hack to replace libpng with stb_image
 sed -i '/#include "pngshim.c"/d' ${FREETYPE_DEP_PATH}/src/sfnt/sfnt.c
-meson setup -Dharfbuzz=enabled -Derror_strings=true -Dpng=disabled -Dc_args="-DFT_CONFIG_OPTION_USE_PNG" -Dbrotli=disabled -Dbzip2=disabled -Dmmap=disabled -Dtests=disabled -Dzlib=disabled -Ddefault_library=static -Dwarning_level=0 -Dwerror=false -Dprefix=${BUILD_PATH} $FREETYPE_DEP_FLAGS $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1
-meson compile -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1
-meson install -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1
+meson setup -Dharfbuzz=enabled -Derror_strings=true -Dpng=disabled -Dc_args="-DFT_CONFIG_OPTION_USE_PNG" -Dbrotli=disabled -Dbzip2=disabled -Dmmap=disabled -Dtests=disabled -Dzlib=disabled -Ddefault_library=static -Dwarning_level=0 -Dwerror=false -Dprefix=${BUILD_PATH} $FREETYPE_DEP_FLAGS $FREETYPE_DEP_BUILD_DIR > ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
+meson compile -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
+meson install -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 
 HARFBUZZ_DEP_PATH="${HARFBUZZ_DEP_PATH:-${BUILD_PATH}/harfbuzz}"
 HARFBUZZ_DEP_FLAGS="${HARFBUZZ_DEP_FLAGS:-}"
-[ ! -d "${HARFBUZZ_DEP_PATH}" ] && git clone https://github.com/harfbuzz/harfbuzz "${HARFBUZZ_DEP_PATH}" >> ${BUILD_PATH}/harfbuzz.log 2>&1
+[ ! -d "${HARFBUZZ_DEP_PATH}" ] && git clone https://github.com/harfbuzz/harfbuzz "${HARFBUZZ_DEP_PATH}"
 cd "${HARFBUZZ_DEP_PATH}"
 # TODO: more robust check
 case "$HARFBUZZ_DEP_FLAGS" in
@@ -41,9 +46,9 @@ case "$HARFBUZZ_DEP_FLAGS" in
   *) HARFBUZZ_DEP_BUILD_DIR="debug" ;;
 esac
 # TODO: force meson to use bundled ft, tried force-fallback, PKG_CONFIG_PATH, CMAKE_PREFIX_PATH overrides
-meson setup -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dchafa=disabled -Dicu=disabled -Dgraphite=disabled -Dgraphite2=disabled -Dfontations=disabled -Dgdi=disabled -Ddirectwrite=disabled -Dcoretext=disabled -Dharfrust=disabled -Dkbts=disabled -Dwasm=disabled -Dtests=disabled -Dintrospection=disabled -Ddocs=disabled -Ddoc_tests=false -Dutilities=disabled -Dbenchmark=disabled -Dicu_builtin=true -Dwith_libstdcxx=false -Dexperimental_api=false -Dragel_subproject=false -Ddefault_library=static -Dwarning_level=0 -Dwerror=false -Dc_args="-DHB_CUSTOM_MALLOC" -Dcpp_args="-DHB_CUSTOM_MALLOC" -Dprefix=${BUILD_PATH} $HARFBUZZ_DEP_FLAGS $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1
-meson compile -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1
-meson install -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1
+meson setup -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dchafa=disabled -Dicu=disabled -Dgraphite=disabled -Dgraphite2=disabled -Dfontations=disabled -Dgdi=disabled -Ddirectwrite=disabled -Dcoretext=disabled -Dharfrust=disabled -Dkbts=disabled -Dwasm=disabled -Dtests=disabled -Dintrospection=disabled -Ddocs=disabled -Ddoc_tests=false -Dutilities=disabled -Dbenchmark=disabled -Dicu_builtin=true -Dwith_libstdcxx=false -Dexperimental_api=false -Dragel_subproject=false -Ddefault_library=static -Dwarning_level=0 -Dwerror=false -Dc_args="-DHB_CUSTOM_MALLOC" -Dcpp_args="-DHB_CUSTOM_MALLOC" -Dprefix=${BUILD_PATH} $HARFBUZZ_DEP_FLAGS $HARFBUZZ_DEP_BUILD_DIR > ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
+meson compile -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
+meson install -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
 
 #cd "${BUILD_PATH}"
 #$AR x "${FREETYPE_DEP_PATH}/build/libfreetype.a"

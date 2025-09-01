@@ -95,8 +95,12 @@ esac
 case "$CFLAGS" in
   *-D*SW_WITH_SVG=0*) ;;
   *)
-    [ ! -d "${RESVG_DEP_PATH}" ] && git clone https://github.com/linebender/resvg "${RESVG_DEP_PATH}" >> ${BUILD_PATH}/resvg.log 2>&1
-    cargo build --manifest-path="${RESVG_DEP_PATH}/crates/c-api/Cargo.toml" $RESVG_DEP_FLAGS >> ${BUILD_PATH}/resvg.log 2>&1
+    [ ! -d "${RESVG_DEP_PATH}" ] && git clone https://github.com/linebender/resvg "${RESVG_DEP_PATH}"
+    cargo build --manifest-path="${RESVG_DEP_PATH}/crates/c-api/Cargo.toml" $RESVG_DEP_FLAGS > ${BUILD_PATH}/resvg.log 2>&1 \
+    || {
+      cat ${BUILD_PATH}/resvg.log >&2
+      exit 1
+    }
     cp -f "${RESVG_DEP_PATH}/crates/c-api/resvg.h" "${BUILD_PATH}/include/resvg.h"
     cd "${BUILD_PATH}"
     # TODO: more robust check

@@ -391,7 +391,7 @@ out:
 static sw_pixmap_t *render(void) {
     /* "hello world | fi | اَلْعَرَبِيَّةُ | עִבְרִית‎ | 👨‍👩‍👧‍👦 🇸🇪 🧍‍♀️ | привет, мир! | 你好世界" */
     string_t text = string("hello world | fi | اَلْعَرَبِيَّةُ | עִבְרִית‎ | 👨‍👩‍👧‍👦 🇸🇪 🧍‍♀️ | привет, мир! | 你好世界");
-    sw_color_argb32_t text_color = { 0xFFFFFFFF };
+    sw_color_argb32_t text_color = { 0xFFFFFFFF }; /* TODO: premultiply */
     static char *font_files[] = {
         /*"/usr/share/fonts/nerdfonts/CaskaydiaCoveNerdFont-Regular.ttf", */
         "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
@@ -437,7 +437,7 @@ static sw_pixmap_t *render(void) {
     for ( f = 0; f < LENGTH(fonts); ++f) {
         font_t *font = &fonts[f];
         read_entire_file(string(font_files[f]), &font->data, &scratch_alloc);
-        font->pixel_size = 32;
+        font->pixel_size = 72;
         font->idx = 0;
     }
 
@@ -454,6 +454,7 @@ static sw_pixmap_t *render(void) {
 #endif
     ASSERT(e == FT_Err_Ok);
 
+    /* TODO: simd utf8 -> utf32 */
     hb_buf = hb_buffer_create();
     hb_buffer_add_utf8(hb_buf, text.s, (int)text.len, 0, -1);
     glyph_infos = hb_buffer_get_glyph_infos(hb_buf, (unsigned int *)&codepoints_count);
@@ -511,10 +512,10 @@ static sw_pixmap_t *render(void) {
             prun = &pruns[r];
             insert_idx = prun->start_idx;
 
-            if (!hb_buf) {
+            /*if (!hb_buf) {*/
                 hb_buf = hb_buffer_create();
                 hb_buffer_add_utf32(hb_buf, codepoints, (int)codepoints_count, (unsigned int)prun->start_idx, (int)prun->len);
-            }
+            /*}*/
 
             hb_buffer_guess_segment_properties(hb_buf);
             hb_shape(font->hb_font, hb_buf, NULL, 0); /* TODO: features */
@@ -529,10 +530,11 @@ static sw_pixmap_t *render(void) {
                     partial_run_t *pr = &pruns[prun_count - 1];
                     size_t len = 1;
                     
+                    /* ? TODO: also scan backwards */
                     while (((g + 1) < gc) && (glyph_infos[g + 1].cluster == start_idx)) {
                         g++; len++;
                     }
-                    
+
                     /* TODO: properly handle rtl here */
                     if (((pr->start_idx + pr->len) == start_idx) &&
                             ((script == HB_SCRIPT_INHERITED) || (pr->script == script))) {
@@ -550,10 +552,10 @@ static sw_pixmap_t *render(void) {
                     glyph->idx = glyph_infos[g].codepoint;
                     glyph->valid = TRUE;
                     glyph->font = font;
-                    glyph->x_advance = (int32_t)(ceilf((float)glyph_pos[g].x_advance / 64.f));
-                    glyph->y_advance = (int32_t)(ceilf((float)glyph_pos[g].y_advance / 64.f));
-                    glyph->x_offset = (int32_t)(ceilf((float)glyph_pos[g].x_offset / 64.f));
-                    glyph->y_offset = (int32_t)(ceilf((float)glyph_pos[g].y_offset / 64.f));
+                    glyph->x_advance = (int32_t)(((float)glyph_pos[g].x_advance / 64.f) + 0.5f);
+                    glyph->y_advance = (int32_t)(((float)glyph_pos[g].y_advance / 64.f) + 0.5f);
+                    glyph->x_offset = (int32_t)(((float)glyph_pos[g].x_offset / 64.f) + 0.5f);
+                    glyph->y_offset = (int32_t)(((float)glyph_pos[g].y_offset / 64.f) + 0.5f);
 
                     w += (uint32_t)glyph->x_advance;
                     /*at_least_one_glyph_found = TRUE;*/
@@ -564,16 +566,16 @@ static sw_pixmap_t *render(void) {
         }
 
         /*if (at_least_one_glyph_found) {
-            uint32_t font_h = (uint32_t)(ceilf((float)face->size->metrics.height / 64.f));
+            uint32_t font_h = (uint32_t)(((float)face->size->metrics.height / 64.f) + 0.5f);
             if (font_h > h) {
                 h = font_h;
-                pen_y = (int32_t)((float)h + ceilf((float)face->size->metrics.descender / 64.f));
+                pen_y = (int32_t)((float)h + ((float)face->size->metrics.descender / 64.f) + 0.5f);
             }
         }*/
     }
 
-    h = (uint32_t)(ceilf((float)fonts[0].face->size->metrics.height / 64.f));
-    pen_y = (int32_t)((float)h + ceilf((float)fonts[0].face->size->metrics.descender / 64.f));
+    h = (uint32_t)(((float)fonts[0].face->size->metrics.height / 64.f) + 0.5f);
+    pen_y = (int32_t)((float)h + ((float)fonts[0].face->size->metrics.descender / 64.f) + 0.5f);
 
     ALLOCTS(ret, &gp_alloc, (8 + (w * h * 4)));
     MEMSET(ret->pixels, 0, (w * h * 4));
@@ -619,13 +621,15 @@ static sw_pixmap_t *render(void) {
                     (float)font->pixel_size / (float)bitmap->rows);
                 int32_t dst_w = (int32_t)((float)bitmap->width * s + 0.5f);
                 int32_t dst_h = (int32_t)((float)bitmap->rows * s + 0.5f);
-                int32_t x_offs = pen_x;
-                int32_t y_offs = (((int32_t)h - dst_h) / 2);
+                int32_t dst_x_offs = pen_x;
+                int32_t dst_y_offs = (((int32_t)h - dst_h) / 2);
                 int32_t y, x;
 
                 ASSERT(bitmap->pixel_mode == FT_PIXEL_MODE_BGRA);
                 
-                /* TODO: bilinear filter, bounds check */
+                /* TODO: bounds check, blend */
+
+#if 0 /* 0 - bilinear, 1 - nearest neighbour */ /* TODO: more filters */
                 for ( y = 0; y < dst_h; ++y) {
                     int32_t src_y = (int32_t)((float)y / s);
                     for ( x = 0; x < dst_w; ++x) {
@@ -637,44 +641,85 @@ static sw_pixmap_t *render(void) {
                         *dst = *src;
                     }
                 }
+#else
+                /* TODO: bounds check outside the loop */
+                for ( y = 0; y < dst_h; ++y) {
+                    float fy = ((float)y / s);
+                    int32_t y0 = (int32_t)fy;
+                    int32_t y1 = (y0 + 1);
+                    float wy = fy - (float)y0;
+                    if (y1 >= (int32_t)bitmap->rows) {
+                        y1 = ((int32_t)bitmap->rows - 1);
+                    }
+
+                    for ( x = 0; x < dst_w; ++x) {
+                        float fx = ((float)x / s);
+                        int32_t x0 = (int32_t)fx;
+                        int32_t x1 = (x0 + 1);
+                        float wx = (fx - (float)x0);
+                        if (x1 >= (int32_t)bitmap->width) {
+                            x1 = ((int32_t)bitmap->width - 1);
+                        }
+                        
+                        {
+                            sw_color_argb32_t c00 = *(sw_color_argb32_t *)(void *)&bitmap->buffer[y0 * bitmap->pitch + x0 * 4];
+                            sw_color_argb32_t c10 = *(sw_color_argb32_t *)(void *)&bitmap->buffer[y0 * bitmap->pitch + x1 * 4];
+                            sw_color_argb32_t c01 = *(sw_color_argb32_t *)(void *)&bitmap->buffer[y1 * bitmap->pitch + x0 * 4];
+                            sw_color_argb32_t c11 = *(sw_color_argb32_t *)(void *)&bitmap->buffer[y1 * bitmap->pitch + x1 * 4];
+                    
+                            float w00 = ((1.0f - wx) * (1.0f - wy));
+                            float w10 = (wx * (1.0f - wy));
+                            float w01 = ((1.0f - wx) * wy);
+                            float w11 = (wx * wy);
+                    
+                            sw_color_argb32_t *d = (sw_color_argb32_t *)(void *)&((uint8_t *)ret->pixels)[
+                                (y + dst_y_offs) * (int32_t)w * 4 + (x + dst_x_offs) * 4];
+                            d->c.a = (uint8_t)(c00.c.a * w00 + c10.c.a * w10 + c01.c.a * w01 + c11.c.a * w11);
+                            d->c.r = (uint8_t)(c00.c.r * w00 + c10.c.r * w10 + c01.c.r * w01 + c11.c.r * w11);
+                            d->c.g = (uint8_t)(c00.c.g * w00 + c10.c.g * w10 + c01.c.g * w01 + c11.c.g * w11);
+                            d->c.b = (uint8_t)(c00.c.b * w00 + c10.c.b * w10 + c01.c.b * w01 + c11.c.b * w11);
+                        }
+                    }
+                }
+#endif
                 glyph->x_advance = (int32_t)((float)glyph->x_advance * s);
             } else {
                 int32_t row, col;
                 int32_t start_row = 0, start_col = 0;
                 int32_t end_row = (int32_t)bitmap->rows, end_col = (int32_t)bitmap->width;
-                int32_t x_offs = (pen_x + (font->face->glyph->bitmap_left + glyph->x_offset));
-                int32_t y_offs = (pen_y - (font->face->glyph->bitmap_top + glyph->y_offset));
-                if (y_offs < 0) {
-                    start_row = -y_offs;
+                int32_t dst_x_offs = (pen_x + (font->face->glyph->bitmap_left + glyph->x_offset));
+                int32_t dst_y_offs = (pen_y - (font->face->glyph->bitmap_top + glyph->y_offset));
+                if (dst_y_offs < 0) {
+                    start_row = -dst_y_offs;
                 }
-                if ((y_offs + end_row) > (int32_t)h) {
-                    end_row = ((int32_t)h - y_offs);
+                if ((dst_y_offs + end_row) > (int32_t)h) {
+                    end_row = ((int32_t)h - dst_y_offs);
                 }
-                if (x_offs < 0) {
-                    start_col = -x_offs;
+                if (dst_x_offs < 0) {
+                    start_col = -dst_x_offs;
                 }
-                if ((x_offs + end_col) > (int32_t)w) {
-                    end_col = ((int32_t)w - x_offs);
+                if ((dst_x_offs + end_col) > (int32_t)w) {
+                    end_col = ((int32_t)w - dst_x_offs);
                 }
                 switch (bitmap->pixel_mode) {
                 case FT_PIXEL_MODE_GRAY: {
                     for ( row = start_row; row < end_row; ++row) {
                         uint8_t *src = &bitmap->buffer[row * bitmap->pitch + start_col];
-                        sw_color_argb32_t *dst = &ret->pixels[(row + y_offs) * (int32_t)w + (x_offs + start_col)];
+                        sw_color_argb32_t *dst = &ret->pixels[(row + dst_y_offs) * (int32_t)w + (dst_x_offs + start_col)];
                         for ( col = start_col; col < end_col; ++col) {
                             uint8_t m = *src++;
-                            uint32_t sa = (text_color.c.a * m + 127) / 255;
-                            uint32_t sr = (text_color.c.r * m + 127) / 255;
-                            uint32_t sg = (text_color.c.g * m + 127) / 255;
-                            uint32_t sb = (text_color.c.b * m + 127) / 255;
+                            uint32_t sa = ((text_color.c.a * m) >> 8);
+                            uint32_t sr = ((text_color.c.r * m) >> 8);
+                            uint32_t sg = ((text_color.c.g * m) >> 8);
+                            uint32_t sb = ((text_color.c.b * m) >> 8);
 
                             sw_color_argb32_t *d = dst++;
-#if 0
+#if 1
                             uint32_t inv_sa = (255 - sa);
-                            d->c.a = (uint8_t)(sa + ((d->c.a * inv_sa + 127) / 255));
-                            d->c.r = (uint8_t)(sr + ((d->c.r * inv_sa + 127) / 255));
-                            d->c.g = (uint8_t)(sg + ((d->c.g * inv_sa + 127) / 255));
-                            d->c.b = (uint8_t)(sb + ((d->c.b * inv_sa + 127) / 255));
+                            d->c.a = (uint8_t)(sa + ((d->c.a * inv_sa) >> 8));
+                            d->c.r = (uint8_t)(sr + ((d->c.r * inv_sa) >> 8));
+                            d->c.g = (uint8_t)(sg + ((d->c.g * inv_sa) >> 8));
+                            d->c.b = (uint8_t)(sb + ((d->c.b * inv_sa) >> 8));
 #else
                             d->c.a = (uint8_t)sa;
                             d->c.r = (uint8_t)sr;
@@ -686,33 +731,36 @@ static sw_pixmap_t *render(void) {
                     break;
                 }
                 case FT_PIXEL_MODE_BGRA: {
-#if 0
+#if 1
                     for ( row = start_row; row < end_row; ++row) {
                         sw_color_argb32_t *src =
                             (sw_color_argb32_t *)(void *)&bitmap->buffer[row * bitmap->pitch + start_col * 4];
-                        sw_color_argb32_t *dst = &ret->pixels[(row + y_offs) * (int32_t)w + (x_offs + start_col)];
+                        sw_color_argb32_t *dst = &ret->pixels[(row + dst_y_offs) * (int32_t)w + (dst_x_offs + start_col)];
                         for ( col = start_col; col < end_col; ++col) {
                             sw_color_argb32_t s = *src++;
                             sw_color_argb32_t *d = dst++;
                             uint32_t inv_sa = (255 - s.c.a);
-                            d->c.a = (uint8_t)(s.c.a + ((d->c.a * inv_sa + 127) / 255));
-                            d->c.r = (uint8_t)(s.c.r + ((d->c.r * inv_sa + 127) / 255));
-                            d->c.g = (uint8_t)(s.c.g + ((d->c.g * inv_sa + 127) / 255));
-                            d->c.b = (uint8_t)(s.c.b + ((d->c.b * inv_sa + 127) / 255));
+                            d->c.a = (uint8_t)(s.c.a + ((d->c.a * inv_sa) >> 8));
+                            d->c.r = (uint8_t)(s.c.r + ((d->c.r * inv_sa) >> 8));
+                            d->c.g = (uint8_t)(s.c.g + ((d->c.g * inv_sa) >> 8));
+                            d->c.b = (uint8_t)(s.c.b + ((d->c.b * inv_sa) >> 8));
                         }
                     }
 #else
                     size_t span_bytes = ((size_t)(end_col - start_col) * 4);
                     for ( row = start_row; row < end_row; ++row) {
-                        sw_color_argb32_t *src =
+                        sw_color_argb32_t *s =
                             (sw_color_argb32_t *)(void *)&bitmap->buffer[row * bitmap->pitch + start_col * 4];
-                        sw_color_argb32_t *dst = &ret->pixels[(row + y_offs) * (int32_t)w + (x_offs + start_col)];
+                        sw_color_argb32_t *d = &ret->pixels[(row + y_offs) * (int32_t)w + (x_offs + start_col)];
 
-                        MEMCPY(dst, src, span_bytes);
+                        MEMCPY(d, s, span_bytes);
                     }
 #endif
                     break;
                 }
+                /*case FT_PIXEL_MODE_MONO: {
+                    break;
+                }*/
                 default:
                     ASSERT_UNREACHABLE;
                 }
