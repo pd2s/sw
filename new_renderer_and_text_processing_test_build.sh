@@ -32,7 +32,7 @@ case "$FREETYPE_DEP_FLAGS" in
 esac
 # hack to replace libpng with stb_image
 sed -i '/#include "pngshim.c"/d' ${FREETYPE_DEP_PATH}/src/sfnt/sfnt.c
-meson setup -Dharfbuzz=enabled -Derror_strings=true -Dpng=disabled -Dc_args="-DFT_CONFIG_OPTION_USE_PNG" -Dbrotli=disabled -Dbzip2=disabled -Dmmap=disabled -Dtests=disabled -Dzlib=disabled -Ddefault_library=static -Dwarning_level=0 -Dwerror=false -Dprefix=${BUILD_PATH} $FREETYPE_DEP_FLAGS $FREETYPE_DEP_BUILD_DIR > ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
+meson setup -Dharfbuzz=enabled -Derror_strings=true -Dpng=disabled -Dc_args="-DFT_CONFIG_OPTION_USE_PNG" -Dbrotli=disabled -Dbzip2=disabled -Dmmap=disabled -Dtests=disabled -Dzlib=disabled -Ddefault_library=static -Dwarning_level=0 -Db_ndebug=if-release -Dwerror=false -Dprefix=${BUILD_PATH} $FREETYPE_DEP_FLAGS $FREETYPE_DEP_BUILD_DIR > ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 meson compile -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 meson install -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 
@@ -46,7 +46,7 @@ case "$HARFBUZZ_DEP_FLAGS" in
   *) HARFBUZZ_DEP_BUILD_DIR="debug" ;;
 esac
 # TODO: force meson to use bundled ft, tried force-fallback, PKG_CONFIG_PATH, CMAKE_PREFIX_PATH overrides
-meson setup -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dchafa=disabled -Dicu=disabled -Dgraphite=disabled -Dgraphite2=disabled -Dfontations=disabled -Dgdi=disabled -Ddirectwrite=disabled -Dcoretext=disabled -Dharfrust=disabled -Dkbts=disabled -Dwasm=disabled -Dtests=disabled -Dintrospection=disabled -Ddocs=disabled -Ddoc_tests=false -Dutilities=disabled -Dbenchmark=disabled -Dicu_builtin=true -Dwith_libstdcxx=false -Dexperimental_api=false -Dragel_subproject=false -Ddefault_library=static -Dwarning_level=0 -Dwerror=false -Dc_args="-DHB_CUSTOM_MALLOC" -Dcpp_args="-DHB_CUSTOM_MALLOC" -Dprefix=${BUILD_PATH} $HARFBUZZ_DEP_FLAGS $HARFBUZZ_DEP_BUILD_DIR > ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
+meson setup -Dfreetype=enabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled -Dchafa=disabled -Dicu=disabled -Dgraphite=disabled -Dgraphite2=disabled -Dfontations=disabled -Dgdi=disabled -Ddirectwrite=disabled -Dcoretext=disabled -Dharfrust=disabled -Dkbts=disabled -Dwasm=disabled -Dtests=disabled -Dintrospection=disabled -Ddocs=disabled -Ddoc_tests=false -Dutilities=disabled -Dbenchmark=disabled -Dicu_builtin=true -Dwith_libstdcxx=false -Dexperimental_api=false -Dragel_subproject=false -Ddefault_library=static -Dwarning_level=0 -Db_ndebug=if-release -Dwerror=false -Dc_args="-DHB_CUSTOM_MALLOC" -Dcpp_args="-DHB_CUSTOM_MALLOC" -Dprefix=${BUILD_PATH} $HARFBUZZ_DEP_FLAGS $HARFBUZZ_DEP_BUILD_DIR > ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
 meson compile -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
 meson install -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1 || fail ${BUILD_PATH}/harfbuzz.log
 

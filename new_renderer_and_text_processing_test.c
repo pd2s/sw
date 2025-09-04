@@ -430,9 +430,9 @@ static sw_pixmap_t *render(void) {
     size_t codepoints_count;
     glyph_t *glyphs;
 
-    ALLOCTS(pruns, &scratch_alloc, (sizeof(*pruns) * text.len * LENGTH(fonts)));
-    ALLOCTS(codepoints, &scratch_alloc, (text.len * sizeof(*codepoints)));
-    ALLOCCTS(glyphs, &scratch_alloc, (text.len * sizeof(*glyphs)));
+    ARRAY_ALLOC(pruns, &scratch_alloc, (text.len * LENGTH(fonts)));
+    ARRAY_ALLOC(codepoints, &scratch_alloc, text.len);
+    ARRAY_ALLOCC(glyphs, &scratch_alloc, text.len);
 
     for ( f = 0; f < LENGTH(fonts); ++f) {
         font_t *font = &fonts[f];
@@ -577,7 +577,7 @@ static sw_pixmap_t *render(void) {
     h = (uint32_t)(((float)fonts[0].face->size->metrics.height / 64.f) + 0.5f);
     pen_y = (int32_t)((float)h + ((float)fonts[0].face->size->metrics.descender / 64.f) + 0.5f);
 
-    ALLOCTS(ret, &gp_alloc, (8 + (w * h * 4)));
+    ALLOCTS(ret, &gp_alloc, ((sizeof(*ret) - sizeof(ret->pixels)) + (w * h * 4)));
     MEMSET(ret->pixels, 0, (w * h * 4));
     ret->width = w;
     ret->height = h;
@@ -796,15 +796,15 @@ static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_con
     surface->in.root->in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP;
     surface->in.root->in._.image.data = p;
 
-    su_llist__sw_wayland_surface_t__insert_tail(&sw.in.backend.wayland.layers, surface);
+    LLIST_APPEND_TAIL(&sw.in.backend.wayland.layers, surface);
 
     NOTUSED(sw);
 	return output;
 }
 
 static void handle_signal(int sig) {
-	NOTUSED(sig);
     DEBUG_LOG("%d: %s", sig, strsignal(sig));
+    NOTUSED(sig);
     running = FALSE;
 }
 

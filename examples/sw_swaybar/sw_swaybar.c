@@ -69,18 +69,17 @@ typedef struct workspace {
 	bool32_t urgent;
 } workspace_t;
 
-ARRAY_DECLARE_DEFINE(workspace_t)
-
 typedef struct output {
 	sw_wayland_output_t _; /* must be first */
-	su_array__workspace_t__t workspaces;
+	workspace_t *workspaces;
+	size_t workspaces_count;
 	bool32_t focused;
 	PAD32;
 } output_t;
 
 typedef struct bar {
 	sw_wayland_surface_t _; /* must be first */
-	/* TODO: block arena alloc */
+	/* ? TODO: block arena alloc */
 } bar_t;
 
 typedef enum layout_block_type {
@@ -109,8 +108,6 @@ typedef struct binding {
 	bool32_t release;
 	string_t command;
 } bar_binding_t;
-
-ARRAY_DECLARE_DEFINE(bar_binding_t)
 
 typedef struct box_colors {
 	sw_color_argb32_t border;
@@ -154,8 +151,6 @@ typedef struct tray_binding {
 	tray_binding_command_t command;
 } tray_binding_t;
 
-ARRAY_DECLARE_DEFINE(tray_binding_t)
-
 #endif /* WITH_TRAY */
 
 typedef enum status_protocol {
@@ -184,8 +179,6 @@ typedef struct status_i3bar_block {
 	int32_t border_widths[4]; /* left right bottom top */
 } status_i3bar_block_t;
 
-ARRAY_DECLARE_DEFINE(status_i3bar_block_t)
-
 typedef struct status_buffer {
 	uint8_t *data;
 	size_t size;
@@ -207,7 +200,8 @@ typedef struct status {
 	bool32_t click_events;
 	bool32_t float_event_coords;
 	su__json_tokener_state_t tokener_state;
-	su_array__status_i3bar_block_t__t blocks;
+	status_i3bar_block_t *blocks;
+	size_t blocks_count;
 } status_t;
 
 typedef enum bar_hidden_state {
@@ -266,12 +260,16 @@ typedef struct config {
 #if WITH_TRAY
 	int32_t tray_padding;
 	PAD32;
-	su_array__su_string_t__t tray_outputs;
-	su_array__tray_binding_t__t tray_bindings;
+	string_t *tray_outputs;
+	size_t tray_outputs_count;
+	tray_binding_t *tray_bindings;
+	size_t tray_bindings_count;
 	string_t tray_icon_theme;
 #endif /* WITH_TRAY */
-	su_array__bar_binding_t__t bindings;
-	su_array__su_string_t__t outputs;
+	bar_binding_t *bindings;
+	size_t bindings_count;
+	string_t *outputs;
+	size_t outputs_count;
 } config_t;
 
 typedef struct state {
@@ -291,7 +289,7 @@ typedef struct state {
 	bool32_t update;
 	bool32_t running;
 	PAD32;
-	su_hash_table__su_file_cache_t__t icon_cache; /* TODO: arena alloc for content */
+	su_hash_table__su_file_cache_t__t icon_cache;
 } state_t;
 
 
@@ -315,17 +313,6 @@ static void layout_block_destroy(layout_block_t *block) {
 	/* TODO: remove recursion */
 
 	switch (block->_.in.type) {
-	case SW_LAYOUT_BLOCK_TYPE_TEXT: {
-		sw_layout_block_text_t *text = &block->_.in._.text;
-		size_t i = 0;
-		for ( ; i < block->_.in._.text.font_names.len; ++i) {
-			string_fini(
-				su_array__su_string_t__get_ptr(&text->font_names, i), &gp_alloc);
-		}
-		su_array__su_string_t__fini(&text->font_names, &gp_alloc);
-		string_fini(&text->text, &gp_alloc);
-		break;
-	}
 	case SW_LAYOUT_BLOCK_TYPE_COMPOSITE: {
 		sw_layout_block_t *b = block->_.in._.composite.children.head;
 		for ( ; b; ) {
@@ -335,6 +322,7 @@ static void layout_block_destroy(layout_block_t *block) {
 		}
 		break;
 	}
+	case SW_LAYOUT_BLOCK_TYPE_TEXT:
 	case SW_LAYOUT_BLOCK_TYPE_IMAGE:
 	case SW_LAYOUT_BLOCK_TYPE_SPACER:
 	default:
@@ -351,8 +339,7 @@ static void layout_block_destroy(layout_block_t *block) {
 #if DEBUG
 static void ATTRIBUTE_NORETURN layout_block_handle_error(sw_layout_block_t *block, sw_context_t *sw, sw_status_t status) {
 	NOTUSED(block); NOTUSED(sw);
-	DEBUG_LOG("layout_block_handle_error: %u", (uint32_t)status);
-	ASSERT_UNREACHABLE;
+	su_abort(1, "layout_block_handle_error: %u", (uint32_t)status);
 }
 #endif /* DEBUG */
 
@@ -368,9 +355,8 @@ static layout_block_t *layout_block_create(void) {
 
 static void layout_block_init_text(sw_layout_block_t *block, string_t *text) {
 	block->in.type = SW_LAYOUT_BLOCK_TYPE_TEXT;
-	su_array__su_string_t__init(&block->in._.text.font_names, &gp_alloc, 1);
-	string_init_string(su_array__su_string_t__add_uninitialized(&block->in._.text.font_names, &gp_alloc),
-		&gp_alloc, state.config.font);
+	block->in._.text.font_names = &state.config.font;
+	block->in._.text.font_names_count = 1;
 	if (text) {
 		block->in._.text.text = string_view(*text);
 	}
@@ -404,24 +390,23 @@ static bool32_t workspace_block_pointer_button(layout_block_t *block,
 	case KEY_SCROLL_LEFT:
 	case KEY_SCROLL_UP: {
 		output_t *output = (output_t *)bar->_.in._.layer.output;
-		for ( i = 0; i < output->workspaces.len; ++i) {
-			workspace = su_array__workspace_t__get_ptr(&output->workspaces, i);
+		for ( i = 0; i < output->workspaces_count; ++i) {
+			workspace = &output->workspaces[i];
 			if (workspace->visible) {
-				workspace_t *first_ws = su_array__workspace_t__get_ptr(&output->workspaces, 0);
-				workspace_t *last_ws = su_array__workspace_t__get_ptr(
-					&output->workspaces, output->workspaces.len - 1);
+				workspace_t *first_ws = &output->workspaces[0];
+				workspace_t *last_ws = &output->workspaces[output->workspaces_count - 1];
 					bool32_t left = ((code == KEY_SCROLL_UP) || (code == KEY_SCROLL_LEFT));
 				if (left) {
 					if (workspace == first_ws) {
 						workspace = state.config.wrap_scroll ? last_ws : NULL;
 					} else {
-						workspace = su_array__workspace_t__get_ptr(&output->workspaces, i - 1);
+						workspace = &output->workspaces[i - 1];
 					}
 				} else {
 					if (workspace == last_ws) {
 						workspace = state.config.wrap_scroll ? first_ws : NULL;
 					} else {
-						workspace = su_array__workspace_t__get_ptr(&output->workspaces, i + 1);
+						workspace = &output->workspaces[i + 1];
 					}
 				}
 				break;
@@ -467,55 +452,10 @@ static bool32_t workspace_block_pointer_button(layout_block_t *block,
 	return TRUE;
 }
 
-static void workspace_fini(workspace_t *workspace) {
-	string_fini(&workspace->name, &gp_alloc);
-}
-
-static void workspace_init(workspace_t *workspace, json_tokener_t *tok, output_t **output_out) {
-	json_token_t token;
-	json_tokener_state_t s;
-
-	MEMSET(workspace, 0, sizeof(*workspace));
-
-	while (((s = json_tokener_next(tok, &scratch_alloc, &token))
-			== JSON_TOKENER_STATE_SUCCESS) && (tok->depth > 1)) {
-		if ((tok->depth == 2) && (token.type == JSON_TOKEN_TYPE_KEY)) {
-			if (string_equal(token.value.s, string("urgent"))) {
-				json_tokener_advance_assert_type(tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-				workspace->urgent = token.value.b;
-			} else if (string_equal(token.value.s, string("name"))) {
-				json_tokener_advance_assert_type(tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-				string_init_string(&workspace->name, &gp_alloc, token.value.s);
-			} else if (string_equal(token.value.s, string("num"))) {
-				json_tokener_advance_assert(tok, &scratch_alloc, &token);
-				ASSERT((token.type == JSON_TOKEN_TYPE_INT) || (token.type == JSON_TOKEN_TYPE_UINT));
-				workspace->num = (int32_t)token.value.i;
-			} else if (string_equal(token.value.s, string("output"))) {
-				output_t *output = (output_t *)state.sw.out.backend.wayland.outputs.head;
-				json_tokener_advance_assert_type(tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-				for ( ; output; output = (output_t *)output->_.next) {
-					if (string_equal(output->_.out.name, token.value.s)) {
-						*output_out = output;
-						break;
-					}
-				}
-			} else if (string_equal(token.value.s, string("focused"))) {
-				json_tokener_advance_assert_type(tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-				workspace->focused = token.value.b;
-			} else if (string_equal(token.value.s, string("visible"))) {
-				json_tokener_advance_assert_type(tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-				workspace->visible = token.value.b;
-			}
-		}
-	}
-	ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-}
-
 #if DEBUG
 static void ATTRIBUTE_NORETURN surface_handle_error(sw_wayland_surface_t *surface, sw_context_t *sw, sw_status_t status) {
 	NOTUSED(surface); NOTUSED(sw);
-	DEBUG_LOG("surface_handle_error: %u", (uint32_t)status);
-	ASSERT_UNREACHABLE;
+	su_abort(1, "surface_handle_error: %u", (uint32_t)status);
 }
 #endif /* DEBUG */
 
@@ -539,14 +479,15 @@ static bool32_t tray_sni_item_image_block_handle_prepare(sw_layout_block_t *bloc
 #if SW_WITH_SVG || SW_WITH_PNG
 static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
 	config_t *config = &state.config;
-	su_array__su_string_t__t *svgs = NULL, *pngs = NULL;
-	if (xdg_icon_theme_cache_find_icon(&state.tray.cache, &svgs, &pngs,
+	string_t *svgs = NULL, *pngs = NULL;
+	size_t svgs_count = 0, pngs_count = 0;
+	if (xdg_icon_theme_cache_find_icon(&state.tray.cache, &svgs, &svgs_count, &pngs, &pngs_count,
 			name, config->tray_icon_theme.s ? &config->tray_icon_theme : NULL)) {
 #if SW_WITH_SVG
 		if (svgs) {
-			size_t j = (svgs->len - 1);
+			size_t j = (svgs_count - 1);
 			for ( ; j != SIZE_MAX; --j) {
-				if (read_entire_file_with_cache( su_array__su_string_t__get(svgs, j),
+				if (read_entire_file_with_cache(svgs[j],
 						&out->data, &gp_alloc, &state.icon_cache)) {
 					out->type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
 					return TRUE;
@@ -559,9 +500,9 @@ static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
 #endif /* SW_WITH_SVG && SW_WITH_PNG */
 #if SW_WITH_PNG
 		if (pngs) {
-			size_t j = (pngs->len - 1);
+			size_t j = (pngs_count - 1);
 			for ( ; j != SIZE_MAX; --j) {
-				if (read_entire_file_with_cache( su_array__su_string_t__get(pngs, j),
+				if (read_entire_file_with_cache(pngs[j],
 						&out->data, &gp_alloc, &state.icon_cache)) {
 					out->type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG;
 					return TRUE;
@@ -577,18 +518,17 @@ static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
 
 static void tray_describe_sni_items(bar_t *bar) {
 	config_t *config = &state.config;
-	bool32_t visible = ((config->tray_outputs.len > 0) ? FALSE : TRUE);
+	bool32_t visible = ((config->tray_outputs_count > 0) ? FALSE : TRUE);
 	size_t i;
-	for ( i = 0; i < config->tray_outputs.len; ++i) {
-		if (string_equal(bar->_.in._.layer.output->out.name,
-				su_array__su_string_t__get(&config->tray_outputs, i))) {
+	for ( i = 0; i < config->tray_outputs_count; ++i) {
+		if (string_equal(bar->_.in._.layer.output->out.name, config->tray_outputs[i])) {
 			visible = TRUE;
 			break;
 		}
 	}
 	if (visible) {
-		for ( i = 0; i < sni_server.out.host_items.len; ++i) {
-			sni_item_t *item = su_array__sni_item_t_ptr__get(&sni_server.out.host_items, i);
+		sni_item_t *item = sni_server.out.items.head;
+		for ( ; item; item = item->next) {
 			sni_item_properties_t *props = item->out.properties;
 			sni_pixmap_t *icon_pixmap = NULL;
 			sw_layout_block_image_t icon;
@@ -602,7 +542,7 @@ static void tray_describe_sni_items(bar_t *bar) {
 			block->block = (layout_block_t *)bar->_.in.root->in._.composite.children.head;
 			block->_.in.prepare = tray_sni_item_block_handle_prepare;
 
-			su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &block->_);
+			LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
 
 			NOTUSED(icon_name);
 			MEMSET(&icon_name, 0, sizeof(icon_name));
@@ -615,14 +555,14 @@ static void tray_describe_sni_items(bar_t *bar) {
 			switch(props->status) {
 			case SNI_ITEM_STATUS_ACTIVE:
 				icon_name = props->icon_name;
-				if (props->icon_pixmap.len > 0) {
-					icon_pixmap = su_array__sni_pixmap_t_ptr__get(&props->icon_pixmap, 0);
+				if (props->icon_pixmaps_count > 0) {
+					icon_pixmap = props->icon_pixmaps[0];
 				}
 				break;
 			case SNI_ITEM_STATUS_NEEDS_ATTENTION:
 				icon_name = props->attention_icon_name;
-				if (props->attention_icon_pixmap.len > 0) {
-					icon_pixmap = su_array__sni_pixmap_t_ptr__get(&props->attention_icon_pixmap, 0);
+				if (props->attention_icon_pixmaps_count > 0) {
+					icon_pixmap = props->attention_icon_pixmaps[0];
 				}
 				break;
 			case SNI_ITEM_STATUS_PASSIVE:
@@ -658,7 +598,7 @@ static void tray_describe_sni_items(bar_t *bar) {
 				block->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
 				block->_.in.expand = (SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM);
 
-				su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &image->_);
+				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &image->_);
 			}
 		}
 	}
@@ -683,7 +623,6 @@ static void tray_dbusmenu_menu_popup_destroy(tray_dbusmenu_menu_popup_t *popup) 
 	}
 
 	layout_block_destroy((layout_block_t *)popup->_.in.root);
-	su_array__sw_wayland_region_t__fini(&popup->_.in.input_regions, &gp_alloc);
 
 	state.update = TRUE;
 
@@ -702,18 +641,18 @@ static void tray_dbusmenu_menu_item_pointer_enter(sni_dbusmenu_menu_item_t *menu
 	sni_dbusmenu_menu_item_event(menu_item,
 		SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_HOVERED, TRUE);
 
-	if (popup->_.in.popups.len > 0) {
-		ASSERT(popup->_.in.popups.len == 1);
+	if (popup->_.in.popups.count > 0) {
+		ASSERT(popup->_.in.popups.count == 1);
 		tray_dbusmenu_menu_popup_destroy((tray_dbusmenu_menu_popup_t *)popup->_.in.popups.head);
 		MEMSET(&popup->_.in.popups, 0, sizeof(popup->_.in.popups));
 	}
 
 	if (menu_item->enabled && (menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR)) {
-		if (menu_item->submenu && (menu_item->submenu->menu_items.len > 0)) {
+		if (menu_item->submenu && (menu_item->submenu->menu_items_count > 0)) {
 			tray_dbusmenu_menu_popup_t *submenu_popup = tray_dbusmenu_menu_popup_create(
 				menu_item->submenu, block->out.dim.x, block->out.dim.y + block->out.dim.height,
 				&popup->_, popup->seat);
-			su_llist__sw_wayland_surface_t__insert_tail(&popup->_.in.popups, &submenu_popup->_);
+			LLIST_APPEND_TAIL(&popup->_.in.popups, &submenu_popup->_);
 		}
 
 		block->in.color._.argb32 = state.config.colors.focused_separator;
@@ -734,7 +673,7 @@ static void tray_dbusmenu_menu_item_pointer_button(sni_dbusmenu_menu_item_t *men
 			SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLICKED, TRUE);
 
 #if 1
-		ASSERT(state.tray.popup->parent->in.popups.len == 1);
+		ASSERT(state.tray.popup->parent->in.popups.count == 1);
 		MEMSET(&state.tray.popup->parent->in.popups, 0, sizeof(state.tray.popup->parent->in.popups));
 		tray_dbusmenu_menu_popup_destroy(state.tray.popup);
 #endif
@@ -869,8 +808,8 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 	sw_layout_block_t *block_;
 	size_t i;
 
-	if (popup->_.in.popups.len > 0) {
-		ASSERT(popup->_.in.popups.len == 1);
+	if (popup->_.in.popups.count > 0) {
+		ASSERT(popup->_.in.popups.count == 1);
 		tray_dbusmenu_menu_popup_destroy((tray_dbusmenu_menu_popup_t *)popup->_.in.popups.head);
 		MEMSET(&popup->_.in.popups, 0, sizeof(popup->_.in.popups));
 	}
@@ -885,10 +824,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 	popup->focused_block = NULL;
 	popup->menu = menu;
 
-	for ( i = 0; i < menu->menu_items.len; ++i) {
+	for ( i = 0; i < menu->menu_items_count; ++i) {
 		layout_block_t *block;
-		sni_dbusmenu_menu_item_t *menu_item = su_array__sni_dbusmenu_menu_item_t__get_ptr(
-			&menu->menu_items, i);
+		sni_dbusmenu_menu_item_t *menu_item = &menu->menu_items[i];
 		if (!menu_item->visible) {
 			continue;
 		}
@@ -917,7 +855,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					label->_.in.borders[2].width = config->tray_padding;
 					label->_.in.borders[3].width = config->tray_padding;
 				}
-				su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &label->_);
+				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &label->_);
 			}
 
 #if SW_WITH_SVG || SW_WITH_PNG
@@ -930,9 +868,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				}
 				if (dbusmenu->properties) {
 					size_t j = 0;
-					for ( ; j < dbusmenu->properties->icon_theme_path.len; ++j) {
-						xdg_icon_theme_cache_add_basedir(&state.tray.cache, &gp_alloc,
-							su_array__su_string_t__get(&dbusmenu->properties->icon_theme_path, j));
+					for ( ; j < dbusmenu->properties->icon_theme_path_count; ++j) {
+						xdg_icon_theme_cache_add_basedir( &state.tray.cache,
+							&gp_alloc, dbusmenu->properties->icon_theme_path[j]);
 					}
 				}
 				icon = layout_block_create();
@@ -949,7 +887,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					icon->_.in.prepare = tray_dbusmenu_menu_popup_icon_block_handle_prepare;
 				}
 				tray_find_icon(menu_item->icon_name, &icon->_.in._.image);
-				su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &icon->_);
+				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &icon->_);
 			}
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
@@ -971,7 +909,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					icon->block = label;
 					icon->_.in.prepare = tray_dbusmenu_menu_popup_icon_block_handle_prepare;
 				}
-				su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &icon->_);
+				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &icon->_);
 			}
 #endif /* SW_WITH_PNG */
 
@@ -996,7 +934,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					toggle->block = label;
 					toggle->_.in.prepare = tray_dbusmenu_menu_popup_decorator_block_handle_prepare;
 				}
-				su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &toggle->_);
+				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &toggle->_);
 				needs_spacer = TRUE;
 				break;
 			}
@@ -1022,11 +960,11 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					submenu->block = label;
 					submenu->_.in.prepare = tray_dbusmenu_menu_popup_decorator_block_handle_prepare;
 				}
-				su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &submenu->_);
+				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &submenu->_);
 				needs_spacer = TRUE;
 			}
 		}
-		su_llist__sw_layout_block_t__insert_tail(&popup->_.in.root->in._.composite.children, &block->_);
+		LLIST_APPEND_TAIL(&popup->_.in.root->in._.composite.children, &block->_);
 	}
 
 	if (needs_spacer) {
@@ -1043,7 +981,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					spacer->block = b;
 					spacer->_.in.prepare = tray_dbusmenu_menu_popup_decorator_block_handle_prepare;
 					spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
-					su_llist__sw_layout_block_t__insert_tail(&block->in._.composite.children, &spacer->_);
+					LLIST_APPEND_TAIL(&block->in._.composite.children, &spacer->_);
 				}
 			}
 		}
@@ -1055,7 +993,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 static void tray_dbusmenu_menu_popup_destroy_sw(sw_wayland_surface_t *popup, sw_context_t *sw) {
 	tray_dbusmenu_menu_popup_t *p = (tray_dbusmenu_menu_popup_t *)popup;
 	NOTUSED(sw);
-	su_llist__sw_wayland_surface_t__pop(&p->parent->in.popups, &p->_);
+	LLIST_POP(&p->parent->in.popups, &p->_);
 	tray_dbusmenu_menu_popup_destroy(p);
 }
 
@@ -1114,10 +1052,10 @@ static void tray_sni_item_block_pointer_button(layout_block_t *block,
 	}
 
 	command = TRAY_BINDING_COMMAND_NONE;
-	for ( i = 0; i < state.config.tray_bindings.len; ++i) {
-		tray_binding_t binding = su_array__tray_binding_t__get(&state.config.tray_bindings, i);
-		if (binding.event_code == code) {
-			command = binding.command;
+	for ( i = 0; i < state.config.tray_bindings_count; ++i) {
+		tray_binding_t *binding = &state.config.tray_bindings[i];
+		if (binding->event_code == code) {
+			command = binding->command;
 			break;
 		}
 	}
@@ -1158,11 +1096,11 @@ static void tray_sni_item_block_pointer_button(layout_block_t *block,
 	switch (command) {
 	case TRAY_BINDING_COMMAND_CONTEXT_MENU: {
 		sni_dbusmenu_t *dbusmenu = item->out.dbusmenu;
-#define MENU su_array__sni_dbusmenu_menu_item_t__get_ptr(&dbusmenu->menu->menu_items, 0)->submenu
-		if (dbusmenu && dbusmenu->menu && (dbusmenu->menu->menu_items.len > 0)
-				&& MENU && (MENU->menu_items.len > 0)) {
+#define MENU dbusmenu->menu->menu_items[0].submenu
+		if (dbusmenu && dbusmenu->menu && (dbusmenu->menu->menu_items_count > 0)
+				&& MENU && (MENU->menu_items_count > 0)) {
 			state.tray.popup = tray_dbusmenu_menu_popup_create(MENU, x, y, &bar->_, seat);
-			su_llist__sw_wayland_surface_t__insert_tail( &bar->_.in.popups, &state.tray.popup->_);
+			LLIST_APPEND_TAIL( &bar->_.in.popups, &state.tray.popup->_);
 		} else {
 			sni_item_context_menu_async(item, 0, 0);
 		}
@@ -1207,11 +1145,11 @@ static void tray_sni_item_dbusmenu_menu_updated_sni_server(sni_item_t *item) {
 	}
 
 	menu = item->out.dbusmenu->menu;
-#define MENU su_array__sni_dbusmenu_menu_item_t__get_ptr(&menu->menu_items, 0)->submenu
-	if (menu && (menu->menu_items.len > 0) && MENU && (MENU->menu_items.len > 0)) {
+#define MENU menu->menu_items[0].submenu
+	if (menu && (menu->menu_items_count > 0) && MENU && (MENU->menu_items_count > 0)) {
 		tray_dbusmenu_menu_popup_update(state.tray.popup, MENU);
 	} else {
-		ASSERT(state.tray.popup->parent->in.popups.len == 1);
+		ASSERT(state.tray.popup->parent->in.popups.count == 1);
 		MEMSET(&state.tray.popup->parent->in.popups, 0, sizeof(state.tray.popup->parent->in.popups));
 		tray_dbusmenu_menu_popup_destroy(state.tray.popup);
 	}
@@ -1220,7 +1158,7 @@ static void tray_sni_item_dbusmenu_menu_updated_sni_server(sni_item_t *item) {
 
 static void tray_sni_item_destroy_sni_server(sni_item_t *item) {
 	if (state.tray.popup && (state.tray.popup->menu->dbusmenu->item == item)) {
-		ASSERT(state.tray.popup->parent->in.popups.len == 1);
+		ASSERT(state.tray.popup->parent->in.popups.count == 1);
 		MEMSET(&state.tray.popup->parent->in.popups, 0, sizeof(state.tray.popup->parent->in.popups));
 		tray_dbusmenu_menu_popup_destroy(state.tray.popup);
 	}
@@ -1281,7 +1219,7 @@ static void tray_update(void) {
 static void bar_destroy(bar_t *bar) {
 	sw_wayland_surface_t *popup_;
 
-	if (state.status.active && (state.sw.in.backend.wayland.layers.len == 0)) {
+	if (state.status.active && (state.sw.in.backend.wayland.layers.count == 0)) {
 		kill(-state.status.pid, state.status.stop_signal);
 	}
 
@@ -1298,7 +1236,6 @@ static void bar_destroy(bar_t *bar) {
 	}
 
 	layout_block_destroy((layout_block_t *)bar->_.in.root);
-	su_array__sw_wayland_region_t__fini(&bar->_.in.input_regions, &gp_alloc);
 
 	state.update = TRUE;
 
@@ -1307,10 +1244,10 @@ static void bar_destroy(bar_t *bar) {
 
 static void output_destroy(output_t *output) {
 	size_t i = 0;
-	for ( ; i < output->workspaces.len; ++i) {
-		workspace_fini( su_array__workspace_t__get_ptr(&output->workspaces, i));
+	for ( ; i < output->workspaces_count; ++i) {
+		string_fini(&output->workspaces[i].name, &gp_alloc);
 	}
-	su_array__workspace_t__fini(&output->workspaces, &gp_alloc);
+	FREE(&gp_alloc, output->workspaces);
 
 	FREE(&gp_alloc, output);
 }
@@ -1329,8 +1266,6 @@ static output_t *output_create(void) {
 
 	ALLOCCT(output, &gp_alloc);
 	output->_.in.destroy = output_destroy_sw;
-
-	su_array__workspace_t__init(&output->workspaces, &gp_alloc, 32);
 
 	return output;
 }
@@ -1453,11 +1388,10 @@ static void status_fini(void) {
 
 	if (status->protocol == STATUS_PROTOCOL_I3BAR) {
 		size_t i = 0;
-		for ( ; i < status->blocks.len; ++i) {
-			status_i3bar_block_fini(
-				su_array__status_i3bar_block_t__get_ptr(&status->blocks, i));
+		for ( ; i < status->blocks_count; ++i) {
+			status_i3bar_block_fini(&status->blocks[i]);
 		}
-		su_array__status_i3bar_block_t__fini(&status->blocks, &gp_alloc);
+		FREE(&gp_alloc, status->blocks);
 	}
 
 	MEMSET(status, 0, sizeof(*status));
@@ -1470,11 +1404,10 @@ static void status_set_error(string_t text) {
 
 	if (status->protocol == STATUS_PROTOCOL_I3BAR) {
 		size_t i = 0;
-		for ( ; i < status->blocks.len; ++i) {
-			status_i3bar_block_fini(
-				su_array__status_i3bar_block_t__get_ptr(&status->blocks, i));
+		for ( ; i < status->blocks_count; ++i) {
+			status_i3bar_block_fini(&status->blocks[i]);
 		}
-		su_array__status_i3bar_block_t__fini(&status->blocks, &gp_alloc);
+		FREE(&gp_alloc, status->blocks);
 	}
 
 	FREE(&gp_alloc, status->buf.data);
@@ -1627,17 +1560,16 @@ static void status_describe(bar_t *bar) {
 				block->_.in.borders[3].width = config->status_padding;
 				block->_.in.borders[2].width = config->status_padding;
 			}
-			su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &block->_);
+			LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
 		}
 		break;
 	case STATUS_PROTOCOL_I3BAR: {
 		/* TODO: short_text */
 
-		bool32_t edge = (bar->_.in.root->in._.composite.children.len == 1);
-		size_t i = status->blocks.len - 1;
+		bool32_t edge = (bar->_.in.root->in._.composite.children.count == 1);
+		size_t i = (status->blocks_count - 1);
 		for ( ; i != SIZE_MAX; --i) {
-			status_i3bar_block_t *i3bar_block = su_array__status_i3bar_block_t__get_ptr(
-				&status->blocks, i);
+			status_i3bar_block_t *i3bar_block = &status->blocks[i];
 			layout_block_t *block = layout_block_create();
 			layout_block_t *text = layout_block_create();
 			if (status->click_events && (i3bar_block->name.len > 0)) {
@@ -1651,7 +1583,7 @@ static void status_describe(bar_t *bar) {
 				spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				spacer->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
 				spacer->_.in.min_width = config->status_edge_padding;
-				su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &spacer->_);
+				LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &spacer->_);
 			} else if (!edge && ((i3bar_block->separator_block_width > 0) || i3bar_block->separator)) {
 				layout_block_t *separator = layout_block_create();
 				separator->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
@@ -1688,7 +1620,7 @@ static void status_describe(bar_t *bar) {
 					}
 				}
 				separator->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
-				su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &separator->_);
+				LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &separator->_);
 			}
 
 			block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
@@ -1698,7 +1630,7 @@ static void status_describe(bar_t *bar) {
 				layout_block_init_text(&min_width->_, &i3bar_block->min_width_str);
 				min_width->_.in._.text.color._.argb32.u32 = 0;
 				min_width->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
-				su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &min_width->_);
+				LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &min_width->_);
 
 				block->block = min_width;
 				block->_.in.prepare = status_i3bar_block_handle_prepare;
@@ -1731,9 +1663,9 @@ static void status_describe(bar_t *bar) {
 				text->_.in.borders[2].width = config->status_padding;
 			}
 
-			su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &text->_);
+			LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
 
-			su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &block->_);
+			LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
 
 			edge = FALSE;
 		}
@@ -1805,8 +1737,8 @@ static bool32_t status_i3bar_block_init(status_i3bar_block_t *block, json_ast_no
 
 	/* ? TODO: "_sw" */
 
-	for ( i = 0; i < json->value.object.len; ++i) {
-		json_ast_key_value_t *key_value = su_array__su_json_ast_key_value_t__get_ptr(&json->value.object, i);
+	for ( i = 0; i < json->value.o.count; ++i) {
+		json_ast_key_value_t *key_value = &json->value.o.kvs[i];
 		if (string_equal(key_value->key, string("full_text"))) {
 			if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
 				string_init_string(&block->full_text, &gp_alloc, key_value->value.value.s);
@@ -1904,21 +1836,22 @@ static void status_i3bar_block_fini(status_i3bar_block_t *block) {
 static void status_i3bar_parse_json(json_ast_node_t *json) {
 	status_t *status = &state.status;
 	size_t i;
-	status_i3bar_block_t block;
 
 	if (json->type != JSON_AST_NODE_TYPE_ARRAY) {
 		return;
 	}
 
-	for ( i = 0; i < status->blocks.len; ++i) {
-		status_i3bar_block_fini(
-			su_array__status_i3bar_block_t__get_ptr(&status->blocks, i));
+	for ( i = 0; i < status->blocks_count; ++i) {
+		status_i3bar_block_fini(&status->blocks[i]);
 	}
-	status->blocks.len = 0;
+	FREE(&gp_alloc, status->blocks);
 
-	for ( i = 0; i < json->value.array.len; ++i) {
-		if (status_i3bar_block_init(&block, su_array__su_json_ast_node_t__get_ptr(&json->value.array, i))) {
-			su_array__status_i3bar_block_t__add( &status->blocks, &gp_alloc, block);
+	ARRAY_ALLOC(status->blocks, &gp_alloc, json->value.a.count);
+	status->blocks_count = 0;
+
+	for ( i = 0; i < json->value.a.count; ++i) {
+		if (status_i3bar_block_init(&status->blocks[status->blocks_count], &json->value.a.nodes[i])) {
+			status->blocks_count++;
 		}
 	}
 }
@@ -1950,7 +1883,7 @@ static bool32_t status_i3bar_process(void) {
 				size_t new_size = (status->buf.size * 2);
 				uint8_t *new_data;
 				ALLOCTS(new_data, &gp_alloc, new_size);
-				MEMCPY(new_data, status->buf.data, status->buf.size);
+				MEMCPY(new_data, status->buf.data, status->buf.idx);
 				FREE(&gp_alloc, status->buf.data);
 				status->buf.data = new_data;
 				status->buf.size = new_size;
@@ -1969,7 +1902,7 @@ static bool32_t status_i3bar_process(void) {
 	json_tokener_set_string(&tok, &scratch_alloc, str);
 
 	if (status->tokener_state) {
-		su_array__su__json_tokener_state_t__add_nocheck(&tok.state, status->tokener_state);
+		tok.state[tok.state_count++] = status->tokener_state;
 		tok.depth = 1;
 	} else {
 		json_token_t token;
@@ -1997,7 +1930,7 @@ static bool32_t status_i3bar_process(void) {
 		}
 	}
 
-	status->tokener_state = su_array__su__json_tokener_state_t__get(&tok.state, tok.state.len - 1);
+	status->tokener_state = tok.state[tok.state_count - 1];
 
 	return TRUE;
 }
@@ -2024,7 +1957,7 @@ static bool32_t status_process(void) {
 			size_t new_size = ((size_t)available_bytes + 1);
 			uint8_t *new_data;
 			ALLOCTS(new_data, &gp_alloc, new_size);
-			MEMCPY(new_data, status->buf.data, status->buf.size);
+			MEMCPY(new_data, status->buf.data, status->buf.idx);
 			FREE(&gp_alloc, status->buf.data);
 			status->buf.data = new_data;
 			status->buf.size = new_size;
@@ -2055,9 +1988,8 @@ static bool32_t status_process(void) {
 				goto protocol_text;
 			}
 
-			for ( i = 0; i < header.root.value.object.len; ++i) {
-				json_ast_key_value_t *key_value =
-					su_array__su_json_ast_key_value_t__get_ptr(&header.root.value.object, i);
+			for ( i = 0; i < header.root.value.o.count; ++i) {
+				json_ast_key_value_t *key_value = &header.root.value.o.kvs[i];
 				if (string_equal(key_value->key, string("version"))) {
 					if ((key_value->value.type != JSON_AST_NODE_TYPE_UINT) || (key_value->value.value.u != 1)) {
 						goto protocol_text;
@@ -2086,7 +2018,6 @@ static bool32_t status_process(void) {
 			}
 
 			status->protocol = STATUS_PROTOCOL_I3BAR;
-			su_array__status_i3bar_block_t__init(&status->blocks, &gp_alloc, 32);
 			status->buf.idx = newline.len - 1;
 			MEMMOVE(status->buf.data, newline.s + 1, status->buf.idx);
 
@@ -2130,7 +2061,7 @@ protocol_text:
 					size_t new_size = (status->buf.size * 2);
 					uint8_t *new_data;
 					ALLOCTS(new_data, &gp_alloc, new_size);
-					MEMCPY(new_data, status->buf.data, status->buf.size);
+					MEMCPY(new_data, status->buf.data, status->buf.idx);
 					FREE(&gp_alloc, status->buf.data);
 					status->buf.data = new_data;
 					status->buf.size = new_size;
@@ -2151,8 +2082,8 @@ static void workspaces_describe(bar_t *bar) {
 	config_t *config = &state.config;
 	output_t *output = (output_t *)bar->_.in._.layer.output;
 	size_t i = 0;
-	for ( ; i < output->workspaces.len; ++i) {
-		workspace_t *workspace = su_array__workspace_t__get_ptr(&output->workspaces, i);
+	for ( ; i < output->workspaces_count; ++i) {
+		workspace_t *workspace = &output->workspaces[i];
 		layout_block_t *block = layout_block_create();
 		layout_block_t *text = layout_block_create();
 		bar_box_colors_t colors;
@@ -2209,9 +2140,9 @@ static void workspaces_describe(bar_t *bar) {
 			text->_.in._.text.text = string_view(workspace->name);
 		}
 
-		su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &text->_);
+		LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
 
-		su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &block->_);
+		LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
 	}
 }
 
@@ -2248,16 +2179,16 @@ static void binding_mode_indicator_describe(bar_t *bar) {
 	text->_.in.borders[2].width = 1;
 	text->_.in.borders[3].width = 1;
 
-	su_llist__sw_layout_block_t__insert_tail(&block->_.in._.composite.children, &text->_);
+	LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
 
-	su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &block->_);
+	LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
 }
 
 static void bar_update(bar_t *bar) {
 	output_t *output = (output_t *)bar->_.in._.layer.output;
 	config_t *config = &state.config;
 	layout_block_t *min_height = layout_block_create();
-	string_t s = string(" ");
+	string_t min_h = string(" ");
 
 	sw_layout_block_t *block = bar->_.in.root->in._.composite.children.head;
 	for ( ; block; ) {
@@ -2267,11 +2198,11 @@ static void bar_update(bar_t *bar) {
 	}
 	MEMSET(&bar->_.in.root->in._.composite.children, 0, sizeof(bar->_.in.root->in._.composite.children));
 
-	layout_block_init_text(&min_height->_, &s);
+	layout_block_init_text(&min_height->_, &min_h);
 	min_height->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
-	su_llist__sw_layout_block_t__insert_tail(&bar->_.in.root->in._.composite.children, &min_height->_);
+	LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &min_height->_);
 
-	bar->_.in.input_regions.len = 0;
+	bar->_.in.input_regions_count = 0;
 	bar->_.in.height = config->height;
 	bar->_.in._.layer.anchor = config->position;
 	MEMCPY(bar->_.in._.layer.margins, config->gaps, sizeof(bar->_.in._.layer.margins));
@@ -2280,8 +2211,9 @@ static void bar_update(bar_t *bar) {
 		bar->_.in._.layer.layer = SW_WAYLAND_SURFACE_LAYER_LAYER_OVERLAY;
 		bar->_.in._.layer.exclusive_zone = -1;
 		if (config->mode == BAR_MODE_OVERLAY) {
-			static sw_wayland_region_t r = { 0, 0, 0, 0 };
-			su_array__sw_wayland_region_t__add(&bar->_.in.input_regions, &gp_alloc, r);
+			static sw_wayland_region_t empty_region = { 0, 0, 0, 0 };
+			bar->_.in.input_regions = &empty_region;
+			bar->_.in.input_regions_count = 1;
 		}
 	} else {
 		bar->_.in._.layer.layer = SW_WAYLAND_SURFACE_LAYER_LAYER_BOTTOM;
@@ -2313,36 +2245,37 @@ static void bar_update(bar_t *bar) {
 static void config_update(string_t str) {
 	config_t *config = &state.config;
 	json_tokener_t tok;
+	json_ast_t ast;
+	json_ast_node_t *node;
 	json_token_t token;
 	string_t old_status_command, new_status_command;
 	size_t i;
 	json_tokener_state_t s;
-#if WITH_TRAY
-	bool32_t tray_enabled = TRUE;
-#endif /* WITH_TRAY */
 
 	MEMSET(&tok, 0, sizeof(tok));
 	json_tokener_set_string(&tok, &scratch_alloc, str);
 
 	json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
 
-	/* ? TODO: handle different key order */
-
 	json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_KEY);
-	if (string_equal(token.value.s, string("success"))) {
+	if (UNLIKELY(string_equal(token.value.s, string("success")))) {
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
 		ASSERT(token.value.b == FALSE);
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_KEY);
 		ASSERT(string_equal(token.value.s, string("error")));
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
 		su_abort(1, STRING_PF_FMT, STRING_PF_ARGS(token.value.s));
+	} else {
+		ASSERT(string_equal(token.value.s, string("id")));
 	}
-	ASSERT(string_equal(token.value.s, string("id")));
 
 	json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-
 	if (!string_equal(state.bar_id, token.value.s)) {
 		return;
+	}
+
+	if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_BINDING_STATE, NULL) == -1) {
+		su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
 	}
 
 	old_status_command = config->status_command;
@@ -2350,24 +2283,25 @@ static void config_update(string_t str) {
 
 	string_fini(&config->font, &gp_alloc);
 	string_fini(&config->separator_symbol, &gp_alloc);
-	for ( i = 0; i < config->bindings.len; ++i) {
-		bar_binding_t binding = su_array__bar_binding_t__get(&config->bindings, i);
-		string_fini(&binding.command, &gp_alloc);
+	for ( i = 0; i < config->bindings_count; ++i) {
+		string_fini(&config->bindings[i].command, &gp_alloc);
 	}
-	su_array__bar_binding_t__fini(&config->bindings, &gp_alloc);
-	for ( i = 0; i < config->outputs.len; ++i) {
-		string_fini(su_array__su_string_t__get_ptr(&config->outputs, i), &gp_alloc);
+	FREE(&gp_alloc, config->bindings);
+	for ( i = 0; i < config->outputs_count; ++i) {
+		string_fini(&config->outputs[i], &gp_alloc);
 	}
-	su_array__su_string_t__fini(&config->outputs, &gp_alloc);
+	FREE(&gp_alloc, config->outputs);
 #if WITH_TRAY
-	for ( i = 0; i < config->tray_outputs.len; ++i) {
-		string_fini(su_array__su_string_t__get_ptr(&config->tray_outputs, i), &gp_alloc);
+	for ( i = 0; i < config->tray_outputs_count; ++i) {
+		string_fini(&config->tray_outputs[i], &gp_alloc);
 	}
-	su_array__su_string_t__fini(&config->tray_outputs, &gp_alloc);
+	FREE(&gp_alloc, config->tray_outputs);
+	FREE(&gp_alloc, config->tray_bindings);
 	string_fini(&config->tray_icon_theme, &gp_alloc);
 #endif /* WITH_TRAY */
 
 	MEMSET(&state.config, 0, sizeof(state.config));
+	config->font = string("monospace:size=16");
 	config->position = (SW_WAYLAND_SURFACE_LAYER_ANCHOR_BOTTOM |
 		SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT | SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT);
 	config->height = -1;
@@ -2400,300 +2334,105 @@ static void config_update(string_t str) {
 	config->tray_padding = 2;
 #endif /* WITH_TRAY */
 
-	while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-			== JSON_TOKENER_STATE_SUCCESS) && (tok.depth > 0)) {
-		if ((tok.depth != 1) || (token.type != JSON_TOKEN_TYPE_KEY)) {
-			continue;
-		}
-		if (string_equal(token.value.s, string("mode"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-			if (string_equal(token.value.s, string("hide"))) {
-				config->mode = BAR_MODE_HIDE;
-			} else if (string_equal(token.value.s, string("invisible"))) {
-				config->mode = BAR_MODE_INVISIBLE;
-			} else if (string_equal(token.value.s, string("overlay"))) {
-				config->mode = BAR_MODE_OVERLAY;
-			}
-		} else if (string_equal(token.value.s, string("hidden_state"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-			if (string_equal(token.value.s, string("show"))) {
-				config->hidden_state = BAR_HIDDEN_STATE_SHOW;
-			}
-		} else if (string_equal(token.value.s, string("position"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-			if (string_equal(token.value.s, string("top"))) {
-				config->position = (SW_WAYLAND_SURFACE_LAYER_ANCHOR_TOP |
-					SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT | SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT);
-			}
-		} else if (string_equal(token.value.s, string("status_command"))) {
-			json_tokener_advance_assert(&tok, &scratch_alloc, &token);
-			if ((token.type == JSON_TOKEN_TYPE_STRING) && (token.value.s.len > 0)) {
-				string_init_len(&new_status_command, &gp_alloc, token.value.s.s, token.value.s.len, TRUE);
-			}
-		} else if (string_equal(token.value.s, string("font"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-			string_init_string(&config->font, &gp_alloc, token.value.s);
-		} else if (string_equal(token.value.s, string("gaps"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
-			while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-					== JSON_TOKENER_STATE_SUCCESS) && (tok.depth > 1)) {
-				if ((tok.depth == 2) && (token.type == JSON_TOKEN_TYPE_KEY)) {
-					if (string_equal(token.value.s, string("top"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-						config->gaps[0] = (int32_t)token.value.i;
-					} else if (string_equal(token.value.s, string("right"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-						config->gaps[1] = (int32_t)token.value.i;
-					} else if (string_equal(token.value.s, string("bottom"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-						config->gaps[2] = (int32_t)token.value.i;
-					} else if (string_equal(token.value.s, string("left"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-						config->gaps[3] = (int32_t)token.value.i;
-					}
-				}
-			}
-			ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-		} else if (string_equal(token.value.s, string("separator_symbol"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-			string_init_string(&config->separator_symbol, &gp_alloc, token.value.s);
-		} else if (string_equal(token.value.s, string("bar_height"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-			config->height = (token.value.u == 0) ? -1 : (int32_t)token.value.u;
-		} else if (string_equal(token.value.s, string("status_padding"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-			config->status_padding = (int32_t)token.value.u;
-		} else if (string_equal(token.value.s, string("status_edge_padding"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-			config->status_edge_padding = (int32_t)token.value.u;
-		} else if (string_equal(token.value.s, string("wrap_scroll"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-			config->wrap_scroll = token.value.b;
-		} else if (string_equal(token.value.s, string("workspace_buttons"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-			config->workspace_buttons = token.value.b;
-		} else if (string_equal(token.value.s, string("strip_workspace_numbers"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-			config->strip_workspace_numbers = token.value.b;
-		} else if (string_equal(token.value.s, string("strip_workspace_name"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-			config->strip_workspace_name = token.value.b;
-		} else if (string_equal(token.value.s, string("workspace_min_width"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-			config->workspace_min_width = (int32_t)token.value.u;
-		} else if (string_equal(token.value.s, string("binding_mode_indicator"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-			config->binding_mode_indicator = token.value.b;
-		}
-		/* TODO: pango_markup */
-		else if (string_equal(token.value.s, string("colors"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
-			while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-					== JSON_TOKENER_STATE_SUCCESS) && (tok.depth > 1)) {
-				if ((tok.depth == 2) && (token.type == JSON_TOKEN_TYPE_KEY)) {
-					if (string_equal(token.value.s, string("background"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.background);
-					} else if (string_equal(token.value.s, string("statusline"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.statusline);
-					} else if (string_equal(token.value.s, string("separator"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.separator);
-					} else if (string_equal(token.value.s, string("focused_background"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.focused_background);
-					} else if (string_equal(token.value.s, string("focused_statusline"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.focused_statusline);
-					} else if (string_equal(token.value.s, string("focused_separator"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.focused_separator);
-					} else if (string_equal(token.value.s, string("focused_workspace_text"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.focused_workspace.text);
-					} else if (string_equal(token.value.s, string("focused_workspace_bg"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.focused_workspace.background);
-					} else if (string_equal(token.value.s, string("focused_workspace_border"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.focused_workspace.border);
-					} else if (string_equal(token.value.s, string("inactive_workspace_text"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.inactive_workspace.text);
-					} else if (string_equal(token.value.s, string("inactive_workspace_bg"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.inactive_workspace.background);
-					} else if (string_equal(token.value.s, string("inactive_workspace_border"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.inactive_workspace.border);
-					} else if (string_equal(token.value.s, string("active_workspace_text"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.active_workspace.text);
-					} else if (string_equal(token.value.s, string("active_workspace_bg"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.active_workspace.background);
-					} else if (string_equal(token.value.s, string("active_workspace_border"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.active_workspace.border);
-					} else if (string_equal(token.value.s, string("urgent_workspace_text"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.urgent_workspace.text);
-					} else if (string_equal(token.value.s, string("urgent_workspace_bg"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.urgent_workspace.background);
-					} else if (string_equal(token.value.s, string("urgent_workspace_border"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.urgent_workspace.border);
-					} else if (string_equal(token.value.s, string("binding_mode_text"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.binding_mode.text);
-					} else if (string_equal(token.value.s, string("binding_mode_bg"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.binding_mode.background);
-					} else if (string_equal(token.value.s, string("binding_mode_border"))) {
-						json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-						parse_sway_color(token.value.s, &config->colors.binding_mode.border);
-					}
-				}
-			}
-			ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-		} else if (string_equal(token.value.s, string("bindings"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_ARRAY_START);
-			if (config->bindings.size == 0) {
-				su_array__bar_binding_t__init(&config->bindings, &gp_alloc, 16);
-			}
-			while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-					== JSON_TOKENER_STATE_SUCCESS) && (tok.depth == 3)) {
-				bar_binding_t binding;
-				ASSERT(token.type == JSON_TOKEN_TYPE_OBJECT_START);
-				MEMSET(&binding, 0, sizeof(binding));
-				while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-						== JSON_TOKENER_STATE_SUCCESS) && (tok.depth > 2)) {
-					if ((tok.depth == 3) && (token.type == JSON_TOKEN_TYPE_KEY)) {
-						if (string_equal(token.value.s, string("event_code"))) {
-							json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-							binding.event_code = (uint32_t)token.value.u;
-						} else if (string_equal(token.value.s, string("command"))) {
-							json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-							string_init_string(&binding.command, &gp_alloc, token.value.s);
-						} else if (string_equal(token.value.s, string("release"))) {
-							json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_BOOL);
-							binding.release = token.value.b;
-						}
-					}
-				}
-				ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-				su_array__bar_binding_t__add(&config->bindings, &gp_alloc, binding);
-			}
-			ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-		} else if (string_equal(token.value.s, string("outputs"))) {
-			bool32_t all_outputs = FALSE;
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_ARRAY_START);
-			if (config->outputs.size == 0) {
-				su_array__su_string_t__init(&config->outputs, &gp_alloc, 8);
-			}
-			while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-					== JSON_TOKENER_STATE_SUCCESS) && (tok.depth == 2)) {
-				ASSERT(token.type == JSON_TOKEN_TYPE_STRING);
-				if (string_equal(token.value.s, string("*"))) {
-					all_outputs = TRUE;
-				} else if (!all_outputs) {
-					string_init_string(
-						su_array__su_string_t__add_uninitialized(&config->outputs, &gp_alloc),
-						&gp_alloc, token.value.s);
-				}
-			}
-			ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-			if (all_outputs) {
-				size_t j = 0;
-				for ( ; j < config->outputs.len; ++j) {
-					string_fini( su_array__su_string_t__get_ptr(&config->outputs, j), &gp_alloc);
-				}
-				config->outputs.len = 0;
-			}
-		}
-#if WITH_TRAY
-		else if (string_equal(token.value.s, string("tray_outputs"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_ARRAY_START);
-			if (config->tray_outputs.size == 0) {
-				su_array__su_string_t__init(&config->tray_outputs, &gp_alloc, 8);
-			}
-			while (((s = json_tokener_next(&tok, &scratch_alloc, &token)) == JSON_TOKENER_STATE_SUCCESS)
-					&& (tok.depth == 2)) {
-				ASSERT(token.type == JSON_TOKEN_TYPE_STRING);
-				if (string_equal(token.value.s, string("none"))) {
-					tray_enabled = FALSE;
-				} else if (tray_enabled) {
-					string_init_string(
-						su_array__su_string_t__add_uninitialized(&config->tray_outputs, &gp_alloc),
-						&gp_alloc, token.value.s);
-				}
-			}
-			ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-			if (!tray_enabled) {
-				size_t j = 0;
-				for ( ; j < config->tray_outputs.len; ++j) {
-					string_fini( su_array__su_string_t__get_ptr(&config->tray_outputs, j), &gp_alloc);
-				}
-				config->tray_outputs.len = 0;
-			}
-		} else if (string_equal(token.value.s, string("tray_bindings"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_ARRAY_START);
-			if (config->tray_bindings.size == 0) {
-				su_array__tray_binding_t__init(
-					&config->tray_bindings, &gp_alloc, 16);
-			}
-			while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-					== JSON_TOKENER_STATE_SUCCESS) && (tok.depth == 3)) {
-				tray_binding_t tray_binding;
-				ASSERT(token.type == JSON_TOKEN_TYPE_OBJECT_START);
-				MEMSET(&tray_binding, 0, sizeof(tray_binding));
-				while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-						== JSON_TOKENER_STATE_SUCCESS) && (tok.depth > 2)) {
-					if ((tok.depth == 3) && (token.type == JSON_TOKEN_TYPE_KEY)) {
-						if (string_equal(token.value.s, string("event_code"))) {
-							json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-							tray_binding.event_code = (uint32_t)token.value.u;
-						} else if (string_equal(token.value.s, string("command"))) {
-							json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-							if (string_equal(token.value.s, string("ContextMenu"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_CONTEXT_MENU;
-							} else if (string_equal(token.value.s, string("Activate"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_ACTIVATE;
-							} else if (string_equal(token.value.s, string("SecondaryActivate"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_SECONDARY_ACTIVATE;
-							} else if (string_equal(token.value.s, string("ScrollDown"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_SCROLL_DOWN;
-							} else if (string_equal(token.value.s, string("ScrollLeft"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_SCROLL_LEFT;
-							} else if (string_equal(token.value.s, string("ScrollRight"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_SCROLL_RIGHT;
-							} else if (string_equal(token.value.s, string("ScrollUp"))) {
-								tray_binding.command = TRAY_BINDING_COMMAND_SCROLL_UP;
-							} else {
-								tray_binding.command = TRAY_BINDING_COMMAND_NOP;
-							}
-						}
-					}
-				}
-				ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-				su_array__tray_binding_t__add(&config->tray_bindings,
-					&gp_alloc, tray_binding);
-			}
-			ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
-		} else if (string_equal(token.value.s, string("icon_theme"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
-			if (token.value.s.len > 0) {
-				string_init_string(&config->tray_icon_theme, &gp_alloc, token.value.s);
-			}
-		} else if (string_equal(token.value.s, string("tray_padding"))) {
-			json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_UINT);
-			config->tray_padding = (int32_t)token.value.u;
-		}
-#endif /* WITH_TRAY */
-	}
+	json_ast_reset(&ast);
+	MEMSET(&tok, 0, sizeof(tok));
+	json_tokener_set_string(&tok, &scratch_alloc, str);
+	s = json_tokener_ast(&tok, &scratch_alloc, &ast, 0, FALSE);
 	ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
+	ASSERT(ast.root.type == JSON_AST_NODE_TYPE_OBJECT);
+
+#if WITH_TRAY
+	{
+		bool32_t tray_enabled = TRUE;
+		if ((node = json_ast_node_object_get(&ast.root, string("tray_outputs")))) {
+			ASSERT(node->type == JSON_AST_NODE_TYPE_ARRAY);
+			if (node->value.a.count > 0) {
+				for ( i = 0; i < node->value.a.count; ++i) {
+					json_ast_node_t *v = &node->value.a.nodes[i];
+					ASSERT(v->type == JSON_AST_NODE_TYPE_STRING);
+					if (string_equal(v->value.s, string("none"))) {
+						tray_enabled = FALSE;
+						break;
+					}
+				}
+				if (tray_enabled) {
+					ARRAY_ALLOC(config->tray_outputs, &gp_alloc, node->value.a.count);
+					for ( i = 0; i < node->value.a.count; ++i) {
+						json_ast_node_t *v = &node->value.a.nodes[i];
+						if (v->value.s.len > 0) {
+							string_init_string( &config->tray_outputs[config->tray_outputs_count++],
+								&gp_alloc, v->value.s);
+						}
+					}
+				}
+			}
+		}
+		if (tray_enabled && !state.tray.active) {
+			tray_init();
+		} else if (!tray_enabled && state.tray.active) {
+			tray_fini();
+		} else if (state.tray.active) {
+			tray_update();
+		}
+
+		if ((node = json_ast_node_object_get(&ast.root, string("tray_bindings")))) {
+			ASSERT(node->type == JSON_AST_NODE_TYPE_ARRAY);
+			if (node->value.a.count > 0) {
+				ARRAY_ALLOC(config->tray_bindings, &gp_alloc, node->value.a.count);
+				for ( i = 0; i < node->value.a.count; ++i) {
+					json_ast_node_t *obj = &node->value.a.nodes[i];
+					json_ast_node_t *v;
+					tray_binding_t *tray_binding = &config->tray_bindings[config->tray_bindings_count++];
+					/* ??? input_code */
+					{
+						v = json_ast_node_object_get(obj, string("event_code"));
+						ASSERT(v->type == JSON_AST_NODE_TYPE_UINT);
+						tray_binding->event_code = (uint32_t)v->value.u;
+					}
+					{
+						v = json_ast_node_object_get(obj, string("command"));
+						ASSERT((v->type == JSON_AST_NODE_TYPE_STRING) && (v->value.s.len > 0));
+						if (string_equal(v->value.s, string("ContextMenu"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_CONTEXT_MENU;
+						} else if (string_equal(v->value.s, string("Activate"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_ACTIVATE;
+						} else if (string_equal(v->value.s, string("SecondaryActivate"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_SECONDARY_ACTIVATE;
+						} else if (string_equal(v->value.s, string("ScrollDown"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_SCROLL_DOWN;
+						} else if (string_equal(v->value.s, string("ScrollLeft"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_SCROLL_LEFT;
+						} else if (string_equal(v->value.s, string("ScrollRight"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_SCROLL_RIGHT;
+						} else if (string_equal(v->value.s, string("ScrollUp"))) {
+							tray_binding->command = TRAY_BINDING_COMMAND_SCROLL_UP;
+						} else {
+							tray_binding->command = TRAY_BINDING_COMMAND_NOP;
+						}
+					}
+				}
+			}
+		}
+
+		if ((node = json_ast_node_object_get(&ast.root, string("icon_theme")))) {
+			ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
+			if (node->value.s.len > 0) {
+				string_init_string(&config->tray_icon_theme, &gp_alloc, node->value.s);
+			}
+		}
+
+		if ((node = json_ast_node_object_get(&ast.root, string("tray_padding")))) {
+			ASSERT(node->type == JSON_AST_NODE_TYPE_UINT);
+			config->tray_padding = (int32_t)node->value.u;
+		}
+	}
+#endif /* WITH_TRAY */
+
+	if ((node = json_ast_node_object_get(&ast.root, string("status_command")))) {
+		if ((node->type == JSON_AST_NODE_TYPE_STRING) && (node->value.s.len > 0)) {
+			string_init_string(&new_status_command, &gp_alloc, node->value.s);
+		}
+	}
 
 	if (state.status.active && ((new_status_command.len == 0) ||
 			!string_equal(new_status_command, old_status_command))) {
@@ -2705,18 +2444,263 @@ static void config_update(string_t str) {
 		status_init();
 	}
 
-#if WITH_TRAY
-	if (tray_enabled && !state.tray.active) {
-		tray_init();
-	} else if (!tray_enabled && state.tray.active) {
-		tray_fini();
-	} else if (state.tray.active) {
-		tray_update();
+	if ((node = json_ast_node_object_get(&ast.root, string("mode")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
+		if (string_equal(node->value.s, string("hide"))) {
+			config->mode = BAR_MODE_HIDE;
+		} else if (string_equal(node->value.s, string("invisible"))) {
+			config->mode = BAR_MODE_INVISIBLE;
+		} else if (string_equal(node->value.s, string("overlay"))) {
+			config->mode = BAR_MODE_OVERLAY;
+		}
 	}
-#endif /* WITH_TRAY */
 
-	if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_BINDING_STATE, NULL) == -1) {
-		su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+	if ((node = json_ast_node_object_get(&ast.root, string("hidden_state")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
+		if (string_equal(node->value.s, string("show"))) {
+			config->hidden_state = BAR_HIDDEN_STATE_SHOW;
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("position")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
+		if (string_equal(node->value.s, string("top"))) {
+			config->position = (SW_WAYLAND_SURFACE_LAYER_ANCHOR_TOP |
+				SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT | SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT);
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("font")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
+		if (node->value.s.len > 0) {
+			string_init_string(&config->font, &gp_alloc, node->value.s);
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("gaps")))) {
+		json_ast_node_t *top, *right, *bottom, *left;
+		ASSERT(node->type == JSON_AST_NODE_TYPE_OBJECT);
+		if ((top = json_ast_node_object_get(node, string("top")))) {
+			ASSERT(top->type == JSON_AST_NODE_TYPE_UINT);
+			config->gaps[0] = (int32_t)top->value.i;
+		}
+		if ((right = json_ast_node_object_get(node, string("right")))) {
+			ASSERT(right->type == JSON_AST_NODE_TYPE_UINT);
+			config->gaps[1] = (int32_t)right->value.i;
+		}
+		if ((bottom = json_ast_node_object_get(node, string("bottom")))) {
+			ASSERT(bottom->type == JSON_AST_NODE_TYPE_UINT);
+			config->gaps[2] = (int32_t)bottom->value.i;
+		}
+		if ((left = json_ast_node_object_get(node, string("left")))) {
+			ASSERT(left->type == JSON_AST_NODE_TYPE_UINT);
+			config->gaps[3] = (int32_t)left->value.i;
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("separator_symbol")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
+		if (node->value.s.len > 0) {
+			string_init_string(&config->separator_symbol, &gp_alloc, node->value.s);
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("bar_height")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_UINT);
+		config->height = ((node->value.u == 0) ? -1 : (int32_t)node->value.u);
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("status_padding")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_UINT);
+		config->status_padding = (int32_t)node->value.u;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("status_edge_padding")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_UINT);
+		config->status_edge_padding = (int32_t)node->value.u;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("wrap_scroll")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_BOOL);
+		config->wrap_scroll = node->value.b;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("workspace_buttons")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_BOOL);
+		config->workspace_buttons = node->value.b;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("strip_workspace_numbers")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_BOOL);
+		config->strip_workspace_numbers = node->value.b;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("strip_workspace_name")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_BOOL);
+		config->strip_workspace_name = node->value.b;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("workspace_min_width")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_UINT);
+		config->workspace_min_width = (int32_t)node->value.u;
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("binding_mode_indicator")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_BOOL);
+		config->binding_mode_indicator = node->value.b;
+	}
+
+	/* ??? verbose */
+
+	/* TODO: pango_markup */
+
+		
+	if ((node = json_ast_node_object_get(&ast.root, string("colors")))) {
+		json_ast_node_t *color;
+		ASSERT(node->type == JSON_AST_NODE_TYPE_OBJECT);
+		if ((color = json_ast_node_object_get(node, string("background")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.background);
+		}
+		if ((color = json_ast_node_object_get(node, string("statusline")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.statusline);
+		}
+		if ((color = json_ast_node_object_get(node, string("background")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.background);
+		}
+
+		if ((color = json_ast_node_object_get(node, string("focused_background")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.focused_background);
+		}
+		if ((color = json_ast_node_object_get(node, string("focused_statusline")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.focused_statusline);
+		}
+		if ((color = json_ast_node_object_get(node, string("focused_separator")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.focused_separator);
+		}
+
+		if ((color = json_ast_node_object_get(node, string("focused_workspace_border")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.focused_workspace.border);
+		}
+		if ((color = json_ast_node_object_get(node, string("focused_workspace_bg")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.focused_workspace.background);
+		}
+		if ((color = json_ast_node_object_get(node, string("focused_workspace_text")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.focused_workspace.text);
+		}
+
+		if ((color = json_ast_node_object_get(node, string("inactive_workspace_border")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.inactive_workspace.border);
+		}
+		if ((color = json_ast_node_object_get(node, string("inactive_workspace_bg")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.inactive_workspace.background);
+		}
+		if ((color = json_ast_node_object_get(node, string("inactive_workspace_text")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.inactive_workspace.text);
+		}
+
+		if ((color = json_ast_node_object_get(node, string("active_workspace_border")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.active_workspace.border);
+		}
+		if ((color = json_ast_node_object_get(node, string("active_workspace_bg")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.active_workspace.background);
+		}
+		if ((color = json_ast_node_object_get(node, string("active_workspace_text")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.active_workspace.text);
+		}
+
+		if ((color = json_ast_node_object_get(node, string("urgent_workspace_border")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.urgent_workspace.border);
+		}
+		if ((color = json_ast_node_object_get(node, string("urgent_workspace_bg")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.urgent_workspace.background);
+		}
+		if ((color = json_ast_node_object_get(node, string("urgent_workspace_text")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.urgent_workspace.text);
+		}
+
+		if ((color = json_ast_node_object_get(node, string("binding_mode_border")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.binding_mode.border);
+		}
+		if ((color = json_ast_node_object_get(node, string("binding_mode_bg")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.binding_mode.background);
+		}
+		if ((color = json_ast_node_object_get(node, string("binding_mode_text")))) {
+			ASSERT(color->type == JSON_AST_NODE_TYPE_STRING);
+			parse_sway_color(color->value.s, &config->colors.binding_mode.text);
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("bindings")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_ARRAY);
+		if (node->value.a.count > 0) {
+			ARRAY_ALLOC(config->bindings, &gp_alloc, node->value.a.count);
+			for ( i = 0; i < node->value.a.count; ++i) {
+				json_ast_node_t *obj = &node->value.a.nodes[i];
+				json_ast_node_t *v;
+				bar_binding_t *binding = &config->bindings[config->bindings_count++];
+				/* ??? input_code */
+				{
+					v = json_ast_node_object_get(obj, string("event_code"));
+					ASSERT(v->type == JSON_AST_NODE_TYPE_UINT);
+					binding->event_code = (uint32_t)v->value.u;
+				}
+				{
+					v = json_ast_node_object_get(obj, string("command"));
+					ASSERT((v->type == JSON_AST_NODE_TYPE_STRING) && (v->value.s.len > 0));
+					string_init_string(&binding->command, &gp_alloc, v->value.s);
+				}
+				{
+					v = json_ast_node_object_get(obj, string("release"));
+					ASSERT(v->type == JSON_AST_NODE_TYPE_BOOL);
+					binding->release = v->value.b;
+				}
+			}
+		}
+	}
+
+	if ((node = json_ast_node_object_get(&ast.root, string("outputs")))) {
+		ASSERT(node->type == JSON_AST_NODE_TYPE_ARRAY);
+		if (node->value.a.count > 0) {
+			bool32_t all = FALSE;
+			for ( i = 0; i < node->value.a.count; ++i) {
+				json_ast_node_t *v = &node->value.a.nodes[i];
+				ASSERT(v->type == JSON_AST_NODE_TYPE_STRING);
+				if (string_equal(v->value.s, string("*"))) {
+					all = TRUE;
+					break;
+				}
+			}
+			if (!all) {
+				ARRAY_ALLOC(config->outputs, &gp_alloc, node->value.a.count);
+				for ( i = 0; i < node->value.a.count; ++i) {
+					json_ast_node_t *v = &node->value.a.nodes[i];
+					if (v->value.s.len > 0) {
+						string_init_string( &config->outputs[config->outputs_count++],
+							&gp_alloc, v->value.s);
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -2725,11 +2709,11 @@ static bool32_t bar_visible_on_output(sw_wayland_output_t *output) {
 	bool32_t visible = !((config->mode == BAR_MODE_INVISIBLE)
 		|| ((config->hidden_state == BAR_HIDDEN_STATE_HIDE) && (config->mode == BAR_MODE_HIDE)
 		&& !state.visible_by_modifier && !state.visible_by_urgency && !state.visible_by_mode));
-	if (visible && (config->outputs.len > 0)) {
+	if (visible && (config->outputs_count > 0)) {
 		size_t i = 0;
 		visible = FALSE;
-		for ( ; i < config->outputs.len; ++i) {
-			if (string_equal(output->out.name, su_array__su_string_t__get(&config->outputs, i))) {
+		for ( ; i < config->outputs_count; ++i) {
+			if (string_equal(output->out.name, config->outputs[i])) {
 				visible = TRUE;
 				break;
 			}
@@ -2751,7 +2735,7 @@ static bool32_t bar_process_button_event(bar_t *bar,
 #if WITH_TRAY
 	if (state.tray.active && state.tray.popup && (state.tray.popup->seat == seat)) {
 		if (state_ == SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED) {
-			ASSERT(state.tray.popup->parent->in.popups.len == 1);
+			ASSERT(state.tray.popup->parent->in.popups.count == 1);
 			MEMSET(&state.tray.popup->parent->in.popups, 0, sizeof(state.tray.popup->parent->in.popups));
 			tray_dbusmenu_menu_popup_destroy(state.tray.popup);
 		}
@@ -2788,10 +2772,10 @@ static bool32_t bar_process_button_event(bar_t *bar,
 	}
 
 	released = (state_ == SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED);
-	for ( i = 0; i < state.config.bindings.len; ++i) {
-		bar_binding_t binding = su_array__bar_binding_t__get(&state.config.bindings, i);
-		if ((binding.event_code == code) && (binding.release == released)) {
-			if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_COMMAND, &binding.command) == -1) {
+	for ( i = 0; i < state.config.bindings_count; ++i) {
+		bar_binding_t *binding = &state.config.bindings[i];
+		if ((binding->event_code == code) && (binding->release == released)) {
+			if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_COMMAND, &binding->command) == -1) {
 				su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
 			}
 			return TRUE;
@@ -2835,7 +2819,7 @@ static void bar_handle_pointer_scroll(sw_wayland_pointer_t *pointer, sw_context_
 
 static void bar_destroy_sw(sw_wayland_surface_t *bar, sw_context_t *sw) {
 	NOTUSED(sw);
-	su_llist__sw_wayland_surface_t__pop(&state.sw.in.backend.wayland.layers, bar);
+	LLIST_POP(&state.sw.in.backend.wayland.layers, bar);
 	bar_destroy((bar_t *)bar);
 }
 
@@ -2843,7 +2827,7 @@ static bar_t *bar_create(output_t *output) {
 	bar_t *bar;
 	ALLOCCT(bar, &gp_alloc);
 
-	if (state.status.active && (state.sw.in.backend.wayland.layers.len == 0)) {
+	if (state.status.active && (state.sw.in.backend.wayland.layers.count == 0)) {
 		kill(-state.status.pid, state.status.cont_signal);
 	}
 
@@ -2888,45 +2872,78 @@ static void process_ipc(void) {
 		break;
 	case SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES: {
 		json_tokener_t tok;
-		json_token_t token;
+		json_ast_t ast;
 		json_tokener_state_t s;
-
-		output_t *output = (output_t *)state.sw.out.backend.wayland.outputs.head;
-		for ( ; output; output = (output_t *)output->_.next) {
-			size_t i = 0;
-			output->focused = FALSE;
-			for ( ; i < output->workspaces.len; ++i) {
-				workspace_fini(su_array__workspace_t__get_ptr(&output->workspaces, i));
-			}
-			output->workspaces.len = 0;
-		}
+		size_t i;
+		output_t *output;
 
 		state.visible_by_urgency = FALSE;
 		update = TRUE;
 
 		MEMSET(&tok, 0, sizeof(tok));
+		json_ast_reset(&ast);
 		json_tokener_set_string(&tok, &scratch_alloc, response->payload);
 
-		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_ARRAY_START);
+		s = json_tokener_ast(&tok, &scratch_alloc, &ast, 0, FALSE);
+		ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
 
-		while (((s = json_tokener_next(&tok, &scratch_alloc, &token))
-				== JSON_TOKENER_STATE_SUCCESS) && (tok.depth > 0)) {
-			workspace_t workspace;
-			output = NULL;
-			workspace_init(&workspace, &tok, &output);
-			if (output) {
-				su_array__workspace_t__add(&output->workspaces, &gp_alloc, workspace);
-				if (workspace.focused) {
-					output->focused = TRUE;
+		ASSERT(ast.root.type == JSON_AST_NODE_TYPE_ARRAY);
+		for ( output = (output_t *)state.sw.out.backend.wayland.outputs.head; output; output = (output_t *)output->_.next) {
+			for ( i = 0; i < output->workspaces_count; ++i) {
+				string_fini(&output->workspaces[i].name, &gp_alloc);
+			}
+			FREE(&gp_alloc, output->workspaces);
+			ARRAY_ALLOC(output->workspaces, &gp_alloc, ast.root.value.a.count);
+			output->workspaces_count = 0;
+			output->focused = FALSE;
+		}
+
+		for ( i = 0; i < ast.root.value.a.count; ++i) {
+			workspace_t *workspace = NULL;
+			json_ast_node_t *node = &ast.root.value.a.nodes[i];
+			json_ast_node_t *output_, *urgent, *name, *num, *focused, *visible;
+			ASSERT(node->type == JSON_AST_NODE_TYPE_OBJECT);
+
+			output_ = json_ast_node_object_get(node, string("output"));
+			ASSERT((output_ != NULL) && (output_->type == JSON_AST_NODE_TYPE_STRING));
+			for ( output = (output_t *)state.sw.out.backend.wayland.outputs.head; output; output = (output_t *)output->_.next) {
+				if (string_equal(output->_.out.name, output_->value.s)) {
+					workspace = &output->workspaces[output->workspaces_count++];
+					break;
 				}
-				if (workspace.urgent) {
-					state.visible_by_urgency = TRUE;
-				}
-			} else {
-				workspace_fini(&workspace);
+			}
+			if (UNLIKELY(!workspace)) {
+				DEBUG_LOG("warning: workspace on non-existent output: " STRING_PF_FMT, STRING_PF_ARGS(output_->value.s));
+				continue;
+			}
+
+			urgent = json_ast_node_object_get(node, string("urgent"));
+			ASSERT((urgent != NULL) && (urgent->type == JSON_AST_NODE_TYPE_BOOL));
+			workspace->urgent = urgent->value.b;
+
+			name = json_ast_node_object_get(node, string("name"));
+			ASSERT((name != NULL) && (name->type == JSON_AST_NODE_TYPE_STRING));
+			string_init_string(&workspace->name, &gp_alloc, name->value.s);
+
+			num = json_ast_node_object_get(node, string("num"));
+			ASSERT((num != NULL) && ((num->type == JSON_AST_NODE_TYPE_INT) || (num->type == JSON_AST_NODE_TYPE_UINT)));
+			workspace->num = (int32_t)num->value.i;
+
+			focused = json_ast_node_object_get(node, string("focused"));
+			ASSERT((focused != NULL) && (focused->type == JSON_AST_NODE_TYPE_BOOL));
+			workspace->focused = focused->value.b;
+
+			visible = json_ast_node_object_get(node, string("visible"));
+			ASSERT((visible != NULL) && (visible->type == JSON_AST_NODE_TYPE_BOOL));
+			workspace->visible = visible->value.b;
+
+			if (workspace->focused) {
+				output->focused = TRUE;
+			}
+			if (workspace->urgent) {
+				state.visible_by_urgency = TRUE;
 			}
 		}
-		ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
 		break;
 	}
 	case SWAY_IPC_MESSAGE_TYPE_EVENT_BAR_STATE_UPDATE: {
@@ -2935,8 +2952,6 @@ static void process_ipc(void) {
 
 		MEMSET(&tok, 0, sizeof(tok));
 		json_tokener_set_string(&tok, &scratch_alloc, response->payload);
-
-		/* ? TODO: handle different key order */
 
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
 
@@ -2969,15 +2984,14 @@ static void process_ipc(void) {
 		MEMSET(&tok, 0, sizeof(tok));
 		json_tokener_set_string(&tok, &scratch_alloc, response->payload);
 
-		/* ? TODO: handle different key order */
-
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
 
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_KEY);
-		ASSERT(string_equal(token.value.s, (response->type == SWAY_IPC_MESSAGE_TYPE_EVENT_MODE)
-				? string("change") : string("name")));
+		ASSERT(string_equal(token.value.s, (response->type == SWAY_IPC_MESSAGE_TYPE_EVENT_MODE) ? string("change") : string("name")));
 
 		json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_STRING);
+
+		/* TODO: pango_markup */
 
 		state.visible_by_mode = TRUE;
 		update = TRUE;
@@ -2990,7 +3004,6 @@ static void process_ipc(void) {
 			string_fini(text, &gp_alloc);
 			string_init_string(text, &gp_alloc, token.value.s);
 		}
-		/* TODO: pango_markup */
 		break;
 	}
 	case SWAY_IPC_MESSAGE_TYPE_EVENT_BARCONFIG_UPDATE:
@@ -3034,7 +3047,7 @@ static void process_ipc(void) {
 				}
 				if (!bar) {
 					bar = bar_create((output_t *)output);
-					su_llist__sw_wayland_surface_t__insert_tail(&state.sw.in.backend.wayland.layers, &bar->_);
+					LLIST_APPEND_TAIL(&state.sw.in.backend.wayland.layers, &bar->_);
 				} else {
 					bar_update(bar);
 				}
@@ -3042,7 +3055,7 @@ static void process_ipc(void) {
 				sw_wayland_surface_t *bar = state.sw.in.backend.wayland.layers.head;
 				for ( ; bar; bar = bar->next) {
 					if (bar->in._.layer.output == output) {
-						su_llist__sw_wayland_surface_t__pop(&state.sw.in.backend.wayland.layers, bar);
+						LLIST_POP(&state.sw.in.backend.wayland.layers, bar);
 						bar_destroy((bar_t *)bar);
 						break;
 					}
@@ -3265,32 +3278,29 @@ static void cleanup(void) {
 		size_t i;
 		config_t *config = &state.config;
 
-		for ( i = 0; i < state.icon_cache.items.len; ++i) {
-			file_cache_t c = su_array__su_file_cache_t__get(&state.icon_cache.items, i);
-			FREE(&gp_alloc, c.data.ptr);
-			string_fini(&c.key, &gp_alloc);
+		for ( i = 0; i < state.icon_cache.capacity; ++i) {
+			file_cache_t *c = &state.icon_cache.items[i];
+			FREE(&gp_alloc, c->data.ptr);
+			string_fini(&c->key, &gp_alloc);
 		}
 		su_hash_table__su_file_cache_t__fini(&state.icon_cache, &gp_alloc);
 
-		for ( i = 0; i < config->bindings.len; ++i) {
-			bar_binding_t binding = su_array__bar_binding_t__get(&config->bindings, i);
-			string_fini(&binding.command, &gp_alloc);
+		for ( i = 0; i < config->bindings_count; ++i) {
+			string_fini(&config->bindings[i].command, &gp_alloc);
 		}
-		su_array__bar_binding_t__fini(&config->bindings, &gp_alloc);
+		FREE(&gp_alloc, config->bindings);
 		string_fini(&config->font, &gp_alloc);
-		for ( i = 0; i < config->outputs.len; ++i) {
-			string_fini(
-				su_array__su_string_t__get_ptr(&config->outputs, i), &gp_alloc);
+		for ( i = 0; i < config->outputs_count; ++i) {
+			string_fini(&config->outputs[i], &gp_alloc);
 		}
-		su_array__su_string_t__fini(&config->outputs, &gp_alloc);
+		FREE(&gp_alloc, config->outputs);
 
 #if WITH_TRAY
-		for ( i = 0; i < config->tray_outputs.len; ++i) {
-			string_fini(
-				su_array__su_string_t__get_ptr(&config->tray_outputs, i), &gp_alloc);
+		for ( i = 0; i < config->tray_outputs_count; ++i) {
+			string_fini(&config->tray_outputs[i], &gp_alloc);
 		}
-		su_array__su_string_t__fini(&config->tray_outputs, &gp_alloc);
-		su_array__tray_binding_t__fini(&config->tray_bindings, &gp_alloc);
+		FREE(&gp_alloc, config->tray_outputs);
+		FREE(&gp_alloc, config->tray_bindings);
 		string_fini(&config->tray_icon_theme, &gp_alloc);
 #endif /* WITH_TRAY */
 

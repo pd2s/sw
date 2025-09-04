@@ -5,6 +5,8 @@
 #error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
 #endif
 
+/*#define SU_IMPLEMENTATION */
+
 #if !defined(SU_WITH_SIMD)
 #define SU_WITH_SIMD 1
 #endif /* !defined(SU_WITH_SIMD) */
@@ -230,55 +232,57 @@
 #define SU_DEBUG_LOG su_nop
 #endif /* SU_WITH_DEBUG */
 
-#define SU_ARRAY_DECLARE(type) \
-typedef struct su_array__##type { \
-    size_t size, len; \
-    type *items; \
-} su_array__##type##__t; \
-\
-static void su_array__##type##__init(su_array__##type##__t *, su_allocator_t *, size_t initial_size); \
-static void su_array__##type##__init0(su_array__##type##__t *, su_allocator_t *, size_t initial_size); \
-static void su_array__##type##__fini(su_array__##type##__t *, su_allocator_t *); \
-static void su_array__##type##__resize(su_array__##type##__t *, su_allocator_t *, size_t new_size); \
-static type *su_array__##type##__add(su_array__##type##__t *, su_allocator_t *, type item); \
-static type *su_array__##type##__add_nocheck(su_array__##type##__t *, type item); \
-static type *su_array__##type##__add_uninitialized(su_array__##type##__t *, su_allocator_t *); \
-static type *su_array__##type##__add_nocheck_uninitialized(su_array__##type##__t *); \
-static type *su_array__##type##__put(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
-static type *su_array__##type##__put_nocheck(su_array__##type##__t *array, type item, size_t idx); \
-static type *su_array__##type##__put_uninitialized(su_array__##type##__t *array, su_allocator_t *alloc, size_t idx); \
-static type *su_array__##type##__put_nocheck_uninitialized(su_array__##type##__t *array, size_t idx); \
-static void su_array__##type##__insert(su_array__##type##__t *, su_allocator_t *, type item, size_t idx); \
-/* TODO: insert_nocheck, insert_uninitialized, insert_nocheck_uninitialized */ \
-static void su_array__##type##__remove(su_array__##type##__t *, size_t n); \
-static void su_array__##type##__swap(su_array__##type##__t *, size_t idx1, size_t idx2); \
-static void su_array__##type##__pop(su_array__##type##__t *, size_t idx); \
-static void su_array__##type##__pop_swapback(su_array__##type##__t *, size_t idx); \
-static type su_array__##type##__get(su_array__##type##__t *, size_t idx); \
-static type *su_array__##type##__get_ptr(su_array__##type##__t *, size_t idx); \
-static void su_array__##type##__qsort(su_array__##type##__t *, int compare(const void *, const void *))
+#define SU_LLIST_FIELDS(type) type *head; type *tail; size_t count
+#define SU_LLIST_NODE_FIELDS(type) type *next; type *prev
 
-#define SU_LLIST_DECLARE(type) \
-typedef struct su_llist__##type { \
-    type *head; \
-    type *tail; \
-    size_t len; \
-} su_llist__##type##__t; \
-\
-static void su_llist__##type##__insert_head(su_llist__##type##__t *, type *node); \
-static void su_llist__##type##__insert_tail(su_llist__##type##__t *, type *node); \
-static void su_llist__##type##__pop(su_llist__##type##__t *, type *node)
+#define SU_LLIST_APPEND_HEAD(llist_ptr, node_ptr) \
+do { \
+    (node_ptr)->prev = NULL; \
+    (node_ptr)->next = (llist_ptr)->head; \
+    if ((llist_ptr)->head) { \
+        (llist_ptr)->head->prev = (node_ptr); \
+    } else { \
+        (llist_ptr)->tail = (node_ptr); \
+    } \
+    (llist_ptr)->head = (node_ptr); \
+    (llist_ptr)->count++; \
+} while(0)
 
-#define SU_LLIST_FIELDS(type) \
-	type *next; \
-	type *prev
+#define SU_LLIST_APPEND_TAIL(llist_ptr, node_ptr) \
+do { \
+    (node_ptr)->next = NULL; \
+    (node_ptr)->prev = (llist_ptr)->tail; \
+    if ((llist_ptr)->tail) { \
+        (llist_ptr)->tail->next = (node_ptr); \
+    } else { \
+        (llist_ptr)->head = (node_ptr); \
+    } \
+    (llist_ptr)->tail = (node_ptr); \
+    (llist_ptr)->count++; \
+} while(0)
 
+#define SU_LLIST_POP(llist_ptr, node_ptr) \
+do { \
+    if ((node_ptr)->prev) { \
+        (node_ptr)->prev->next = (node_ptr)->next; \
+    } else { \
+        (llist_ptr)->head = (node_ptr)->next; \
+    } \
+    if ((node_ptr)->next) { \
+        (node_ptr)->next->prev = (node_ptr)->prev; \
+    } else { \
+        (llist_ptr)->tail = (node_ptr)->prev; \
+    } \
+    (llist_ptr)->count--; \
+} while (0)
+/* TODO: llist_insert/append_list/after/before */
+
+/* TODO: rework */
 #define SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
 \
-SU_ARRAY_DECLARE(type); \
-\
 typedef struct su_hash_table__##type { \
-	su_array__##type##__t items; \
+	type *items; \
+	size_t capacity; \
 } su_hash_table__##type##__t; \
 \
 static void su_hash_table__##type##__init(su_hash_table__##type##__t *, su_allocator_t *, size_t initial_size); \
@@ -365,6 +369,10 @@ struct su_allocator {
 
 #define SU_FREE(alloc_, ptr)                       (alloc_)->free((alloc_), (ptr))
 
+#define SU_ARRAY_ALLOC(dest, alloc_, capacity)  SU_ALLOCTS(dest, alloc_, (sizeof(dest[0]) * capacity))
+#define SU_ARRAY_ALLOCC(dest, alloc_, capacity) SU_ALLOCCTS(dest, alloc_, (sizeof(dest[0]) * capacity))
+/* ? TODO: ARRAY_CPY, ARRAY_RESIZE */
+
 typedef struct su_string {
 	su_bool32_t free_contents;
 	su_bool32_t nul_terminated;
@@ -375,18 +383,15 @@ typedef struct su_string {
 #define SU_STRING_PF_FMT "%.*s"
 #define SU_STRING_PF_ARGS(str) (int)(str).len, (str).s
 
-SU_ARRAY_DECLARE(su_string_t);
-
 typedef struct su_arena_block {
 	size_t ptr;
 	size_t size;
 	uint8_t *data;
 } su_arena_block_t;
 
-SU_ARRAY_DECLARE(su_arena_block_t);
-
 typedef struct su_arena {
-	su_array__su_arena_block_t__t blocks;
+	su_arena_block_t *blocks;
+	size_t blocks_count, blocks_capacity;
 } su_arena_t;
 
 typedef struct su_file_cache {
@@ -397,7 +402,6 @@ typedef struct su_file_cache {
 
 /* TODO: better hash function */
 SU_HASH_TABLE_DECLARE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, 16);
-
 
 typedef struct su_json_buffer {
 	char *data;
@@ -414,11 +418,12 @@ typedef enum su__json_writer_state {
 	SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA
 } su__json_writer_state_t;
 
-SU_ARRAY_DECLARE(su__json_writer_state_t);
-
 typedef struct su_json_writer {
 	su_json_buffer_t buf;
-	su_array__su__json_writer_state_t__t state;
+
+	/* ? TODO: preallocate */
+	su__json_writer_state_t *state;
+	size_t state_count, state_capacity;
 } su_json_writer_t;
 
 typedef enum su__json_tokener_state {
@@ -438,15 +443,14 @@ typedef enum su__json_tokener_state {
 	SU__JSON_TOKENER_STATE_TRUE
 } su__json_tokener_state_t;
 
-SU_ARRAY_DECLARE(su__json_tokener_state_t);
-
 typedef struct su_json_tokener {
 	su_string_t str;
 	size_t pos;
 	su_json_buffer_t buf;
 	size_t last_escape_idx; /* in buf */
 	size_t depth;
-	su_array__su__json_tokener_state_t__t state;
+	su__json_tokener_state_t *state;
+	size_t state_count;
 } su_json_tokener_t;
 
 typedef enum su_json_tokener_state {
@@ -498,14 +502,22 @@ typedef enum su_json_ast_node_type {
 } su_json_ast_node_type_t;
 
 typedef struct su_json_ast_node su_json_ast_node_t;
-SU_ARRAY_DECLARE(su_json_ast_node_t);
 
 typedef struct su_json_ast_key_value su_json_ast_key_value_t;
-SU_ARRAY_DECLARE(su_json_ast_key_value_t);
+
+typedef struct su_json_ast_node_value_object {
+	su_json_ast_key_value_t *kvs;
+	size_t count, capacity;
+} su_json_ast_node_value_object_t;
+
+typedef struct su_json_ast_node_value_array {
+	su_json_ast_node_t *nodes; 
+	size_t count, capacity;
+} su_json_ast_node_value_array_t;
 
 typedef union su_json_ast_node_value {
-	su_array__su_json_ast_key_value_t__t object; /* SU_JSON_AST_NODE_TYPE_OBJECT  ? TODO: hash table */
-	su_array__su_json_ast_node_t__t array; /* SU_JSON_AST_NODE_TYPE_ARRAY */
+	su_json_ast_node_value_object_t o; /* SU_JSON_AST_NODE_TYPE_OBJECT */ /* ? TODO: hash table */
+	su_json_ast_node_value_array_t a; /* SU_JSON_AST_NODE_TYPE_ARRAY */
 	su_string_t s; /* SU_JSON_AST_NODE_TYPE_STRING */
 	su_bool32_t b; /* SU_JSON_AST_NODE_TYPE_BOOL */
 	double d; /* SU_JSON_AST_NODE_TYPE_DOUBLE */
@@ -705,14 +717,11 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_js
 #define STRING_PF_FMT SU_STRING_PF_FMT
 #define STRING_PF_ARGS SU_STRING_PF_ARGS
 
-#define ARRAY_DECLARE SU_ARRAY_DECLARE
-#define ARRAY_DEFINE SU_ARRAY_DEFINE
-#define ARRAY_DECLARE_DEFINE SU_ARRAY_DECLARE_DEFINE
-
-#define LLIST_DECLARE SU_LLIST_DECLARE
-#define LLIST_DEFINE SU_LLIST_DEFINE
-#define LLIST_DECLARE_DEFINE SU_LLIST_DECLARE_DEFINE
 #define LLIST_FIELDS SU_LLIST_FIELDS
+#define LLIST_NODE_FIELDS SU_LLIST_NODE_FIELDS
+#define LLIST_APPEND_HEAD SU_LLIST_APPEND_HEAD
+#define LLIST_APPEND_TAIL SU_LLIST_APPEND_TAIL
+#define LLIST_POP SU_LLIST_POP
 
 #define HASH_TABLE_DECLARE SU_HASH_TABLE_DECLARE
 #define HASH_TABLE_DEFINE SU_HASH_TABLE_DEFINE
@@ -771,6 +780,8 @@ typedef su_json_ast_node_type_t json_ast_node_type_t;
 #define JSON_AST_NODE_TYPE_UINT SU_JSON_AST_NODE_TYPE_UINT
 typedef su_json_token_value_t json_token_value_t;
 typedef su_json_token_t json_token_t;
+typedef su_json_ast_node_value_object_t json_ast_node_value_object_t;
+typedef su_json_ast_node_value_array_t json_ast_node_value_array_t;
 typedef su_json_ast_node_value_t json_ast_node_value_t;
 typedef su_json_ast_node_t json_ast_node_t;
 typedef su_json_ast_key_value_t json_ast_key_value_t;
@@ -840,6 +851,8 @@ typedef su_json_ast_t json_ast_t;
 #define ALLOCCTS SU_ALLOCCTS
 #define ALLOCCTSA SU_ALLOCCTSA
 #define FREE SU_FREE
+#define ARRAY_ALLOC SU_ARRAY_ALLOC
+#define ARRAY_ALLOCC SU_ARRAY_ALLOCC
 
 #define libc_alloc su_libc_alloc
 #define libc_free su_libc_free
@@ -919,208 +932,27 @@ typedef su_json_ast_t json_ast_t;
 
 #include <stb_sprintf.h>
 
-#define SU_ARRAY_DEFINE(type) \
-static void su_array__##type##__init(su_array__##type##__t *array, su_allocator_t *alloc, size_t initial_size) { \
-    SU_ASSERT(initial_size > 0); \
-	SU_ALLOCTS(array->items, alloc, sizeof(type) * initial_size); \
-	array->size = initial_size; \
-	array->len = 0; \
-} \
-\
-static void su_array__##type##__init0(su_array__##type##__t *array, su_allocator_t *alloc, size_t initial_size) { \
-    size_t size = initial_size * sizeof(type); \
-	SU_ASSERT(initial_size > 0); \
-	SU_ALLOCCTS(array->items, alloc, size); \
-	array->size = initial_size; \
-	array->len = 0; \
-} \
-\
-static void su_array__##type##__fini(su_array__##type##__t *array, su_allocator_t *alloc) { \
-	SU_FREE(alloc, array->items); \
-} \
-\
-static void su_array__##type##__resize(su_array__##type##__t *array, su_allocator_t *alloc, size_t new_size) { \
-	type *new_items; \
-    SU_ASSERT(new_size > 0); \
-	SU_ALLOCTS(new_items, alloc, sizeof(type) * new_size); \
-	SU_MEMCPY(new_items, array->items, sizeof(type) * SU_MIN(new_size, array->size)); \
-	SU_FREE(alloc, array->items); \
-	array->items = new_items; \
-    array->size = new_size; \
-} \
-\
-static type *su_array__##type##__add(su_array__##type##__t *array, su_allocator_t *alloc, type item) { \
-    if (array->size == array->len) { \
-        su_array__##type##__resize(array, alloc, 8 + array->size * 2); \
-    } \
-    array->items[array->len] = item; \
-	return &array->items[array->len++]; \
-} \
-\
-static type *su_array__##type##__add_nocheck(su_array__##type##__t *array, type item) { \
-    array->items[array->len] = item; \
-	return &array->items[array->len++]; \
-} \
-\
-static type *su_array__##type##__add_uninitialized(su_array__##type##__t *array, su_allocator_t *alloc) { \
-    if (array->size == array->len) { \
-        su_array__##type##__resize(array, alloc, 8 + array->size * 2); \
-    } \
-	return &array->items[array->len++];\
-} \
-\
-static type *su_array__##type##__add_nocheck_uninitialized(su_array__##type##__t *array) { \
-	return &array->items[array->len++]; \
-} \
-\
-static void su_array__##type##__remove(su_array__##type##__t *array, size_t n) { \
-	SU_ASSERT(array->len > 0); \
-    array->len -= n; \
-} \
-\
-static void su_array__##type##__swap(su_array__##type##__t *array, size_t idx1, size_t idx2) { \
-	type tmp = array->items[idx1]; \
-	SU_ASSERT(idx1 < array->len); \
-	SU_ASSERT(idx2 < array->len); \
-	array->items[idx1] = array->items[idx2]; \
-	array->items[idx2] = tmp; \
-} \
-\
-static void su_array__##type##__insert(su_array__##type##__t *array, su_allocator_t *alloc, type item, size_t idx) { \
-    SU_ASSERT(idx <= array->len); \
-    if (array->size == array->len) { \
-        su_array__##type##__resize(array, alloc, array->size * 2); \
-    } \
-	SU_MEMMOVE(&array->items[idx + 1], &array->items[idx], sizeof(type) * (array->len - idx)); \
-	array->len++; \
-	array->items[idx] = item; \
-} \
-\
-static void su_array__##type##__pop(su_array__##type##__t *array, size_t idx) { \
-    SU_ASSERT(idx < array->len); \
-	array->len--; \
-	SU_MEMMOVE(&array->items[idx], &array->items[idx + 1], sizeof(type) * (array->len - idx)); \
-} \
-\
-static void su_array__##type##__pop_swapback(su_array__##type##__t *array, size_t idx) { \
-    SU_ASSERT(idx < array->len); \
-	array->len--; \
-	array->items[idx] = array->items[array->len]; \
-} \
-\
-static type *su_array__##type##__put(su_array__##type##__t *array, su_allocator_t *alloc, type item, size_t idx) { \
-    SU_ASSERT(idx <= array->len); \
-    if (idx == array->len) { \
-        if (array->size == array->len) { \
-            su_array__##type##__resize(array, alloc, array->size * 2); \
-        } \
-        array->len++; \
-    } \
-	array->items[idx] = item; \
-	return &array->items[idx]; \
-} \
-\
-static type *su_array__##type##__put_nocheck(su_array__##type##__t *array, type item, size_t idx) { \
-    if (idx == array->len) { \
-        array->len++; \
-    } \
-	array->items[idx] = item; \
-	return &array->items[idx]; \
-} \
-\
-static type *su_array__##type##__put_uninitialized(su_array__##type##__t *array, su_allocator_t *alloc, size_t idx) { \
-	SU_ASSERT(idx <= array->len); \
-    if (idx == array->len) { \
-        if (array->size == array->len) { \
-            su_array__##type##__resize(array, alloc, array->size * 2); \
-        } \
-        array->len++; \
-    } \
-	return &array->items[idx]; \
-} \
-\
-static type *su_array__##type##__put_nocheck_uninitialized(su_array__##type##__t *array, size_t idx) { \
-    if (idx == array->len) { \
-        array->len++; \
-    } \
-	return &array->items[idx]; \
-} \
-\
-static SU_ATTRIBUTE_PURE type su_array__##type##__get(su_array__##type##__t *array, size_t idx) { \
-    SU_ASSERT(idx < array->len); \
-	return array->items[idx]; \
-} \
-\
-static SU_ATTRIBUTE_PURE type *su_array__##type##__get_ptr(su_array__##type##__t *array, size_t idx) { \
-    SU_ASSERT(idx < array->len); \
-	return &array->items[idx]; \
-} \
-\
-static void su_array__##type##__qsort(su_array__##type##__t *array, int compare(const void *, const void *)) { \
-    qsort(array->items, array->len, sizeof(type), compare); \
-}
-
-#define SU_LLIST_DEFINE(type) \
-static void su_llist__##type##__insert_head(su_llist__##type##__t *list, type *node) { \
-    node->prev = NULL; \
-    node->next = list->head; \
-    if (list->head) { \
-        list->head->prev = node; \
-    } else { \
-        list->tail = node; \
-    } \
-    list->head = node; \
-    list->len++; \
-} \
-\
-static void su_llist__##type##__insert_tail(su_llist__##type##__t *list, type *node) { \
-    node->next = NULL; \
-    node->prev = list->tail; \
-    if (list->tail) { \
-        list->tail->next = node; \
-    } else { \
-        list->head = node; \
-    } \
-    list->tail = node; \
-    list->len++; \
-} \
-\
-static void su_llist__##type##__pop(su_llist__##type##__t *list, type *node) { \
-    if (node->prev) { \
-        node->prev->next = node->next; \
-    } else { \
-        list->head = node->next; \
-    } \
-    if (node->next) { \
-        node->next->prev = node->prev; \
-    } else { \
-        list->tail = node->prev; \
-    } \
-    list->len--; \
-}
-/* TODO: insert_list|after|before */
-
+/* TODO: rework */
 #define SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
 \
-SU_ARRAY_DEFINE(type) \
-\
 static void su_hash_table__##type##__init(su_hash_table__##type##__t *ht, su_allocator_t *alloc, size_t initial_size) { \
-	su_array__##type##__init0(&ht->items, alloc, initial_size); \
-	ht->items.len = initial_size; \
+	SU_ASSERT(initial_size > 0); \
+	SU_ARRAY_ALLOCC(ht->items, alloc, initial_size); \
+	ht->capacity = initial_size; \
 } \
 \
 static void su_hash_table__##type##__fini(su_hash_table__##type##__t *ht, su_allocator_t *alloc) { \
-	su_array__##type##__fini(&ht->items, alloc); \
+	SU_FREE(alloc, ht->items); \
 } \
 \
 static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, su_allocator_t *alloc, size_t new_size) { \
 	size_t i; \
 	su_hash_table__##type##__t new_ht; \
 	su_hash_table__##type##__init(&new_ht, alloc, new_size); \
-	for ( i = 0; i < ht->items.len; ++i) { \
-		type it = su_array__##type##__get(&ht->items, i); \
-		if (it.occupied && !it.tombstone) { \
-			su_hash_table__##type##__add(&new_ht, alloc, it.key, NULL); \
+	for ( i = 0; i < ht->capacity; ++i) { \
+		type *it = &ht->items[i]; \
+		if (it->occupied && !it->tombstone) { \
+			su_hash_table__##type##__add(&new_ht, alloc, it->key, NULL); \
 		} \
 	} \
 	su_hash_table__##type##__fini(ht, alloc); \
@@ -1128,16 +960,16 @@ static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, su_a
 } \
 \
 static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, su_allocator_t *alloc, key_type key, type **out) { \
-	size_t h = hash_key_func(key) % ht->items.len; \
-	type *it = su_array__##type##__get_ptr(&ht->items, h); \
+	size_t h = (hash_key_func(key) % ht->capacity); \
+	type *it = &ht->items[h]; \
 	size_t c = 0; \
 	for ( ; \
-			it->occupied && !keys_equal_func(it->key, key) && (c < ht->items.len); \
+			it->occupied && !keys_equal_func(it->key, key) && (c < ht->capacity); \
 			++c) { \
-		it = su_array__##type##__get_ptr(&ht->items, (++h % ht->items.len)); \
+		it = &ht->items[++h % ht->capacity]; \
 	} \
 	if (c >= collisions_to_resize) { \
-		su_hash_table__##type##__resize(ht, alloc, ht->items.size * 2); \
+		su_hash_table__##type##__resize(ht, alloc, ht->capacity * 2); \
 		su_hash_table__##type##__add(ht, alloc, key, out); \
 	} else if (it->occupied) { \
 		if (keys_equal_func(it->key, key)) { \
@@ -1146,7 +978,7 @@ static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, 
 			} \
 			return SU_FALSE; \
 		} \
-		su_hash_table__##type##__resize(ht, alloc, ht->items.size * 2); \
+		su_hash_table__##type##__resize(ht, alloc, ht->capacity * 2); \
 		su_hash_table__##type##__add(ht, alloc, key, out); \
 	} else { \
 		it->key = key; \
@@ -1159,13 +991,13 @@ static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, 
 } \
 \
 static su_bool32_t su_hash_table__##type##__get(su_hash_table__##type##__t *ht, key_type key, type **out) { \
-	size_t h = hash_key_func(key) % ht->items.len; \
-	type *it = su_array__##type##__get_ptr(&ht->items, h); \
+	size_t h = (hash_key_func(key) % ht->capacity); \
+	type *it = &ht->items[h]; \
 	size_t c = 0; \
 	for ( ; \
-			it->occupied && !keys_equal_func(it->key, key) && (c < ht->items.len); \
+			it->occupied && !keys_equal_func(it->key, key) && (c < ht->capacity); \
 			++c) { \
-		it = su_array__##type##__get_ptr(&ht->items, (++h % ht->items.len)); \
+		it = &ht->items[++h % ht->capacity]; \
 	} \
 	if (it->occupied && keys_equal_func(it->key, key)) { \
 		*out = it; \
@@ -1176,13 +1008,13 @@ static su_bool32_t su_hash_table__##type##__get(su_hash_table__##type##__t *ht, 
 } \
 \
 static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, key_type key, type *out) { \
-	size_t h = hash_key_func(key) % ht->items.len; \
-	type *it = su_array__##type##__get_ptr(&ht->items, h); \
+	size_t h = (hash_key_func(key) % ht->capacity); \
+	type *it = &ht->items[h]; \
 	size_t c = 0; \
 	for ( ; \
-			it->occupied && !keys_equal_func(it->key, key) && (c < ht->items.len); \
+			it->occupied && !keys_equal_func(it->key, key) && (c < ht->capacity); \
 			++c) { \
-		it = su_array__##type##__get_ptr(&ht->items, (++h % ht->items.len)); \
+		it = &ht->items[++h % ht->capacity]; \
 	} \
 	if (it->occupied && keys_equal_func(it->key, key)) { \
 		if (out) { \
@@ -1195,26 +1027,11 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, 
 		return SU_FALSE; \
 	} \
 }
-/* ? TODO: tombstone threshold, shrink */
-
-#define SU_ARRAY_DECLARE_DEFINE(type) \
-	SU_ARRAY_DECLARE(type); \
-	SU_ARRAY_DEFINE(type)
-
-#define SU_LLIST_DECLARE_DEFINE(type) \
-	SU_LLIST_DECLARE(type); \
-	SU_LLIST_DEFINE(type)
-
+/* TODO: tombstone threshold, shrink */
 #define SU_HASH_TABLE_DECLARE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
 	SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize); \
 	SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize)
 
-SU_ARRAY_DEFINE(su_string_t)
-SU_ARRAY_DEFINE(su_arena_block_t)
-SU_ARRAY_DEFINE(su__json_writer_state_t)
-SU_ARRAY_DEFINE(su__json_tokener_state_t)
-SU_ARRAY_DEFINE(su_json_ast_node_t)
-SU_ARRAY_DEFINE(su_json_ast_key_value_t)
 
 static void *su_libc_alloc(su_allocator_t *alloc, size_t size, size_t alignment) {
 	void *ptr;
@@ -1245,20 +1062,11 @@ static void *su_page_alloc(size_t size) {
 	if (SU_UNLIKELY(ret == MAP_FAILED)) {
 		su_abort(errno, "mmap: %s", strerror(errno));
 	}
-#if SU_HAS_FEATURE(address_sanitizer)
-	ASAN_POISON_MEMORY_REGION(ret, size);
-#endif
 	return ret;
 }
 
 static void su_page_free(void *ptr, size_t size) {
-	int r;
-
-#if SU_HAS_FEATURE(address_sanitizer)
-	ASAN_UNPOISON_MEMORY_REGION(ptr, size);
-#endif
-	
-	r = munmap(ptr, size);
+	int r = munmap(ptr, size);
 	SU_ASSERT(r == 0);
 	SU_NOTUSED(r);
 }
@@ -1713,27 +1521,29 @@ static su_bool32_t su_string_to_int64(su_string_t str, int64_t *out) {
 }
 
 static void su_arena_init(su_arena_t *arena, su_allocator_t *alloc, size_t initial_block_size) {
-	su_array__su_arena_block_t__init(&arena->blocks, alloc, 8);
+	arena->blocks_capacity = 8;
+	SU_ARRAY_ALLOC(arena->blocks, alloc, arena->blocks_capacity);
+	arena->blocks_count = 0;
 	su_arena_add_block(arena, alloc, initial_block_size);
 }
 
 static void su_arena_fini(su_arena_t *arena, su_allocator_t *alloc) {
 	size_t i = 0;
-	for ( ; i < arena->blocks.len; ++i) {
-		su_arena_block_t block = su_array__su_arena_block_t__get(&arena->blocks, i);
+	for ( ; i < arena->blocks_count; ++i) {
+		su_arena_block_t *block = &arena->blocks[i];
 #if SU_HAS_FEATURE(address_sanitizer)
-		ASAN_UNPOISON_MEMORY_REGION(block.data, block.size);
+		ASAN_UNPOISON_MEMORY_REGION(block->data, block->size);
 #endif
-		SU_FREE(alloc, block.data);
+		SU_FREE(alloc, block->data);
 	}
-	su_array__su_arena_block_t__fini(&arena->blocks, alloc);
+	SU_FREE(alloc, arena->blocks);
 }
 
 static su_arena_block_t *su_arena_add_block(su_arena_t *arena, su_allocator_t *alloc, size_t size) {
 	su_arena_block_t block;
-	
+
 	size = (size + (4096 - 1)) & (size_t)~(4096 - 1);
-	
+
 	SU_ALLOCTSA(block.data, alloc, size, 4096);
 	block.size = size;
 	block.ptr = 0;
@@ -1742,7 +1552,16 @@ static su_arena_block_t *su_arena_add_block(su_arena_t *arena, su_allocator_t *a
 	ASAN_POISON_MEMORY_REGION(block.data, block.size);
 #endif
 
-	return su_array__su_arena_block_t__add(&arena->blocks, alloc, block);
+	if (SU_UNLIKELY(arena->blocks_count == arena->blocks_capacity)) {
+		su_arena_block_t *new_blocks;
+		arena->blocks_capacity *= 2;
+		SU_ARRAY_ALLOC(new_blocks, alloc, arena->blocks_capacity);
+		SU_MEMCPY(new_blocks, arena->blocks, arena->blocks_count * sizeof(arena->blocks[0]));
+		SU_FREE(alloc, arena->blocks);
+		arena->blocks = new_blocks;
+	}
+	arena->blocks[arena->blocks_count++] = block;
+	return &arena->blocks[arena->blocks_count - 1];
 }
 
 static void *su_arena_alloc(su_arena_t *arena, su_allocator_t *alloc, size_t size, size_t alignment) {
@@ -1758,13 +1577,13 @@ static void *su_arena_alloc(su_arena_t *arena, su_allocator_t *alloc, size_t siz
 	alignment = SU_MAX(alignment, sizeof(size_t));
 
 	do {
-		block = su_array__su_arena_block_t__get_ptr(&arena->blocks, i);
+		block = &arena->blocks[i];
 		new_ptr = (sizeof(size_t) + block->ptr + (alignment - 1)) & ~(alignment - 1);
 		if (SU_LIKELY((new_ptr < block->size) && (size <= (block->size - new_ptr)))) {
 			goto out;
 		}
 		new_size += block->size;
-	} while (SU_UNLIKELY(++i < arena->blocks.len));
+	} while (SU_UNLIKELY(++i < arena->blocks_count));
 
 	block = su_arena_add_block(arena, alloc, (new_size + alignment) * 2);
 	new_ptr = (sizeof(size_t) + (alignment - 1)) & ~(alignment - 1);
@@ -1789,21 +1608,21 @@ static size_t su_arena_alloc_get_size(void *ptr) {
 }
 
 static void su_arena_reset(su_arena_t *arena, su_allocator_t *alloc) {
-	su_arena_block_t *first_block = su_array__su_arena_block_t__get_ptr(&arena->blocks, 0);
+	su_arena_block_t *first_block = &arena->blocks[0];
 	size_t size = first_block->size;
 	size_t i = 1;
 
-	SU_ASSERT(arena->blocks.len > 0);
+	SU_ASSERT(arena->blocks_count > 0);
 
-	for ( ; i < arena->blocks.len; ++i) {
-		su_arena_block_t block = su_array__su_arena_block_t__get(&arena->blocks, i);
+	for ( ; i < arena->blocks_count; ++i) {
+		su_arena_block_t *block = &arena->blocks[i];
 #if SU_HAS_FEATURE(address_sanitizer)
-		ASAN_UNPOISON_MEMORY_REGION(block.data, block.size);
+		ASAN_UNPOISON_MEMORY_REGION(block->data, block->size);
 #endif
-		size += block.size;
-		SU_FREE(alloc, block.data);
+		size += block->size;
+		SU_FREE(alloc, block->data);
 	}
-	arena->blocks.len = 1;
+	arena->blocks_count = 1;
 
 	SU_ASSERT((size % 4096) == 0);
 
@@ -2293,14 +2112,13 @@ error:
 }*/
 
 static void su__json_buffer_add_char(su_json_buffer_t *buffer, su_allocator_t *alloc, char c) {
-	if (buffer->size == buffer->idx) {
-		size_t new_size = ((buffer->size + 1) * 2);
+	if (SU_UNLIKELY(buffer->size == buffer->idx)) {
 		char *new_data;
-		SU_ALLOCTS(new_data, alloc, new_size);
-		SU_MEMCPY(new_data, buffer->data, buffer->size);
+		buffer->size = ((buffer->size + 1) * 2);
+		SU_ALLOCTS(new_data, alloc, buffer->size);
+		SU_MEMCPY(new_data, buffer->data, buffer->idx);
 		SU_FREE(alloc, buffer->data);
 		buffer->data = new_data;
-		buffer->size = new_size;
 	}
 	buffer->data[buffer->idx++] = c;
 }
@@ -2320,14 +2138,13 @@ static void su__json_buffer_put_string_nocheck(su_json_buffer_t *buffer, size_t 
 }
 
 static void su__json_buffer_add_string(su_json_buffer_t *buffer, su_allocator_t *alloc, su_string_t str) {
-	if ((buffer->idx + str.len) > buffer->size) {
-		size_t new_size = ((buffer->size + str.len) * 2);
+	if (SU_UNLIKELY((buffer->idx + str.len) > buffer->size)) {
 		char *new_data;
-		SU_ALLOCTS(new_data, alloc, new_size);
-		SU_MEMCPY(new_data, buffer->data, buffer->size);
+		buffer->size = ((buffer->size + str.len) * 2);
+		SU_ALLOCTS(new_data, alloc, buffer->size);
+		SU_MEMCPY(new_data, buffer->data, buffer->idx);
 		SU_FREE(alloc, buffer->data);
 		buffer->data = new_data;
-		buffer->size = new_size;
 	}
 	SU_MEMCPY(&buffer->data[buffer->idx], str.s, str.len);
 	buffer->idx += str.len;
@@ -2347,14 +2164,13 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su__json_buffer_add_format(su_json_
     va_start(args, fmt);
 
 	len = (size_t)stbsp_vsnprintf(buf, sizeof(buf), fmt, args);
-	if ((buffer->idx + len) > buffer->size) {
-		size_t new_size = ((buffer->size + len) * 2);
+	if (SU_UNLIKELY((buffer->idx + len) > buffer->size)) {
 		char *new_data;
-		SU_ALLOCTS(new_data, alloc, new_size);
-		SU_MEMCPY(new_data, buffer->data, buffer->size);
+		buffer->size = ((buffer->size + len) * 2);
+		SU_ALLOCTS(new_data, alloc, buffer->size);
+		SU_MEMCPY(new_data, buffer->data, buffer->idx);
 		SU_FREE(alloc, buffer->data);
 		buffer->data = new_data;
-		buffer->size = new_size;
 	}
 	SU_MEMCPY(&buffer->data[buffer->idx], buf, len);
 	buffer->idx += len;
@@ -2399,11 +2215,23 @@ static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, su_allocato
 }
 
 static su__json_writer_state_t su__json_writer_get_state(su_json_writer_t *writer) {
-	if (writer->state.len > 0) {
-		return su_array__su__json_writer_state_t__get(&writer->state, writer->state.len - 1);
+	if (writer->state_count > 0) {
+		return writer->state[writer->state_count - 1];
 	}
 
 	return SU__JSON_WRITER_STATE_ROOT;
+}
+
+static void su__json_writer_add_state(su_json_writer_t *writer, su_allocator_t *alloc, su__json_writer_state_t state) {
+    if (SU_UNLIKELY(writer->state_capacity == writer->state_count)) {
+		su__json_writer_state_t *new_state;
+		writer->state_capacity *= 2;
+		SU_ARRAY_ALLOC(new_state, alloc, writer->state_capacity);
+		SU_MEMCPY(new_state, writer->state, sizeof(writer->state[0]) * writer->state_count);
+		SU_FREE(alloc, writer->state);
+		writer->state = new_state;
+    }
+    writer->state[writer->state_count++] = state;
 }
 
 static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2411,15 +2239,13 @@ static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *al
 	case SU__JSON_WRITER_STATE_ROOT:
 		break;
 	case SU__JSON_WRITER_STATE_OBJECT:
-		su_array__su__json_writer_state_t__put(&writer->state, alloc,
-				SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA, writer->state.len - 1);
+		writer->state[writer->state_count - 1] = SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA;
 		break;
 	case SU__JSON_WRITER_STATE_ARRAY:
-		su_array__su__json_writer_state_t__put(&writer->state, alloc,
-				SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA, writer->state.len - 1);
+		writer->state[writer->state_count - 1] = SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA;
 		break;
 	case SU__JSON_WRITER_STATE_KEY:
-		su_array__su__json_writer_state_t__remove(&writer->state, 1);
+		writer->state_count--;
 		break;
 	case SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA:
 	case SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA:
@@ -2431,20 +2257,22 @@ static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *al
 }
 
 static void su_json_writer_init(su_json_writer_t *writer, su_allocator_t *alloc, size_t initial_bufsize) {
-	su_array__su__json_writer_state_t__init(&writer->state, alloc, 128);
+	writer->state_capacity = initial_bufsize;
+	SU_ARRAY_ALLOC(writer->state, alloc, writer->state_capacity);
 	SU_ALLOCTS(writer->buf.data, alloc, initial_bufsize);
+	writer->state_count = 0;
 	writer->buf.size = initial_bufsize;
 	writer->buf.idx = 0;
 }
 
 static void su_json_writer_fini(su_json_writer_t *writer, su_allocator_t *alloc) {
 	SU_FREE(alloc, writer->buf.data);
-	su_array__su__json_writer_state_t__fini(&writer->state, alloc);
+	SU_FREE(alloc, writer->state);
 }
 
 static void su_json_writer_reset(su_json_writer_t *writer) {
 	writer->buf.idx = 0;
-	writer->state.len = 0;
+	writer->state_count = 0;
 }
 
 static void su_json_writer_object_begin(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2453,7 +2281,7 @@ static void su_json_writer_object_begin(su_json_writer_t *writer, su_allocator_t
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_writer_element(writer, alloc);
 	su__json_buffer_add_char(&writer->buf, alloc, '{');
-	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_OBJECT);
+	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_OBJECT);
 }
 
 static void su_json_writer_object_end(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2461,7 +2289,7 @@ static void su_json_writer_object_end(su_json_writer_t *writer, su_allocator_t *
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_buffer_add_char(&writer->buf, alloc, '}');
-	su_array__su__json_writer_state_t__remove(&writer->state, 1);
+	writer->state_count--;
 }
 
 static void su_json_writer_object_key_escape(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t key) {
@@ -2473,7 +2301,7 @@ static void su_json_writer_object_key_escape(su_json_writer_t *writer, su_alloca
 	su__json_buffer_add_string_escape(&writer->buf, alloc, key);
 	su__json_buffer_add_char(&writer->buf, alloc, '"');
 	su__json_buffer_add_char(&writer->buf, alloc, ':');
-	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_KEY);
+	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
 static void su_json_writer_object_key(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t key) {
@@ -2485,7 +2313,7 @@ static void su_json_writer_object_key(su_json_writer_t *writer, su_allocator_t *
 	su__json_buffer_add_string(&writer->buf, alloc, key);
 	su__json_buffer_add_char(&writer->buf, alloc, '"');
 	su__json_buffer_add_char(&writer->buf, alloc, ':');
-	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_KEY);
+	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
 static void su_json_writer_array_begin(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2494,7 +2322,7 @@ static void su_json_writer_array_begin(su_json_writer_t *writer, su_allocator_t 
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_writer_element(writer, alloc);
 	su__json_buffer_add_char(&writer->buf, alloc, '[');
-	su_array__su__json_writer_state_t__add(&writer->state, alloc, SU__JSON_WRITER_STATE_ARRAY);
+	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_ARRAY);
 }
 
 static void su_json_writer_array_end(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2502,7 +2330,7 @@ static void su_json_writer_array_end(su_json_writer_t *writer, su_allocator_t *a
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_ARRAY) || (state == SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA));
 	su__json_buffer_add_char(&writer->buf, alloc, ']');
-	su_array__su__json_writer_state_t__remove(&writer->state, 1);
+	writer->state_count--;
 }
 
 static void su_json_writer_null(su_json_writer_t *writer, su_allocator_t *alloc) {
@@ -2633,8 +2461,8 @@ static void su_json_writer_ast_node(su_json_writer_t *writer, su_allocator_t *al
 	case SU_JSON_AST_NODE_TYPE_OBJECT: {
 		size_t i = 0;
 		su_json_writer_object_begin(writer, alloc);
-		for ( ; i < node->value.object.len; ++i) {
-			su_json_ast_key_value_t *key_value = su_array__su_json_ast_key_value_t__get_ptr(&node->value.object, i);
+		for ( ; i < node->value.o.count; ++i) {
+			su_json_ast_key_value_t *key_value = &node->value.o.kvs[i];
 			su_json_writer_object_key_escape(writer, alloc, key_value->key); /* TODO: escape only when necessary */
 			su_json_writer_ast_node(writer, alloc, &key_value->value);
 		}
@@ -2644,8 +2472,8 @@ static void su_json_writer_ast_node(su_json_writer_t *writer, su_allocator_t *al
 	case SU_JSON_AST_NODE_TYPE_ARRAY: {
 		size_t i = 0;
 		su_json_writer_array_begin(writer, alloc);
-		for ( ; i < node->value.array.len; ++i) {
-			su_json_writer_ast_node(writer, alloc, su_array__su_json_ast_node_t__get_ptr(&node->value.array, i));
+		for ( ; i < node->value.a.count; ++i) {
+			su_json_writer_ast_node(writer, alloc, &node->value.a.nodes[i]);
 		}
 		su_json_writer_array_end(writer, alloc);
 		break;
@@ -2881,39 +2709,43 @@ static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener
 
 static void su_json_tokener_set_string(su_json_tokener_t *tokener, su_allocator_t *alloc, su_string_t str) {
 	if (str.len >= (tokener->buf.size - tokener->buf.idx)) {
-		size_t new_size = ((str.len + tokener->buf.size) * 2);
 		char *new_data;
-		SU_ALLOCTS(new_data, alloc, new_size);
-		SU_MEMCPY(new_data, tokener->buf.data, tokener->buf.size);
+		tokener->buf.size = ((str.len + tokener->buf.size) * 2);
+		SU_ALLOCTS(new_data, alloc, tokener->buf.size);
+		SU_MEMCPY(new_data, tokener->buf.data, tokener->buf.idx);
 		SU_FREE(alloc, tokener->buf.data);
 		tokener->buf.data = new_data;
-		tokener->buf.size = new_size;
 	}
 
-	su_array__su__json_tokener_state_t__resize(&tokener->state, alloc, tokener->state.size + str.len + 1);
+	{
+		su__json_tokener_state_t *new_state;
+		SU_ARRAY_ALLOC(new_state, alloc, (tokener->state_count + str.len + 1));
+		SU_MEMCPY(new_state, tokener->state, sizeof(tokener->state[0]) * tokener->state_count);
+		SU_FREE(alloc, tokener->state);
+		tokener->state = new_state;
+	}
 
 	tokener->pos = 0;
 	tokener->str = str;
 }
 
 static su__json_tokener_state_t su__json_tokener_get_state(su_json_tokener_t *tokener) {
-	if (tokener->state.len > 0) {
-		return su_array__su__json_tokener_state_t__get(&tokener->state, tokener->state.len - 1);
+	if (tokener->state_count > 0) {
+		return tokener->state[tokener->state_count - 1];
 	}
 
 	return SU__JSON_TOKENER_STATE_ROOT;
 }
 
 static void su__json_tokener_value_end(su_json_tokener_t *tokener) {
-	su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
+	tokener->state_count--;
 	switch (su__json_tokener_get_state(tokener)) {
 	case SU__JSON_TOKENER_STATE_VALUE:
-		su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
+		tokener->state_count--;
 		break;
 	case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 	case SU__JSON_TOKENER_STATE_ARRAY:
-		su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-			SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
+		tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA;
 		break;
 	case SU__JSON_TOKENER_STATE_ROOT:
 		break;
@@ -3009,24 +2841,21 @@ _string: {
 		}
 
 _string_end:
-		su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
+		tokener->state_count--;
 		switch (su__json_tokener_get_state(tokener)) {
 		case SU__JSON_TOKENER_STATE_OBJECT_EMPTY:
 		case SU__JSON_TOKENER_STATE_OBJECT:
-			su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA, tokener->state.len - 1);
-			su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_KEY);
+			tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA;
+			tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_KEY;
 			out->type = SU_JSON_TOKEN_TYPE_KEY;
 			break;
 		case SU__JSON_TOKENER_STATE_VALUE:
-			su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
+			tokener->state_count--;
 			out->type = SU_JSON_TOKEN_TYPE_STRING;
 			break;
 		case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 		case SU__JSON_TOKENER_STATE_ARRAY:
-			su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
+			tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA;
 			out->type = SU_JSON_TOKEN_TYPE_STRING;
 			break;
 		case SU__JSON_TOKENER_STATE_ROOT:
@@ -3243,17 +3072,14 @@ _false: {
 			case SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA:
 				return SU_JSON_TOKENER_STATE_ERROR;
 			case SU__JSON_TOKENER_STATE_VALUE:
-				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_OBJECT_EMPTY, tokener->state.len - 1);
+				tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_OBJECT_EMPTY;
 				break;
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 			case SU__JSON_TOKENER_STATE_ARRAY:
-				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
+				tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA;
 				SU_ATTRIBUTE_FALLTHROUGH;
 			case SU__JSON_TOKENER_STATE_ROOT:
-				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_OBJECT_EMPTY);
+				tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_OBJECT_EMPTY;
 				break;
 			case SU__JSON_TOKENER_STATE_NULL:
 			case SU__JSON_TOKENER_STATE_TRUE:
@@ -3277,17 +3103,14 @@ _false: {
 			case SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA:
 				return SU_JSON_TOKENER_STATE_ERROR;
 			case SU__JSON_TOKENER_STATE_VALUE:
-				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EMPTY, tokener->state.len - 1);
+				tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_ARRAY_EMPTY;
 				break;
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
 			case SU__JSON_TOKENER_STATE_ARRAY:
-				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA, tokener->state.len - 1);
+				tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA;
 				SU_ATTRIBUTE_FALLTHROUGH;
 			case SU__JSON_TOKENER_STATE_ROOT:
-				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY_EMPTY);
+				tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_ARRAY_EMPTY;
 				break;
 			case SU__JSON_TOKENER_STATE_NULL:
 			case SU__JSON_TOKENER_STATE_TRUE:
@@ -3306,7 +3129,7 @@ _false: {
 			if (SU_UNLIKELY((state != SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA) && (state != SU__JSON_TOKENER_STATE_OBJECT_EMPTY))) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
+			tokener->state_count--;
 			tokener->pos++;
 			tokener->depth--;
 			out->depth = tokener->depth;
@@ -3316,7 +3139,7 @@ _false: {
 			if (SU_UNLIKELY((state != SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA) && (state != SU__JSON_TOKENER_STATE_ARRAY_EMPTY))) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_array__su__json_tokener_state_t__remove(&tokener->state, 1);
+			tokener->state_count--;
 			tokener->pos++;
 			tokener->depth--;
 			out->depth = tokener->depth;
@@ -3328,8 +3151,7 @@ _false: {
 					|| (state == SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA))) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_STRING);
+			tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_STRING;
 			tokener->pos++;
 			goto _string;
 		}
@@ -3337,20 +3159,17 @@ _false: {
 			if (SU_UNLIKELY(state != SU__JSON_TOKENER_STATE_KEY)) {
 				return SU_JSON_TOKENER_STATE_ERROR;
 			}
-			su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-				SU__JSON_TOKENER_STATE_VALUE, tokener->state.len - 1);
+			tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_VALUE;
 			state = SU__JSON_TOKENER_STATE_VALUE;
 			continue;
 		case ',':
 			switch (state) {
 			case SU__JSON_TOKENER_STATE_OBJECT_EXPECTING_COMMA:
-				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_OBJECT, tokener->state.len - 1);
+				tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_OBJECT;
 				state = SU__JSON_TOKENER_STATE_OBJECT;
 				continue;
 			case SU__JSON_TOKENER_STATE_ARRAY_EXPECTING_COMMA:
-				su_array__su__json_tokener_state_t__put_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_ARRAY, tokener->state.len - 1);
+				tokener->state[tokener->state_count - 1] = SU__JSON_TOKENER_STATE_ARRAY;
 				state = SU__JSON_TOKENER_STATE_ARRAY;
 				continue;
 			case SU__JSON_TOKENER_STATE_ROOT:
@@ -3375,8 +3194,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_NULL);
+				tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_NULL;
 				goto _null;
 			case SU__JSON_TOKENER_STATE_OBJECT:
 			case SU__JSON_TOKENER_STATE_OBJECT_EMPTY:
@@ -3398,8 +3216,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_TRUE);
+				tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_TRUE;
 				goto _true;
 			case SU__JSON_TOKENER_STATE_OBJECT:
 			case SU__JSON_TOKENER_STATE_OBJECT_EMPTY:
@@ -3421,8 +3238,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_FALSE);
+				tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_FALSE;
 				goto _false;
 			case SU__JSON_TOKENER_STATE_OBJECT:
 			case SU__JSON_TOKENER_STATE_OBJECT_EMPTY:
@@ -3454,8 +3270,7 @@ _false: {
 			case SU__JSON_TOKENER_STATE_VALUE:
 			case SU__JSON_TOKENER_STATE_ARRAY:
 			case SU__JSON_TOKENER_STATE_ARRAY_EMPTY:
-				su_array__su__json_tokener_state_t__add_nocheck(&tokener->state,
-					SU__JSON_TOKENER_STATE_NUMBER);
+				tokener->state[tokener->state_count++] = SU__JSON_TOKENER_STATE_NUMBER;
 				goto _number;
 			case SU__JSON_TOKENER_STATE_OBJECT:
 			case SU__JSON_TOKENER_STATE_OBJECT_EMPTY:
@@ -3505,11 +3320,11 @@ static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, s
 		switch (token.type) {
 		case SU_JSON_TOKEN_TYPE_OBJECT_START:
 			node.type = SU_JSON_AST_NODE_TYPE_OBJECT;
-			SU_MEMSET(&node.value.object, 0, sizeof(node.value.object));
+			SU_MEMSET(&node.value.o, 0, sizeof(node.value.o));
 			break;
 		case SU_JSON_TOKEN_TYPE_ARRAY_START:
 			node.type = SU_JSON_AST_NODE_TYPE_ARRAY;
-			SU_MEMSET(&node.value.array, 0, sizeof(node.value.array));
+			SU_MEMSET(&node.value.a, 0, sizeof(node.value.a));
 			break;
 		case SU_JSON_TOKEN_TYPE_OBJECT_END:
 		case SU_JSON_TOKEN_TYPE_ARRAY_END:
@@ -3522,16 +3337,23 @@ static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, s
 			SU_ASSERT(ast->current->type == SU_JSON_AST_NODE_TYPE_OBJECT);
 			if (check_for_repeating_keys) {
 				size_t i = 0;
-				for ( ; i < ast->current->value.object.len; ++i) {
-					su_json_ast_key_value_t *key_value = su_array__su_json_ast_key_value_t__get_ptr(
-						&ast->current->value.object, i);
+				for ( ; i < ast->current->value.o.count; ++i) {
+					su_json_ast_key_value_t *key_value = &ast->current->value.o.kvs[i];
 					if (SU_UNLIKELY(su_string_equal(token.value.s, key_value->key))) {
 						return SU_JSON_TOKENER_STATE_ERROR;
 					}
 				}
 			}
 			kv.key = token.value.s;
-			su_array__su_json_ast_key_value_t__add(&ast->current->value.object, alloc, kv);
+			if (ast->current->value.o.capacity == ast->current->value.o.count) {
+				su_json_ast_key_value_t *new_kvs;
+				ast->current->value.o.capacity = ((ast->current->value.o.capacity * 2) + 8);
+				SU_ARRAY_ALLOC(new_kvs, alloc, ast->current->value.o.capacity);
+				SU_MEMCPY(new_kvs, ast->current->value.o.kvs, sizeof(new_kvs[0]) * ast->current->value.o.count);
+				SU_FREE(alloc, ast->current->value.o.kvs);
+				ast->current->value.o.kvs = new_kvs;
+			}
+			ast->current->value.o.kvs[ast->current->value.o.count++] = kv;
 			continue;
 		}
 		case SU_JSON_TOKEN_TYPE_STRING:
@@ -3563,11 +3385,19 @@ static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, s
 		node.parent = ast->current;
 
 		if (ast->current->type == SU_JSON_AST_NODE_TYPE_OBJECT) {
-			current = &su_array__su_json_ast_key_value_t__get_ptr( &ast->current->value.object,
-				ast->current->value.object.len - 1)->value;
+			current = &ast->current->value.o.kvs[ast->current->value.o.count - 1].value;
 			*current = node;
 		} else if (ast->current->type == SU_JSON_AST_NODE_TYPE_ARRAY) {
-			current = su_array__su_json_ast_node_t__add(&ast->current->value.array, alloc, node);
+			if (ast->current->value.a.capacity == ast->current->value.a.count) {
+				su_json_ast_node_t *new_nodes;
+				ast->current->value.a.capacity = ((ast->current->value.a.capacity * 2) + 8);
+				SU_ARRAY_ALLOC(new_nodes, alloc, ast->current->value.a.capacity);
+				SU_MEMCPY(new_nodes, ast->current->value.a.nodes, sizeof(new_nodes[0]) * ast->current->value.a.count);
+				SU_FREE(alloc, ast->current->value.a.nodes);
+				ast->current->value.a.nodes = new_nodes;
+			}
+			ast->current->value.a.nodes[ast->current->value.a.count++] = node;
+			current = &ast->current->value.a.nodes[ast->current->value.a.count - 1];
 		} else {
 			ast->root = node;
 			current = &ast->root;
@@ -3586,9 +3416,8 @@ static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *node,
 	
 	SU_ASSERT(node->type == SU_JSON_AST_NODE_TYPE_OBJECT);
 
-	for ( ; i < node->value.object.len; ++i) {
-		su_json_ast_key_value_t *key_value = su_array__su_json_ast_key_value_t__get_ptr(
-			&node->value.object, i);
+	for ( ; i < node->value.o.count; ++i) {
+		su_json_ast_key_value_t *key_value = &node->value.o.kvs[i];
 		if (su_string_equal(key_value->key, key)) {
 			return &key_value->value;
 		}

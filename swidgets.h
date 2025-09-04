@@ -1,6 +1,8 @@
 #if !defined(SW_HEADER)
 #define SW_HEADER
 
+/*#define SW_IMPLEMENTATION */
+
 #if !defined(SW_WITH_DEBUG)
 #define SW_WITH_DEBUG 1
 #endif /* !defined(SW_WITH_DEBUG) */
@@ -135,13 +137,11 @@ typedef struct sw_wayland_output_out {
 	sw_wayland_output_transform_t transform;
 } sw_wayland_output_out_t;
 
-SU_LLIST_DECLARE(sw_wayland_output_t);
-
 struct sw_wayland_output {
     sw_wayland_output_in_t in;
 	sw_wayland_output_out_t out;
 	SW__PRIVATE_FIELDS(16);
-	SU_LLIST_FIELDS(sw_wayland_output_t);
+	SU_LLIST_NODE_FIELDS(sw_wayland_output_t);
 };
 
 typedef struct sw_wayland_seat sw_wayland_seat_t;
@@ -173,8 +173,6 @@ struct sw_wayland_pointer {
 	SW__PRIVATE_FIELDS(24);
 };
 
-SU_LLIST_DECLARE(sw_wayland_seat_t);
-
 typedef void (*sw_wayland_seat_func_t)(sw_wayland_seat_t *, sw_context_t *);
 typedef sw_wayland_seat_t *(*sw_wayland_seat_create_func_t)(sw_wayland_seat_t *, sw_context_t *);
 
@@ -192,7 +190,7 @@ struct sw_wayland_seat {
     sw_wayland_seat_in_t in;
 	sw_wayland_seat_out_t out;
 	SW__PRIVATE_FIELDS(16);
-	SU_LLIST_FIELDS(sw_wayland_seat_t);
+	SU_LLIST_NODE_FIELDS(sw_wayland_seat_t);
 };
 
 typedef enum sw_wayland_surface_layer_anchor {
@@ -258,8 +256,6 @@ typedef struct sw_wayland_region {
 	int32_t width, height;
 } sw_wayland_region_t;
 
-SU_ARRAY_DECLARE(sw_wayland_region_t);
-
 typedef enum sw_wayland_surface_popup_gravity {
 	SW_WAYLAND_SURFACE_POPUP_GRAVITY_NONE = 0,
 	SW_WAYLAND_SURFACE_POPUP_GRAVITY_TOP = 1,
@@ -311,7 +307,9 @@ typedef union sw_wayland_surface_ {
 	sw_wayland_surface_popup_t popup;
 } sw_wayland_surface__t;
 
-SU_LLIST_DECLARE(sw_wayland_surface_t);
+typedef struct sw_wayland_surfaces {
+	SU_LLIST_FIELDS(sw_wayland_surface_t);
+} sw_wayland_surfaces_t;
 
 typedef struct sw_wayland_surface_in {
 	sw_wayland_surface__t _;
@@ -326,8 +324,9 @@ typedef struct sw_wayland_surface_in {
 	sw_wayland_pointer_func_t motion; /* may be NULL */
 	sw_wayland_pointer_func_t button; /* may be NULL */
 	sw_wayland_pointer_func_t scroll; /* may be NULL */
-    su_array__sw_wayland_region_t__t input_regions;
-    su_llist__sw_wayland_surface_t__t popups;
+    sw_wayland_region_t *input_regions;
+	size_t input_regions_count;
+    sw_wayland_surfaces_t popups;
     sw_layout_block_t *root;
 } sw_wayland_surface_in_t;
 
@@ -341,7 +340,7 @@ struct sw_wayland_surface {
     sw_wayland_surface_in_t in;
 	sw_wayland_surface_out_t out;
 	SW__PRIVATE_FIELDS(136);
-	SU_LLIST_FIELDS(sw_wayland_surface_t);
+	SU_LLIST_NODE_FIELDS(sw_wayland_surface_t);
 };
 
 #endif /* SW_WITH_WAYLAND_BACKEND */
@@ -367,23 +366,24 @@ typedef struct sw_color_gradient_stop {
 	double pos; /* position along gradient line (0..1) */
 } sw_color_gradient_stop_t;
 
-SU_ARRAY_DECLARE(sw_color_gradient_stop_t);
-
 typedef struct sw_color_linear_gradient {
 	sw_point_t p1, p2;
-	su_array__sw_color_gradient_stop_t__t stops;
+	sw_color_gradient_stop_t *stops;
+	size_t stops_count;
 } sw_color_linear_gradient_t;
 
 typedef struct sw_color_conical_gradient {
 	sw_point_t center;
 	double angle;
-	su_array__sw_color_gradient_stop_t__t stops;
+	sw_color_gradient_stop_t *stops;
+	size_t stops_count;
 } sw_color_conical_gradient_t;
 
 typedef struct sw_color_radial_gradient {
 	sw_point_t inner_p, outer_p;
 	int32_t inner_r, outer_r;
-	su_array__sw_color_gradient_stop_t__t stops;
+	sw_color_gradient_stop_t *stops;
+	size_t stops_count;
 } sw_color_radial_gradient_t;
 
 typedef enum sw_color_type {
@@ -493,7 +493,8 @@ typedef struct sw_layout_block_dimensions {
 #if SW_WITH_TEXT
 typedef struct sw_layout_block_text {
 	su_string_t text;
-	su_array__su_string_t__t font_names;
+	su_string_t *font_names; /* fallback order */
+	size_t font_names_count;
 	sw_color_t color;
 } sw_layout_block_text_t;
 #endif /* SW_WITH_TEXT */
@@ -550,10 +551,12 @@ typedef struct sw_layout_block_image {
 #endif
 } sw_layout_block_image_t;
 
-SU_LLIST_DECLARE(sw_layout_block_t);
+typedef struct sw_layout_blocks {
+	SU_LLIST_FIELDS(sw_layout_block_t);
+} sw_layout_blocks_t;
 
 typedef struct sw_layout_block_composite {
-	su_llist__sw_layout_block_t__t children;
+	sw_layout_blocks_t children;
 	sw_layout_block_composite_children_layout_t layout;
 	SU_PAD32;
 } sw_layout_block_composite_t;
@@ -597,10 +600,9 @@ typedef struct sw_glyph {
 	int32_t width, height;
 } sw_glyph_t;
 
-SU_ARRAY_DECLARE(sw_glyph_t);
-
 typedef struct sw_layout_block_out_text {
-	su_array__sw_glyph_t__t glyphs;
+	sw_glyph_t *glyphs;
+	size_t glyphs_count;
 } sw_layout_block_out_text_t;
 #endif /* SW_WITH_TEXT */
 
@@ -623,7 +625,7 @@ typedef union sw_layout_block_out_ {
 
 typedef struct sw_layout_block_out {
 	sw_layout_block_dimensions_t dim;
-	sw_layout_block_fini_func_t fini; /* must be called at destruction */
+	sw_layout_block_fini_func_t fini; /* must be called at destruction */ /* TODO: rework */
 #if SW_WITH_TEXT || SW_WITH_GIF
 	sw_layout_block_out__t _;
 #endif /* SW_WITH_TEXT || SW_WITH_GIF */
@@ -633,7 +635,7 @@ struct sw_layout_block {
 	sw_layout_block_in_t in;
 	sw_layout_block_out_t out;
 	SW__PRIVATE_FIELDS(8);
-	SU_LLIST_FIELDS(sw_layout_block_t);
+	SU_LLIST_NODE_FIELDS(sw_layout_block_t);
 };
 
 typedef enum sw_backend_type {
@@ -659,7 +661,7 @@ typedef struct sw_backend_memory_in {
 typedef struct sw_backend_wayland_in {
 	sw_wayland_output_create_func_t output_create; /* may be NULL */
 	sw_wayland_seat_create_func_t seat_create; /* may be NULL */
-	su_llist__sw_wayland_surface_t__t layers;
+	sw_wayland_surfaces_t layers;
 } sw_backend_wayland_in_t;
 #endif /* SW_WITH_WAYLAND_BACKEND */
 
@@ -679,10 +681,18 @@ typedef struct sw_backend_memory_out {
 #endif /* SW_WITH_MEMORY_BACKEND */
 
 #if SW_WITH_WAYLAND_BACKEND
+typedef struct sw_wayland_outputs {
+	SU_LLIST_FIELDS(sw_wayland_output_t);
+} sw_wayland_outputs_t;
+
+typedef struct sw_wayland_seats {
+	SU_LLIST_FIELDS(sw_wayland_seat_t);
+} sw_wayland_seats_t;
+
 typedef struct sw_backend_wayland_out {
 	struct pollfd pfd; /* TODO: generic structure to support select, epoll, kqueue etc */
-	su_llist__sw_wayland_output_t__t outputs;
-	su_llist__sw_wayland_seat_t__t seats;
+	sw_wayland_outputs_t outputs;
+	sw_wayland_seats_t seats;
 } sw_backend_wayland_out_t;
 #endif /* SW_WITH_WAYLAND_BACKEND */
 
@@ -740,6 +750,11 @@ typedef sw_backend_memory_out_t backend_memory_out_t;
 
 typedef sw_backend_wayland_in_t backend_wayland_in_t;
 typedef sw_backend_wayland_out_t backend_wayland_out_t;
+
+typedef sw_wayland_surfaces_t wayland_surfaces_t;
+typedef sw_layout_blocks_t layout_blocks_t;
+typedef sw_wayland_outputs_t wayland_outputs_t;
+typedef sw_wayland_seats_t wayland_seats_t;
 
 typedef sw_wayland_output_in_t wayland_output_in_t;
 typedef sw_wayland_output_out_t wayland_output_out_t;
@@ -1196,13 +1211,9 @@ typedef struct sw__wayland_surface {
 	su_bool32_t dirty;
 	sw_wayland_cursor_shape_t cursor_shape;
 	sw_wayland_output_t *output;
-	su_array__sw_wayland_region_t__t input_regions;
+    sw_wayland_region_t *input_regions;
+	size_t input_regions_count;
 } sw__wayland_surface_t;
-
-SU_LLIST_DEFINE(sw_wayland_output_t)
-SU_LLIST_DEFINE(sw_wayland_seat_t)
-SU_ARRAY_DEFINE(sw_wayland_region_t)
-SU_LLIST_DEFINE(sw_wayland_surface_t)
 
 #endif /* SW_WITH_WAYLAND_BACKEND */
 
@@ -1218,10 +1229,9 @@ typedef struct sw__image_gif_frame {
 	SU_PAD32;
 } sw__image_gif_frame_t;
 
-SU_ARRAY_DECLARE_DEFINE(sw__image_gif_frame_t)
-
 typedef struct sw__image_multiframe_gif {
-	su_array__sw__image_gif_frame_t__t frames;
+	sw__image_gif_frame_t *frames;
+	size_t frames_count;
 	size_t frame_idx;
 	int64_t frame_end; /* absolute ms */
 } sw__image_multiframe_gif_t;
@@ -1258,18 +1268,15 @@ typedef struct sw__image_cache {
 SU_HASH_TABLE_DECLARE_DEFINE(sw__image_cache_t, su_fat_ptr_t, su_stbds_hash, su_fat_ptr_equal, 16)
 
 #if SW_WITH_TEXT
-SU_ARRAY_DEFINE(sw_glyph_t)
-
 typedef struct sw__text_run_cache_entry {
 	struct fcft_font *font;
 	struct fcft_text_run *text_run;
 } sw__text_run_cache_entry_t;
 
-SU_ARRAY_DECLARE_DEFINE(sw__text_run_cache_entry_t)
-
 typedef struct sw__text_run_cache {
 	SU_HASH_TABLE_FIELDS(su_string_t);
-	su_array__sw__text_run_cache_entry_t__t items;
+	sw__text_run_cache_entry_t items[8]; /* ? TODO: dynamic */
+	size_t items_count;
 } sw__text_run_cache_t;
 
 /* TODO: better hash function */
@@ -1306,15 +1313,12 @@ typedef union sw__context_ {
 typedef struct sw__context {
 	sw__context__t _;
 
-	/* TODO: arena for content: */
+	/* ? TODO: arena for content: */
 	su_hash_table__sw__image_cache_t__t image_cache;
 #if SW_WITH_TEXT
 	su_hash_table__sw__text_run_cache_t__t text_run_cache;
 #endif /* SW_WITH_TEXT */
 } sw__context_t;
-
-SU_LLIST_DEFINE(sw_layout_block_t)
-SU_ARRAY_DEFINE(sw_color_gradient_stop_t)
 
 
 static SU_THREAD_LOCAL sw_context_t *sw__context;
@@ -1384,18 +1388,18 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 	}
 	case SW_COLOR_TYPE_LINEAR_GRADIENT: {
 		pixman_gradient_stop_t *stops;
-		sw_color_gradient_stop_t prev_stop = su_array__sw_color_gradient_stop_t__get(&color._.linear_gradient.stops, 0);
+		sw_color_gradient_stop_t prev_stop = color._.linear_gradient.stops[0];
 		pixman_point_fixed_t p1, p2;
 		pixman_image_t *image;
 		size_t i = 0;
 
 		SU_NOTUSED(prev_stop);
-		SU_ASSERT(color._.linear_gradient.stops.len >= 2);
+		SU_ASSERT(color._.linear_gradient.stops_count >= 2);
 
-		SU_ALLOCTS(stops, scratch_alloc, sizeof(*stops) * color._.linear_gradient.stops.len);
+		SU_ARRAY_ALLOC(stops, scratch_alloc, color._.linear_gradient.stops_count);
 
-		for ( ; i < color._.linear_gradient.stops.len; ++i) {
-			sw_color_gradient_stop_t stop = su_array__sw_color_gradient_stop_t__get(&color._.linear_gradient.stops, i);
+		for ( ; i < color._.linear_gradient.stops_count; ++i) {
+			sw_color_gradient_stop_t stop = color._.linear_gradient.stops[i];
 			SU_ASSERT(stop.pos >= prev_stop.pos);
 			stops[i].color = sw__color_argb32_to_pixman_color(stop.color);
 			stops[i].x = pixman_double_to_fixed(stop.pos);
@@ -1407,25 +1411,25 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 		p2.x = pixman_int_to_fixed(color._.linear_gradient.p2.x);
 		p2.y = pixman_int_to_fixed(color._.linear_gradient.p2.y);
 		image = pixman_image_create_linear_gradient(
-			&p1, &p2, stops, (int)color._.linear_gradient.stops.len);
+			&p1, &p2, stops, (int)color._.linear_gradient.stops_count);
 
 		SU_FREE(scratch_alloc, stops);
 		return image;
 	}
 	case SW_COLOR_TYPE_CONICAL_GRADIENT: {
 		pixman_gradient_stop_t *stops;
-		sw_color_gradient_stop_t prev_stop = su_array__sw_color_gradient_stop_t__get(&color._.conical_gradient.stops, 0);
+		sw_color_gradient_stop_t prev_stop = color._.conical_gradient.stops[0];
 		size_t i = 0;
 		pixman_point_fixed_t center;
 		pixman_image_t *image;
 
 		SU_NOTUSED(prev_stop);
-		SU_ASSERT(color._.conical_gradient.stops.len >= 2);
+		SU_ASSERT(color._.conical_gradient.stops_count >= 2);
 
-		SU_ALLOCTS(stops, scratch_alloc, sizeof(*stops) * color._.conical_gradient.stops.len);
+		SU_ARRAY_ALLOC(stops, scratch_alloc, color._.conical_gradient.stops_count);
 
-		for ( ; i < color._.conical_gradient.stops.len; ++i) {
-			sw_color_gradient_stop_t stop = su_array__sw_color_gradient_stop_t__get(&color._.conical_gradient.stops, i); 
+		for ( ; i < color._.conical_gradient.stops_count; ++i) {
+			sw_color_gradient_stop_t stop = color._.conical_gradient.stops[i]; 
 			SU_ASSERT(stop.pos >= prev_stop.pos);
 			stops[i].color = sw__color_argb32_to_pixman_color(stop.color);
 			stops[i].x = pixman_double_to_fixed(stop.pos);
@@ -1435,24 +1439,24 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 		center.y = pixman_int_to_fixed(color._.conical_gradient.center.y);
 		image = pixman_image_create_conical_gradient(
 			&center, pixman_double_to_fixed(color._.conical_gradient.angle),
-			stops, (int)color._.conical_gradient.stops.len);
+			stops, (int)color._.conical_gradient.stops_count);
 		SU_FREE(scratch_alloc, stops);
 		return image;
 	}
 	case SW_COLOR_TYPE_RADIAL_GRADIENT: {
 		pixman_gradient_stop_t *stops;
-		sw_color_gradient_stop_t prev_stop = su_array__sw_color_gradient_stop_t__get(&color._.radial_gradient.stops, 0);
+		sw_color_gradient_stop_t prev_stop = color._.radial_gradient.stops[0];
 		size_t i = 0;
 		pixman_point_fixed_t p_inner, p_outer;
 		pixman_image_t *image;
 
 		SU_NOTUSED(prev_stop);
-		SU_ASSERT(color._.radial_gradient.stops.len >= 2);
+		SU_ASSERT(color._.radial_gradient.stops_count >= 2);
 
-		SU_ALLOCTS(stops, scratch_alloc, sizeof(*stops) * color._.radial_gradient.stops.len);
+		SU_ARRAY_ALLOC(stops, scratch_alloc, color._.radial_gradient.stops_count);
 
-		for ( ; i < color._.radial_gradient.stops.len; ++i) {
-			sw_color_gradient_stop_t stop = su_array__sw_color_gradient_stop_t__get(&color._.radial_gradient.stops, i);
+		for ( ; i < color._.radial_gradient.stops_count; ++i) {
+			sw_color_gradient_stop_t stop = color._.radial_gradient.stops[i];
 			SU_ASSERT(stop.pos >= prev_stop.pos);
 			stops[i].color = sw__color_argb32_to_pixman_color(stop.color);
 			stops[i].x = pixman_double_to_fixed(stop.pos);
@@ -1466,7 +1470,7 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 			&p_inner, &p_outer,
 			pixman_int_to_fixed(color._.radial_gradient.inner_r),
 			pixman_int_to_fixed(color._.radial_gradient.outer_r),
-			stops, (int)color._.radial_gradient.stops.len);
+			stops, (int)color._.radial_gradient.stops_count);
 		SU_FREE(scratch_alloc, stops);
 		return image;
 	}
@@ -1494,14 +1498,13 @@ static void sw__image_handle_destroy(pixman_image_t *image, void *data) {
 	case SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF: {
 		sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)image_data->data;
 		size_t i = 0;
-		for ( ; i < gif->frames.len; ++i) {
-			pixman_image_t *frame_image = su_array__sw__image_gif_frame_t__get(
-				&gif->frames, i).image;
+		for ( ; i < gif->frames_count; ++i) {
+			pixman_image_t *frame_image = gif->frames[i].image;
 			sw__image_data_t *frame_data = (sw__image_data_t *)pixman_image_get_destroy_data(frame_image);
 			frame_data->type = SW__IMAGE_DATA_TYPE_NONE;
 			pixman_image_unref(frame_image);
 		}
-		su_array__sw__image_gif_frame_t__fini(&gif->frames, gp_alloc);
+		SU_FREE(gp_alloc, gif->frames);
 		SU_FREE(gp_alloc, gif);
 		break;
 	}
@@ -1798,14 +1801,15 @@ static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *sc
 			sw__image_gif_frame_t frame;
 
 			SU_ALLOCT(gif, gp_alloc);
-			su_array__sw__image_gif_frame_t__init(&gif->frames, gp_alloc, (size_t)frame_count);
+			gif->frames_count = (size_t)frame_count;
+			SU_ARRAY_ALLOC(gif->frames, gp_alloc, gif->frames_count);
 
 			for ( ; i < frame_count; ++i) {
 				sw__image_data_t *frame_data;
 				size_t size = (size_t)width * (size_t)height * 4;
 				frame.image = sw__image_create(gp_alloc, width, height, &frame_data);
 				frame.delay = (uint16_t)frame_delays[i];
-				su_array__sw__image_gif_frame_t__add_nocheck(&gif->frames, frame);
+				gif->frames[i] = frame;
 
 				su_abgr_to_argb_premultiply_alpha(frame_data->pixels,
 					(uint32_t *)(void *)&((uint8_t *)src)[size * (size_t)i],
@@ -1814,9 +1818,9 @@ static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *sc
 				frame_data->data = gif;
 			}
 
-			SU_ASSERT(data->gif_frame_idx < gif->frames.len);
+			SU_ASSERT(data->gif_frame_idx < gif->frames_count);
 			gif->frame_idx = data->gif_frame_idx;
-			frame = su_array__sw__image_gif_frame_t__get(&gif->frames, gif->frame_idx);
+			frame = gif->frames[gif->frame_idx];
 			gif->frame_end = (data->gif_static ? INT64_MAX : (su_now_ms(CLOCK_MONOTONIC) + frame.delay));
 			image = frame.image;
 		} else {
@@ -1922,7 +1926,7 @@ static void sw__layout_block_fini(sw_layout_block_t *block, sw_context_t *sw) {
 		pixman_image_unref(priv->content_image);
 #if SW_WITH_TEXT
 		if (block->in.type == SW_LAYOUT_BLOCK_TYPE_TEXT) {
-			su_array__sw_glyph_t__fini(&block->out._.text.glyphs, sw__context->in.gp_alloc);
+			SU_FREE(sw__context->in.gp_alloc, block->out._.text.glyphs);
 		}
 #endif /* SW_WITH_TEXT */
 	}
@@ -1960,14 +1964,14 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 		int x = 0, y;
 		pixman_image_t *text_color;
 		size_t i = 0;
-		SU_ALLOCTS(font_names, scratch_alloc, (block->in._.text.font_names.len + 1) * sizeof(*font_names));
-		for ( ; i < block->in._.text.font_names.len; ++i) {
-			su_string_t s = su_array__su_string_t__get(&block->in._.text.font_names, i);
-			SU_ASSERT(s.nul_terminated == SU_TRUE); /* TODO: handle properly */
-			font_names[i] = s.s;
+		SU_ARRAY_ALLOC(font_names, scratch_alloc, (block->in._.text.font_names_count + 1));
+		for ( ; i < block->in._.text.font_names_count; ++i) {
+			su_string_t *s = &block->in._.text.font_names[i];
+			SU_ASSERT(s->nul_terminated == SU_TRUE); /* TODO: handle properly */
+			font_names[i] = s->s;
 		}
-		font_names[block->in._.text.font_names.len] = "monospace:size=16";
-		font = fcft_from_name(block->in._.text.font_names.len + 1, font_names, NULL);
+		font_names[block->in._.text.font_names_count] = "monospace:size=16";
+		font = fcft_from_name(block->in._.text.font_names_count + 1, font_names, NULL);
 		SU_FREE(scratch_alloc, font_names);
 		if (font == NULL) {
 			status = SW_STATUS_LAYOUT_BLOCK_ERROR_INVALID_FONT;
@@ -1977,8 +1981,8 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 		if (su_hash_table__sw__text_run_cache_t__get(&sw_private->text_run_cache,
 				block->in._.text.text, &cache)) {
 			size_t j = 0;
-			for ( ; j < cache->items.len; ++j) {
-				entry = su_array__sw__text_run_cache_entry_t__get(&cache->items, j);
+			for ( ; j < cache->items_count; ++j) {
+				entry = cache->items[j];
 				if (entry.font == font) {
 					text_run = entry.text_run;
 					break;
@@ -1993,7 +1997,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 			mbstate_t s;
 
 			SU_MEMSET(&s, 0, sizeof(s));
-			SU_ALLOCTS(text, scratch_alloc, block->in._.text.text.len * sizeof(*text) + 1);
+			SU_ARRAY_ALLOC(text, scratch_alloc, (block->in._.text.text.len + 1));
 
 			while (consumed < block->in._.text.text.len) {
 				su_c32_t c32;
@@ -2028,8 +2032,12 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 
 			entry.font = font;
 			entry.text_run = text_run;
-			su_array__sw__text_run_cache_entry_t__add(&cache->items,
-				gp_alloc, entry);
+			if (cache->items_count < SU_LENGTH(cache->items)) {
+				cache->items[cache->items_count++] = entry;
+			} else {
+				SU_DEBUG_LOG("warning: text run cache is full for font = %s, text = " SU_STRING_PF_FMT,
+					font->name, SU_STRING_PF_ARGS(block->in._.text.text));
+			}
 		}
 
 		image_height = font->height;
@@ -2041,7 +2049,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 			goto error;
 		}
 
-		su_array__sw_glyph_t__init(&block->out._.text.glyphs, gp_alloc, text_run->count);
+		SU_ARRAY_ALLOC(block->out._.text.glyphs, gp_alloc, text_run->count);
 
 		priv->content_image = sw__image_create(gp_alloc, image_width, image_height, NULL);
 
@@ -2050,7 +2058,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 		y = font->height - font->descent;
 		for ( i = 0; i < text_run->count; ++i) {
 			const struct fcft_glyph *fcft_glyph = text_run->glyphs[i];
-			sw_glyph_t *glyph = su_array__sw_glyph_t__add_nocheck_uninitialized(&block->out._.text.glyphs);
+			sw_glyph_t *glyph = &block->out._.text.glyphs[i];
 			glyph->x = (x + fcft_glyph->x);
 			glyph->y = (y - fcft_glyph->y);
 			glyph->width = fcft_glyph->width;
@@ -2081,17 +2089,15 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 			sw__image_data_t *d = (sw__image_data_t *)pixman_image_get_destroy_data(cache->image);
 			if (d->type == SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF) {
 				sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)d->data;
-				SU_ASSERT(block->in._.image.gif_frame_idx < gif->frames.len);
+				SU_ASSERT(block->in._.image.gif_frame_idx < gif->frames_count);
 				if (block->in._.image.gif_static) {
 					gif->frame_end = INT64_MAX;
 					gif->frame_idx = block->in._.image.gif_frame_idx;
 				} else if (gif->frame_end == INT64_MAX) {
 					gif->frame_idx = block->in._.image.gif_frame_idx;
-					gif->frame_end = (su_now_ms(CLOCK_MONOTONIC) +
-						su_array__sw__image_gif_frame_t__get(&gif->frames, gif->frame_idx).delay);
+					gif->frame_end = (su_now_ms(CLOCK_MONOTONIC) + gif->frames[gif->frame_idx].delay);
 				}
-				priv->content_image = pixman_image_ref(
-					su_array__sw__image_gif_frame_t__get(&gif->frames, gif->frame_idx).image);
+				priv->content_image = pixman_image_ref(gif->frames[gif->frame_idx].image);
 			} else
 #endif /* SW_WITH_GIF */
 				priv->content_image = pixman_image_ref(cache->image);
@@ -2186,7 +2192,7 @@ process_content_image:
 	}
 	case SW_LAYOUT_BLOCK_TYPE_COMPOSITE: {
 		sw_layout_block_t *b = block->in._.composite.children.head;
-		SU_ASSERT(block->in._.composite.children.len > 0);
+		SU_ASSERT(block->in._.composite.children.count > 0);
 		for ( ; b; b = b->next) {
 			sw__layout_block_init(b);
 		}
@@ -2490,10 +2496,10 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 			sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)image_data->data;
 			if (now_msec >= gif->frame_end) {
 				sw__image_gif_frame_t frame;
-				if (++gif->frame_idx >= gif->frames.len) {
+				if (++gif->frame_idx >= gif->frames_count) {
 					gif->frame_idx = 0;
 				}
-				frame = su_array__sw__image_gif_frame_t__get( &gif->frames, gif->frame_idx);
+				frame = gif->frames[gif->frame_idx];
 				pixman_image_unref(priv->content_image);
 				priv->content_image = pixman_image_ref(frame.image);
 				gif->frame_end = (now_msec + frame.delay);
@@ -2739,7 +2745,7 @@ static void sw__wayland_surface_fini(sw_wayland_surface_t *surface, sw_context_t
 		wl_surface_destroy(priv->wl_surface);
 	}
 
-	su_array__sw_wayland_region_t__fini(&priv->input_regions, sw->in.gp_alloc);
+	SU_FREE(sw->in.gp_alloc, priv->input_regions);
 
 	for ( seat = sw->out.backend.wayland.seats.head; seat; seat = seat->next) {
 		if (seat->out.pointer && (seat->out.pointer->out.focused_surface == surface)) {
@@ -3331,15 +3337,15 @@ static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_waylan
 		priv->cursor_shape = cursor_shape;
 	}
 
-	if ((priv->input_regions.len != surface->in.input_regions.len) ||
-			(SU_MEMCMP(priv->input_regions.items, surface->in.input_regions.items,
-				sizeof(*surface->in.input_regions.items) * surface->in.input_regions.len) != 0)) {
+	if ((priv->input_regions_count != surface->in.input_regions_count) ||
+			(SU_MEMCMP(priv->input_regions, surface->in.input_regions,
+				sizeof(*surface->in.input_regions) * surface->in.input_regions_count) != 0)) {
 		size_t i;
 		struct wl_region *input_region = NULL;
-		if (surface->in.input_regions.len > 0) {
+		if (surface->in.input_regions_count > 0) {
 			input_region = wl_compositor_create_region(sw_private->_.wayland.compositor);
-			for ( i = 0; i < surface->in.input_regions.len; ++i) {
-				sw_wayland_region_t region = su_array__sw_wayland_region_t__get(&surface->in.input_regions, i);
+			for ( i = 0; i < surface->in.input_regions_count; ++i) {
+				sw_wayland_region_t region = surface->in.input_regions[i];
 				wl_region_add(input_region, region.x, region.y, region.width, region.height);
 			}
 		}
@@ -3348,11 +3354,11 @@ static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_waylan
 			wl_region_destroy(input_region);
 		}
 		
-		priv->input_regions.len = 0;
-		for ( i = 0; i < surface->in.input_regions.len; ++i) {
-			su_array__sw_wayland_region_t__add(&priv->input_regions, sw__context->in.gp_alloc,
-				su_array__sw_wayland_region_t__get(&surface->in.input_regions, i));
-		}
+		SU_FREE(sw__context->in.gp_alloc, priv->input_regions);
+		priv->input_regions_count = surface->in.input_regions_count;
+		SU_ARRAY_ALLOC(priv->input_regions, sw__context->in.gp_alloc, priv->input_regions_count);
+		SU_MEMCPY(priv->input_regions, surface->in.input_regions,
+			sizeof(priv->input_regions[0]) * surface->in.input_regions_count);
 	}
 
 	sw__wayland_surface_render(surface);
@@ -3433,7 +3439,8 @@ static void sw__wayland_output_handle_geometry(void *data, struct wl_output *wl_
 	size_t len;
 
 	SU_NOTUSED(wl_output);
-	
+
+	SU_NOTUSED(len); SU_NOTUSED(make); SU_NOTUSED(model);
 	if ((len = SU_STRLEN(make)) > 0) {
 		su_string_init_len(&output->out.make, sw__context->in.gp_alloc, make, len, SU_TRUE);
 	}
@@ -3479,9 +3486,10 @@ static void sw__wayland_output_handle_done(void *data, struct wl_output *wl_outp
 			SU_MEMCPY(&new_output->out, &output->out, sizeof(output->out));
 			SU_MEMCPY(&new_output->sw__private, &output->sw__private, sizeof(output->sw__private));
 			SU_FREE(sw__context->in.gp_alloc, output);
+			wl_output_set_user_data(((sw__wayland_output_t *)&new_output->sw__private)->wl_output, new_output);
 		}
 		if (new_output) {
-			su_llist__sw_wayland_output_t__insert_tail(&sw__context->out.backend.wayland.outputs, new_output);
+			SU_LLIST_APPEND_TAIL(&sw__context->out.backend.wayland.outputs, new_output);
 		}
 	}
 }
@@ -3752,9 +3760,10 @@ static void sw__wayland_seat_handle_name(void *data, struct wl_seat *wl_seat, co
 			SU_MEMCPY(&new_seat->out, &seat->out, sizeof(seat->out));
 			SU_MEMCPY(&new_seat->sw__private, &seat->sw__private, sizeof(seat->sw__private));
 			SU_FREE(sw__context->in.gp_alloc, seat);
+			wl_seat_set_user_data(((sw__wayland_seat_t *)&new_seat->sw__private)->wl_seat, new_seat);
 		}
 		if (new_seat) {
-			su_llist__sw_wayland_seat_t__insert_tail(&sw__context->out.backend.wayland.seats, new_seat);
+			SU_LLIST_APPEND_TAIL(&sw__context->out.backend.wayland.seats, new_seat);
 		}
 	}
 }
@@ -3833,7 +3842,7 @@ static void sw__wayland_registry_handle_global_remove(void *data, struct wl_regi
 	for ( output = wayland->outputs.head; output; output = output->next) {
 		sw__wayland_output_t *priv = (sw__wayland_output_t *)&output->sw__private;
 		if (priv->wl_name == name) {
-			su_llist__sw_wayland_output_t__pop(&wayland->outputs, output);
+			SU_LLIST_POP(&wayland->outputs, output);
 			sw__wayland_output_destroy(output);
 			return;
 		}
@@ -3842,7 +3851,7 @@ static void sw__wayland_registry_handle_global_remove(void *data, struct wl_regi
 	for ( seat = wayland->seats.head; seat; seat = seat->next) {
 		sw__wayland_seat_t *priv = (sw__wayland_seat_t *)&seat->sw__private;
 		if (priv->wl_name == name) {
-			su_llist__sw_wayland_seat_t__pop(&wayland->seats, seat);
+			SU_LLIST_POP(&wayland->seats, seat);
 			sw__wayland_seat_destroy(seat);
 			return;
 		}
@@ -3920,27 +3929,25 @@ SW_FUNC_DEF void sw_cleanup(sw_context_t *sw) {
 		SU_ASSERT_UNREACHABLE;
 	}
 
-	for ( i = 0; i < priv->image_cache.items.len; ++i) {
-		sw__image_cache_t cache = su_array__sw__image_cache_t__get(&priv->image_cache.items, i);
-		SU_FREE(gp_alloc, cache.key.ptr);
-		if (cache.image) {
-			pixman_image_unref(cache.image);
+	for ( i = 0; i < priv->image_cache.capacity; ++i) {
+		sw__image_cache_t *cache = &priv->image_cache.items[i];
+		SU_FREE(gp_alloc, cache->key.ptr);
+		if (cache->image) {
+			pixman_image_unref(cache->image);
 		}
 	}
 	su_hash_table__sw__image_cache_t__fini(&priv->image_cache, gp_alloc);
 
 #if SW_WITH_TEXT
-	for ( i = 0; i < priv->text_run_cache.items.len; ++i) {
+	for ( i = 0; i < priv->text_run_cache.capacity; ++i) {
 		size_t j = 0;
-		sw__text_run_cache_t cache = su_array__sw__text_run_cache_t__get(
-			&priv->text_run_cache.items, i);
-		su_string_fini(&cache.key, gp_alloc);
-		for ( ; j < cache.items.len; ++j) {
-			sw__text_run_cache_entry_t entry = su_array__sw__text_run_cache_entry_t__get(&cache.items, j);
+		sw__text_run_cache_t *cache = &priv->text_run_cache.items[i];
+		su_string_fini(&cache->key, gp_alloc);
+		for ( ; j < cache->items_count; ++j) {
+			sw__text_run_cache_entry_t entry = cache->items[j];
 			fcft_text_run_destroy(entry.text_run);
 			fcft_destroy(entry.font);
 		}
-		su_array__sw__text_run_cache_entry_t__fini(&cache.items, gp_alloc);
 	}
 	su_hash_table__sw__text_run_cache_t__fini(&priv->text_run_cache, gp_alloc);
 
@@ -4048,7 +4055,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
 		sw->out.t = -1;
 	}
 
-	if (SU_UNLIKELY(!priv->image_cache.items.items)) {
+	if (SU_UNLIKELY(!priv->image_cache.items)) {
 		/* ? TODO: resvg_init_log(); */
 
 		su_hash_table__sw__image_cache_t__init(&priv->image_cache, sw->in.gp_alloc, 512);

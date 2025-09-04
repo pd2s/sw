@@ -73,11 +73,10 @@ typedef struct config {
 	fat_ptr_t loaded_image;
 } config_t;
 
-ARRAY_DECLARE_DEFINE(config_t)
-
 typedef struct state {
     sw_context_t sw;
-    su_array__config_t__t configs;
+    config_t *configs;
+	size_t configs_count;
     arena_t scratch_arena;
     bool32_t update, running;
 } state_t;
@@ -164,8 +163,8 @@ static background_mode_t parse_background_mode(char *cstr) {
 
 static void store_config(config_t *config) {
     size_t i = 0;
-    for ( ; i < state.configs.len; ++i) {
-        config_t *c = su_array__config_t__get_ptr(&state.configs, i);
+    for ( ; i < state.configs_count; ++i) {
+        config_t *c = &state.configs[i];
         if (string_equal(config->output, c->output)) {
             if (config->image_path.len > 0) {
                 c->image_path = config->image_path;
@@ -179,7 +178,7 @@ static void store_config(config_t *config) {
             return;
         }
     }
-    su_array__config_t__add(&state.configs, &gp_alloc, *config);
+	MEMCPY(&state.configs[state.configs_count++], config, sizeof(*config));
 }
 
 static void surface_destroy_sw(sw_wayland_surface_t *surface, sw_context_t *sw) {
@@ -187,13 +186,11 @@ static void surface_destroy_sw(sw_wayland_surface_t *surface, sw_context_t *sw) 
 
 	NOTUSED(sw);
 
-	su_llist__sw_wayland_surface_t__pop(&state.sw.in.backend.wayland.layers, surface);
+	LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
 
 	if (surface->out.fini) {
 		surface->out.fini(surface, &state.sw);
 	}
-
-	su_array__sw_wayland_region_t__fini(&surface->in.input_regions, &gp_alloc);
 
 	if (root->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) {
 		sw_layout_block_t *image = root->in._.composite.children.head;
@@ -222,8 +219,8 @@ static void layout_block_handle_error(sw_layout_block_t *block, sw_context_t *sw
 	
 	NOTUSED(sw); NOTUSED(status);
 
-	for ( ; i < state.configs.len; ++i) {
-		config_t *config = su_array__config_t__get_ptr(&state.configs, i);
+	for ( ; i < state.configs_count; ++i) {
+		config_t *config = &state.configs[i];
 		if (config->loaded_image.ptr == block->in._.image.data.ptr) {
 			su_abort(errno, "Failed to load image: " STRING_PF_FMT, STRING_PF_ARGS(config->image_path));
 		}
@@ -241,8 +238,8 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 
 	surface->in.error = surface_handle_error;
 	surface->in.destroy = surface_destroy_sw;
-	su_array__sw_wayland_region_t__init(&surface->in.input_regions, &gp_alloc, 1);
-	su_array__sw_wayland_region_t__add_nocheck(&surface->in.input_regions, empty_input_region);
+	surface->in.input_regions = &empty_input_region;
+	surface->in.input_regions_count = 1;
 
 	layer = &surface->in._.layer;
 	layer->output = output;
@@ -261,7 +258,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		image->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
 		image->in._.image.data = config->loaded_image;
-		su_llist__sw_layout_block_t__insert_tail(&root->in._.composite.children, image);
+		LLIST_APPEND_TAIL(&root->in._.composite.children, image);
 
 		root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 		root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
@@ -273,7 +270,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 		image->in.error = layout_block_handle_error;
 		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		image->in._.image.data = config->loaded_image;
-		su_llist__sw_layout_block_t__insert_tail(&root->in._.composite.children, image);
+		LLIST_APPEND_TAIL(&root->in._.composite.children, image);
 
 		root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 		root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
@@ -298,7 +295,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 
 	surface->in.root = root;
 
-	su_llist__sw_wayland_surface_t__insert_tail(&state.sw.in.backend.wayland.layers, surface);
+	LLIST_APPEND_TAIL(&state.sw.in.backend.wayland.layers, surface);
 
 	state.update = TRUE;
 }
@@ -308,8 +305,8 @@ static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_con
 
     NOTUSED(sw);
 
-	for ( ; i < state.configs.len; ++i) {
-		config_t *config = su_array__config_t__get_ptr(&state.configs, i);
+	for ( ; i < state.configs_count; ++i) {
+		config_t *config = &state.configs[i];
 		if (string_equal(config->output, string("*")) || string_equal(config->output, output->out.name)) {
 			configure_output(output, config);
 			return output;
@@ -335,7 +332,7 @@ static void setup(int argc, char *argv[]) {
 		su_abort(1, "failed to set UTF-8 locale");
 	}
 
-    su_array__config_t__init(&state.configs, &gp_alloc, 8);
+    ARRAY_ALLOC(state.configs, &gp_alloc, argc);
 
     MEMSET(&config, 0, sizeof(config));
     config.mode = BACKGROUND_MODE_INVALID;
@@ -398,10 +395,10 @@ static void setup(int argc, char *argv[]) {
 
     store_config(&config);
 
-    for ( i = (state.configs.len - 1); i != SIZE_MAX; --i) {
-        config_t *c = su_array__config_t__get_ptr(&state.configs, i);
+    for ( i = (state.configs_count - 1); i != SIZE_MAX; --i) {
+        config_t *c = &state.configs[i];
 		if ((c->image_path.len == 0) && !c->color.u32) {
-			su_array__config_t__pop(&state.configs, i);
+			MEMMOVE(&state.configs[i], &state.configs[i + 1], sizeof(state.configs[0]) * (--state.configs_count - i));
 			continue;
 		} else if (c->mode == BACKGROUND_MODE_INVALID) {
 			c->mode = ((c->image_path.len > 0)
@@ -409,7 +406,7 @@ static void setup(int argc, char *argv[]) {
 				: BACKGROUND_MODE_SOLID_COLOR);
 		}
 		if (c->image_path.len > 0) {
-			if (!su_read_entire_file(c->image_path, &c->loaded_image, &gp_alloc)) {
+			if (!read_entire_file(c->image_path, &c->loaded_image, &gp_alloc)) {
 				su_abort(errno, "Failed to read file: " STRING_PF_FMT, STRING_PF_ARGS(c->image_path));
 			}
 		}
@@ -460,10 +457,10 @@ static void cleanup(void) {
 #if DEBUG
 	{
 		size_t i = 0;
-		for ( ; i < state.configs.len; ++i) {
-			FREE(&gp_alloc, su_array__config_t__get(&state.configs, i).loaded_image.ptr);
+		for ( ; i < state.configs_count; ++i) {
+			FREE(&gp_alloc, state.configs[i].loaded_image.ptr);
 		}
-    	su_array__config_t__fini(&state.configs, &gp_alloc);
+		FREE(&gp_alloc, state.configs);
 		arena_fini(&state.scratch_arena, &gp_alloc);
 	}
 #endif

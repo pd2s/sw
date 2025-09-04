@@ -28,15 +28,15 @@
 
 STATIC_ASSERT(WITH_SVG || WITH_PNG);
 
-ARRAY_DECLARE_DEFINE(pthread_t)
-
 typedef struct xdg_icon_theme__icon {
 	HASH_TABLE_FIELDS(string_t);
 #if WITH_SVG
-	su_array__su_string_t__t svg_paths;
+	string_t *svg_paths;
+	size_t svg_paths_count, svg_paths_capacity;
 #endif /* WITH_SVG */
 #if WITH_PNG
-	su_array__su_string_t__t png_paths;
+	string_t *png_paths;
+	size_t png_paths_count, png_paths_capacity;
 #endif /* WITH_PNG */
 } xdg_icon_theme__icon_t;
 
@@ -51,23 +51,24 @@ struct xdg_icon_theme__theme {
 	su_hash_table__xdg_icon_theme__icon_t__t icons;
 	pthread_mutex_t lock;
 	arena_t arena;
-	LLIST_FIELDS(xdg_icon_theme__theme_t);
+	xdg_icon_theme__theme_t *next; /* singly linked list */
 };
 
-LLIST_DECLARE_DEFINE(xdg_icon_theme__theme_t)
-
 typedef struct xdg_icon_theme_cache {
-	su_llist__xdg_icon_theme__theme_t__t themes;
 	xdg_icon_theme__theme_t unthemed;
-	su_array__su_string_t__t basedirs;
-	su_array__pthread_t__t threads; /* ? TODO: use scratch allocator */
+	string_t *basedirs;
+	size_t basedirs_count, basedirs_capacity;
+	pthread_t threads[64]; /* ? TODO: dynamic */
+	size_t threads_count;
+	xdg_icon_theme__theme_t *themes; /* singly linked list */
 } xdg_icon_theme_cache_t;
 
 static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *, allocator_t *);
 static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *, allocator_t *);
 static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *, allocator_t *, string_t path);
 static bool32_t xdg_icon_theme_cache_find_icon(xdg_icon_theme_cache_t *,
-		su_array__su_string_t__t **svgs_out, su_array__su_string_t__t **pngs_out,
+		string_t **svgs_out, size_t *svgs_count_out,
+		string_t **pngs_out, size_t *pngs_count_out,
 		string_t icon_name, string_t *theme_name);
 
 
@@ -90,18 +91,29 @@ static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
 	if (su_hash_table__xdg_icon_theme__icon_t__add(&theme->icons, theme->user_alloc, xdg_name, &icon)) {
 		string_init_string(&icon->key, &theme->alloc, xdg_name);
 #if WITH_SVG
-		su_array__su_string_t__init(&icon->svg_paths, &theme->alloc, 48);
+		icon->svg_paths_capacity = 48;
+		ARRAY_ALLOC(icon->svg_paths, &theme->alloc, icon->svg_paths_capacity);
+		icon->svg_paths_count = 0;
 #endif /* WITH_SVG */
 #if WITH_PNG
-		su_array__su_string_t__init(&icon->png_paths, &theme->alloc, 48);
+		icon->png_paths_capacity = 48;
+		ARRAY_ALLOC(icon->png_paths, &theme->alloc, icon->png_paths_capacity);
+		icon->png_paths_count = 0;
 #endif /* WITH_PNG */
 	}
 
 #if WITH_SVG
 	if (string_ends_with(name, string(".svg"))) {
-		string_init_string(
-			su_array__su_string_t__add_uninitialized(&icon->svg_paths, &theme->alloc),\
-			&theme->alloc, path);
+    	if (UNLIKELY(icon->svg_paths_capacity == icon->svg_paths_count)) {
+			string_t *new_svg_paths;
+			icon->svg_paths_capacity *= 2;
+			ARRAY_ALLOC(new_svg_paths, &theme->alloc, icon->svg_paths_capacity);
+			MEMCPY(new_svg_paths, icon->svg_paths,
+				sizeof(new_svg_paths[0]) * icon->svg_paths_count);
+			FREE(&theme->alloc, icon->svg_paths);
+			icon->svg_paths = new_svg_paths;
+    	}
+		string_init_string(&icon->svg_paths[icon->svg_paths_count++], &theme->alloc, path);
 	}
 #endif /* WITH_SVG */
 #if WITH_SVG && WITH_PNG
@@ -109,9 +121,16 @@ static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
 #endif /* WITH_SVG && WITH_PNG */
 #if WITH_PNG
 	if (string_ends_with(name, string(".png"))) {
-		string_init_string(
-			su_array__su_string_t__add_uninitialized(&icon->png_paths, &theme->alloc),
-			&theme->alloc, path);
+    	if (UNLIKELY(icon->png_paths_capacity == icon->png_paths_count)) {
+			string_t *new_png_paths;
+			icon->png_paths_capacity *= 2;
+			ARRAY_ALLOC(new_png_paths, &theme->alloc, icon->png_paths_capacity);
+			MEMCPY(new_png_paths, icon->png_paths,
+				sizeof(new_png_paths[0]) * icon->png_paths_count);
+			FREE(&theme->alloc, icon->png_paths);
+			icon->png_paths = new_png_paths;
+    	}
+		string_init_string(&icon->png_paths[icon->png_paths_count++], &theme->alloc, path);
 	}
 #endif /* WITH_PNG */
 
@@ -212,9 +231,8 @@ static void *xdg_icon_theme__theme_populate_thread(void *data) {
 static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 		allocator_t *alloc, string_t path, string_t name) {
 	xdg_icon_theme__theme_t *theme = NULL;
-	xdg_icon_theme__theme_t *t = cache->themes.head;
 	pthread_t th;
-
+	xdg_icon_theme__theme_t *t = cache->themes;
 	for ( ; t; t = t->next) {
 		if (string_equal(t->name, name)) {
 			theme = t;
@@ -230,8 +248,9 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 		arena_init(&theme->arena, alloc, 67108864);
 		su_hash_table__xdg_icon_theme__icon_t__init(&theme->icons, alloc, 65536);
 		string_init_string(&theme->name, &theme->alloc, name);
+		theme->next = cache->themes;
 
-		su_llist__xdg_icon_theme__theme_t__insert_tail(&cache->themes, theme);
+		cache->themes = theme;
 	}
 
 	/* TODO: rework */
@@ -239,10 +258,11 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 	string_init_string(&theme->path, &theme->alloc, path);
 	pthread_mutex_unlock(&theme->lock);
 
-	if (0 == pthread_create(&th, NULL, xdg_icon_theme__theme_populate_thread, theme)) {
-		su_array__pthread_t__add(&cache->threads, alloc, th);
+	if ((cache->threads_count < LENGTH(cache->threads)) &&
+			(0 == pthread_create(&th, NULL, xdg_icon_theme__theme_populate_thread, theme))) {
+		cache->threads[cache->threads_count++] = th;
 	} else {
-		/* TODO: warn */
+		DEBUG_LOG("warning: failed to create thread/thread pool is full. threads_count = %zu", cache->threads_count);
 		xdg_icon_theme__theme_populate(theme, path);
 	}
 
@@ -265,8 +285,8 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 
 	path = string(abspath_buf);
 
-	for ( i = cache->basedirs.len - 1; i != SIZE_MAX; --i) {
-		if (string_equal(path, su_array__su_string_t__get(&cache->basedirs, i))) {
+	for ( i = (cache->basedirs_count - 1); i != SIZE_MAX; --i) {
+		if (string_equal(path, cache->basedirs[i])) {
 			return FALSE;
 		}
 	}
@@ -275,7 +295,16 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 		return FALSE;
 	}
 
-	string_init_string(su_array__su_string_t__add_uninitialized(&cache->basedirs, alloc), alloc, path);
+    if (UNLIKELY(cache->basedirs_capacity == cache->basedirs_count)) {
+		string_t *new_basedirs;
+		cache->basedirs_capacity *= 2;
+		ARRAY_ALLOC(new_basedirs, alloc, cache->basedirs_capacity);
+		MEMCPY(new_basedirs, cache->basedirs,
+			sizeof(new_basedirs[0]) * cache->basedirs_count);
+		FREE(alloc, cache->basedirs);
+		cache->basedirs = new_basedirs;
+    }
+	string_init_string(&cache->basedirs[cache->basedirs_count++], alloc, path);
 
 	dir_fd = dirfd(dir);
 	while ((e = readdir(dir))) {
@@ -349,9 +378,8 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t
 	cache->unthemed.user_alloc = alloc;
 	su_hash_table__xdg_icon_theme__icon_t__init(&cache->unthemed.icons, alloc, 65536);
 	pthread_mutex_init(&cache->unthemed.lock, NULL);
-
-	su_array__su_string_t__init(&cache->basedirs, alloc, 32);
-	su_array__pthread_t__init(&cache->threads, alloc, 64);
+	cache->basedirs_capacity = 32;
+	ARRAY_ALLOC(cache->basedirs, alloc, cache->basedirs_capacity);
 
 	if (data_home && *data_home) {
 		size_t len = STRLEN(data_home);
@@ -412,21 +440,20 @@ static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, allocator_t
 	size_t i;
 	xdg_icon_theme__theme_t *theme;
 
-	for ( i = 0; i < cache->threads.len; ++i) {
-		pthread_join(su_array__pthread_t__get(&cache->threads, i), NULL); /* ? TODO: pthread_cancel */
+	for ( i = 0; i < cache->threads_count; ++i) {
+		pthread_join(cache->threads[i], NULL); /* ? TODO: pthread_cancel */
 	}
-	su_array__pthread_t__fini(&cache->threads, alloc);
 
-	for ( i = 0; i < cache->basedirs.len; ++i) {
-		string_fini(su_array__su_string_t__get_ptr(&cache->basedirs, i), alloc);
+	for ( i = 0; i < cache->basedirs_count; ++i) {
+		string_fini(&cache->basedirs[i], alloc);
 	}
-	su_array__su_string_t__fini(&cache->basedirs, alloc);
+	FREE(alloc, cache->basedirs);
 
 	arena_fini(&cache->unthemed.arena, alloc);
 	pthread_mutex_destroy(&cache->unthemed.lock);
 	su_hash_table__xdg_icon_theme__icon_t__fini(&cache->unthemed.icons, alloc);
 
-	for ( theme = cache->themes.head; theme; ) {
+	for ( theme = cache->themes; theme; ) {
 		xdg_icon_theme__theme_t *next = theme->next;
 		arena_fini(&theme->arena, alloc);
 		pthread_mutex_destroy(&theme->lock);
@@ -437,7 +464,8 @@ static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, allocator_t
 }
 
 static bool32_t xdg_icon_theme__find_icon(
-		su_array__su_string_t__t **svgs_out, su_array__su_string_t__t **pngs_out,
+		string_t **svgs_out, size_t *svgs_count_out,
+		string_t **pngs_out, size_t *pngs_count_out,
 		xdg_icon_theme__theme_t *theme, string_t icon_name) {
 	bool32_t ret = FALSE;
 	xdg_icon_theme__icon_t *c;
@@ -446,15 +474,17 @@ static bool32_t xdg_icon_theme__find_icon(
 
 	if (su_hash_table__xdg_icon_theme__icon_t__get(&theme->icons, icon_name , &c)) {
 #if WITH_SVG
-		if (c->svg_paths.len > 0) {
-			*svgs_out = &c->svg_paths;
+		if (c->svg_paths_count > 0) {
+			*svgs_out = c->svg_paths;
+			*svgs_count_out = c->svg_paths_count;
 			ret = TRUE;
 		}
 #endif /* WITH_SVG */
 #if WITH_PNG
-		if (c->png_paths.len > 0) {
+		if (c->png_paths_count > 0) {
 			ret = TRUE;
-			*pngs_out = &c->png_paths;
+			*pngs_out = c->png_paths;
+			*pngs_count_out = c->png_paths_count;
 		}
 #endif /* WITH_PNG */
 	}
@@ -463,12 +493,14 @@ static bool32_t xdg_icon_theme__find_icon(
 }
 
 static bool32_t xdg_icon_theme__cache_find_icon_in_theme(xdg_icon_theme_cache_t *cache,
-		su_array__su_string_t__t **svgs_out, su_array__su_string_t__t **pngs_out,
+		string_t **svgs_out, size_t *svgs_count_out,
+		string_t **pngs_out, size_t *pngs_count_out,
 		string_t icon_name, string_t theme_name) {
-	xdg_icon_theme__theme_t *theme = cache->themes.head;
+	xdg_icon_theme__theme_t *theme = cache->themes;
 	for ( ; theme; theme = theme->next) {
 		if (string_equal(theme->name, theme_name)) {
-			return xdg_icon_theme__find_icon(svgs_out, pngs_out, theme, icon_name);
+			return xdg_icon_theme__find_icon(
+				svgs_out, svgs_count_out, pngs_out, pngs_count_out, theme, icon_name);
 		}
 	}
 
@@ -476,33 +508,36 @@ static bool32_t xdg_icon_theme__cache_find_icon_in_theme(xdg_icon_theme_cache_t 
 }
 
 static bool32_t xdg_icon_theme_cache_find_icon(xdg_icon_theme_cache_t *cache,
-		su_array__su_string_t__t **svgs_out, su_array__su_string_t__t **pngs_out,
+		string_t **svgs_out, size_t *svgs_count_out,
+		string_t **pngs_out, size_t *pngs_count_out,
 		string_t icon_name, string_t *theme_name) {
 	xdg_icon_theme__theme_t *theme;
 
 	size_t i = 0;
-	for ( ; i < cache->threads.len; ++i) {
-		pthread_join(su_array__pthread_t__get(&cache->threads, i), NULL);
+	for ( ; i < cache->threads_count; ++i) {
+		pthread_join(cache->threads[i], NULL);
 	}
-	cache->threads.len = 0;
+	cache->threads_count = 0;
 
 	/* TODO: check mtime / inotify/alternative */
 
 	if (theme_name && xdg_icon_theme__cache_find_icon_in_theme(
-			cache, svgs_out, pngs_out, icon_name, *theme_name)) {
+			cache, svgs_out, svgs_count_out, pngs_out, pngs_count_out, icon_name, *theme_name)) {
 		return TRUE;
 	}
 	if (!theme_name || !string_equal(*theme_name, string("hicolor"))) {
 		if (xdg_icon_theme__cache_find_icon_in_theme(
-				cache, svgs_out, pngs_out, icon_name, string("hicolor"))) {
+				cache, svgs_out, svgs_count_out, pngs_out, pngs_count_out, icon_name, string("hicolor"))) {
 			return TRUE;
 		}
 	}
-	if (xdg_icon_theme__find_icon(svgs_out, pngs_out, &cache->unthemed, icon_name)) {
+	if (xdg_icon_theme__find_icon(
+			svgs_out, svgs_count_out, pngs_out, pngs_count_out, &cache->unthemed, icon_name)) {
 		return TRUE;
 	}
-	for ( theme = cache->themes.head; theme; theme = theme->next) {
-		if (xdg_icon_theme__find_icon( svgs_out, pngs_out, theme, icon_name)) {
+	for ( theme = cache->themes; theme; theme = theme->next) {
+		if (xdg_icon_theme__find_icon(
+				svgs_out, svgs_count_out, pngs_out, pngs_count_out, theme, icon_name)) {
 			return TRUE;
 		}
 	}
