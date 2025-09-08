@@ -77,7 +77,6 @@ void hb_free_impl(void *ptr);
 static resvg_render_ft_state_t resvg_render_ft_state;
 
 static sw_context_t sw;
-static fat_ptr_t p;
 static arena_t scratch_arena;
 static bool32_t running = TRUE;
 
@@ -437,7 +436,7 @@ static sw_pixmap_t *render(void) {
     for ( f = 0; f < LENGTH(fonts); ++f) {
         font_t *font = &fonts[f];
         read_entire_file(string(font_files[f]), &font->data, &scratch_alloc);
-        font->pixel_size = 72;
+        font->pixel_size = 32;
         font->idx = 0;
     }
 
@@ -773,33 +772,32 @@ static sw_pixmap_t *render(void) {
     return ret;
 }
 
-static void surface_destroy_sw(sw_wayland_surface_t *surface, sw_context_t *ctx) {
-    NOTUSED(surface); NOTUSED(ctx);
-}
+static bool32_t surface_handle_event(sw_wayland_notify_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
+    NOTUSED(source); NOTUSED(ctx);
 
-static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_context_t *ctx) {
-    sw_wayland_surface_t *surface;
-    ALLOCCT(surface, &gp_alloc);
-    
-    NOTUSED(ctx);
+    DEBUG_LOG("event: %u", event);
 
-    surface->in._.layer.output = output;
-    surface->in.destroy = surface_destroy_sw;
-    surface->in.height = -1;
-    surface->in._.layer.exclusive_zone = INT_MIN;
-    surface->in._.layer.anchor = SW_WAYLAND_SURFACE_LAYER_ANCHOR_BOTTOM | SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT | SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT;
+    switch (event) {
+	case SW_WAYLAND_EVENT_SURFACE_CLOSED:
+        running = FALSE;
+        break;
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
+	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+	case SW_WAYLAND_EVENT_POINTER_ENTER:
+	case SW_WAYLAND_EVENT_POINTER_LEAVE:
+	case SW_WAYLAND_EVENT_POINTER_MOTION:
+	case SW_WAYLAND_EVENT_POINTER_BUTTON:
+	case SW_WAYLAND_EVENT_POINTER_SCROLL:
+        break;
+    default:
+        ASSERT_UNREACHABLE;
+    }
 
-    ALLOCCT(surface->in.root, &gp_alloc);
-    surface->in.root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
-    surface->in.root->in.color._.argb32.u32 = 0xFF000000;
-    surface->in.root->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
-    surface->in.root->in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP;
-    surface->in.root->in._.image.data = p;
-
-    LLIST_APPEND_TAIL(&sw.in.backend.wayland.layers, surface);
-
-    NOTUSED(sw);
-	return output;
+    return TRUE;
 }
 
 static void handle_signal(int sig) {
@@ -812,6 +810,8 @@ int main(void) {
     sw_pixmap_t *pm;
     static struct sigaction sigact;
     bool32_t c;
+    sw_wayland_surface_t *toplevel;
+    sw_layout_block_t *root;
 
     setlocale(LC_ALL, "");
     ASSERT(locale_is_utf8());
@@ -821,14 +821,27 @@ int main(void) {
     sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
     sw.in.gp_alloc = &gp_alloc;
     sw.in.scratch_alloc = &scratch_alloc;
-    sw.in.backend.wayland.output_create = output_create_sw;
 
     /* hack for stbi allocator */
     sw__context = &sw;
 
     pm = render();
-    p.ptr = pm;
-    p.len = (8 + (pm->width * pm->height * 4));
+
+    ALLOCCT(root, &gp_alloc);
+    root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
+    root->in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
+    root->in.color._.argb32.u32 = 0xFF000000;
+    root->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
+    root->in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP;
+    root->in._.image.data.ptr = pm;
+    root->in._.image.data.len = (8 + (pm->width * pm->height * 4));
+
+    ALLOCCT(toplevel, &gp_alloc);
+    toplevel->in.notify = surface_handle_event;
+    toplevel->in._.toplevel.decoration_mode = SW_WAYLAND_TOPLEVEL_DECORATION_MODE_SERVER_SIDE;
+    toplevel->in.root = root;
+
+    LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, toplevel);
 
     c = sw_set(&sw);
     ASSERT(c == TRUE);

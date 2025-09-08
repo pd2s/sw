@@ -5,7 +5,7 @@
 #error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
 #endif
 
-/*#define SU_IMPLEMENTATION */
+#define SU_IMPLEMENTATION
 
 #if !defined(SU_WITH_SIMD)
 #define SU_WITH_SIMD 1
@@ -273,6 +273,7 @@ do { \
     } else { \
         (llist_ptr)->tail = (node_ptr)->prev; \
     } \
+	SU_ASSERT((llist_ptr)->count > 0); \
     (llist_ptr)->count--; \
 } while (0)
 /* TODO: llist_insert/append_list/after/before */

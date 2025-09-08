@@ -73,6 +73,11 @@ typedef struct config {
 	fat_ptr_t loaded_image;
 } config_t;
 
+typedef struct layout_block {
+	sw_layout_block_t _; /* must be first */
+	sw_wayland_surface_t *surface;
+} layout_block_t;
+
 typedef struct state {
     sw_context_t sw;
     config_t *configs;
@@ -181,63 +186,79 @@ static void store_config(config_t *config) {
 	MEMCPY(&state.configs[state.configs_count++], config, sizeof(*config));
 }
 
-static void surface_destroy_sw(sw_wayland_surface_t *surface, sw_context_t *sw) {
-	sw_layout_block_t *root = surface->in.root;
+static bool32_t surface_handle_event(sw_wayland_notify_source_t *source,
+		sw_context_t *sw, sw_wayland_event_t event) {
+	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
 
-	NOTUSED(sw);
-
-	LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
-
-	if (surface->out.fini) {
-		surface->out.fini(surface, &state.sw);
+	switch (event) {
+	case SW_WAYLAND_EVENT_SURFACE_CLOSED:
+		LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
+		surface->out.fini(surface, sw);
+		FREE(&gp_alloc, surface);
+		break;
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
+	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+		/* TODO: print code with string */
+		su_abort(errno, "Failed to create surface for output " STRING_PF_FMT, STRING_PF_ARGS(surface->in._.layer.output->out.name));
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
+	case SW_WAYLAND_EVENT_POINTER_ENTER:
+	case SW_WAYLAND_EVENT_POINTER_LEAVE:
+	case SW_WAYLAND_EVENT_POINTER_MOTION:
+	case SW_WAYLAND_EVENT_POINTER_BUTTON:
+	case SW_WAYLAND_EVENT_POINTER_SCROLL:
+		break;
+	default:
+		ASSERT_UNREACHABLE;
 	}
 
-	if (root->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) {
-		sw_layout_block_t *image = root->in._.composite.children.head;
-		if (image->out.fini) {
-			image->out.fini(image, sw);
-		}
-		FREE(&gp_alloc, image);
-	}
-
-	if (root->out.fini) {
-		root->out.fini(root, sw);
-	}
-	FREE(&gp_alloc, root);
-
-	FREE(&gp_alloc, surface);
+	return TRUE;
 }
 
-static ATTRIBUTE_NORETURN void surface_handle_error(sw_wayland_surface_t *surface, sw_context_t *sw, sw_status_t status) {
-	NOTUSED(sw); NOTUSED(status);
-	su_abort(errno, "Failed to create surface for output " STRING_PF_FMT,
-		STRING_PF_ARGS(surface->in._.layer.output->out.name));
-}
+static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_context_t *sw, sw_layout_block_event_t event) {
+	layout_block_t *block = (layout_block_t *)sw_block;
 
-static void layout_block_handle_error(sw_layout_block_t *block, sw_context_t *sw, sw_status_t status) {
-	size_t i = 0;
-	
-	NOTUSED(sw); NOTUSED(status);
-
-	for ( ; i < state.configs_count; ++i) {
-		config_t *config = &state.configs[i];
-		if (config->loaded_image.ptr == block->in._.image.data.ptr) {
-			su_abort(errno, "Failed to load image: " STRING_PF_FMT, STRING_PF_ARGS(config->image_path));
+	switch (event) {
+	case SW_LAYOUT_BLOCK_EVENT_DESTROY:
+		block->_.out.fini(&block->_, sw);
+		FREE(&gp_alloc, block);
+		break;
+	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_IMAGE: {
+		size_t i = 0;
+		for ( ; i < state.configs_count; ++i) {
+			config_t *config = &state.configs[i];
+			if (config->loaded_image.ptr == block->_.in._.image.data.ptr) {
+				su_abort(errno, "Failed to load image: " STRING_PF_FMT, STRING_PF_ARGS(config->image_path));
+			}
 		}
+		break;
 	}
+	case SW_LAYOUT_BLOCK_EVENT_PREPARE:
+		if (block->surface) {
+			block->_.in.content_width = block->surface->out.width;
+			block->_.in.content_height = block->surface->out.height;
+		}
+		break;
+	case SW_LAYOUT_BLOCK_EVENT_PREPARED:
+		break;
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	return TRUE;
 }
 
 static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	sw_wayland_surface_t *surface;
 	static sw_wayland_region_t empty_input_region = { 0, 0, 0, 0 };
-	sw_layout_block_t *root;
+	layout_block_t *root;
 	sw_wayland_surface_layer_t *layer;
 
 	ALLOCCT(surface, &gp_alloc);
-	ALLOCCT(root, &gp_alloc);
-
-	surface->in.error = surface_handle_error;
-	surface->in.destroy = surface_destroy_sw;
+	surface->in.type = SW_WAYLAND_SURFACE_TYPE_LAYER;
+	surface->in.notify = surface_handle_event;
 	surface->in.input_regions = &empty_input_region;
 	surface->in.input_regions_count = 1;
 
@@ -247,53 +268,32 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	layer->anchor = SW_WAYLAND_SURFACE_LAYER_ANCHOR_ALL;
 	layer->layer = SW_WAYLAND_SURFACE_LAYER_LAYER_BACKGROUND;
 
+	ALLOCCT(root, &gp_alloc);
+	root->_.in.notify = layout_block_handle_event;
+
+	surface->in.root = &root->_;
+
 	switch (config->mode) {
 	case BACKGROUND_MODE_FILL: /* TODO */
 	case BACKGROUND_MODE_FIT: /* TODO */
-	case BACKGROUND_MODE_STRETCH: {
-		sw_layout_block_t *image;
-		ALLOCCT(image, &gp_alloc);
-		
-		image->in.error = layout_block_handle_error;
-		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
-		image->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
-		image->in._.image.data = config->loaded_image;
-		LLIST_APPEND_TAIL(&root->in._.composite.children, image);
-
-		root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-		root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
+	case BACKGROUND_MODE_CENTER: /* TODO */
+	case BACKGROUND_MODE_TILE:
+		root->_.in.content_repeat = SW_LAYOUT_BLOCK_CONTENT_REPEAT_NORMAL;
+		ATTRIBUTE_FALLTHROUGH;
+	case BACKGROUND_MODE_STRETCH:
+		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
+		root->_.in._.image.data = config->loaded_image;
+		root->surface = surface;
 		break;
-	}
-	case BACKGROUND_MODE_CENTER: {
-		sw_layout_block_t *image;
-		ALLOCCT(image, &gp_alloc);
-		image->in.error = layout_block_handle_error;
-		image->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
-		image->in._.image.data = config->loaded_image;
-		LLIST_APPEND_TAIL(&root->in._.composite.children, image);
-
-		root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-		root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
-		root->in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
-		break;
-	}
-	case BACKGROUND_MODE_TILE: {
-		root->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
-		root->in.content_repeat = SW_LAYOUT_BLOCK_CONTENT_REPEAT_NORMAL;
-		root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
-		root->in._.image.data = config->loaded_image;
-		break;
-	}
 	case BACKGROUND_MODE_SOLID_COLOR:
-		root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
-		root->in.color._.argb32.u32 = config->color.u32;
+		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
+		root->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
+		root->_.in.color._.argb32.u32 = config->color.u32;
 		break;
 	case BACKGROUND_MODE_INVALID:
 	default:
 		ASSERT_UNREACHABLE;
 	}
-
-	surface->in.root = root;
 
 	LLIST_APPEND_TAIL(&state.sw.in.backend.wayland.layers, surface);
 

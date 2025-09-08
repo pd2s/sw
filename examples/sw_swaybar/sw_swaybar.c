@@ -79,6 +79,8 @@ typedef struct output {
 
 typedef struct bar {
 	sw_wayland_surface_t _; /* must be first */
+	bool32_t dirty;
+	PAD32;
 	/* ? TODO: block arena alloc */
 } bar_t;
 
@@ -89,7 +91,10 @@ typedef enum layout_block_type {
 	LAYOUT_BLOCK_TYPE_STATUS_LINE_I3BAR
 #if WITH_TRAY
 	,LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM
+	,LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE
 	,LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM
+	,LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_IMAGE
+	,LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR
 #endif /* WITH_TRAY */
 } layout_block_type_t;
 
@@ -310,45 +315,70 @@ static void scratch_alloc_free(allocator_t *alloc, void *ptr) {
 static allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
 static void layout_block_destroy(layout_block_t *block) {
-	/* TODO: remove recursion */
-
-	switch (block->_.in.type) {
-	case SW_LAYOUT_BLOCK_TYPE_COMPOSITE: {
-		sw_layout_block_t *b = block->_.in._.composite.children.head;
-		for ( ; b; ) {
-			sw_layout_block_t *next = b->next;
-			layout_block_destroy((layout_block_t *)b);
-			b = next;
-		}
-		break;
-	}
-	case SW_LAYOUT_BLOCK_TYPE_TEXT:
-	case SW_LAYOUT_BLOCK_TYPE_IMAGE:
-	case SW_LAYOUT_BLOCK_TYPE_SPACER:
-	default:
-		break;
-	}
-
-	if (block->_.out.fini) {
-		block->_.out.fini(&block->_, &state.sw);
-	}
-
+	block->_.out.fini(&block->_, &state.sw);
 	FREE(&gp_alloc, block);
 }
 
-#if DEBUG
-static void ATTRIBUTE_NORETURN layout_block_handle_error(sw_layout_block_t *block, sw_context_t *sw, sw_status_t status) {
-	NOTUSED(block); NOTUSED(sw);
-	su_abort(1, "layout_block_handle_error: %u", (uint32_t)status);
+static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_context_t *sw, sw_layout_block_event_t event) {
+	layout_block_t *block = (layout_block_t *)sw_block;
+
+	NOTUSED(sw);
+
+	switch (event) {
+	case SW_LAYOUT_BLOCK_EVENT_DESTROY:
+		layout_block_destroy(block);
+		break;
+	case SW_LAYOUT_BLOCK_EVENT_PREPARE:
+		switch (block->type) {
+		case LAYOUT_BLOCK_TYPE_DUMMY:
+		case LAYOUT_BLOCK_TYPE_WORKSPACE:
+		case LAYOUT_BLOCK_TYPE_BINDING_MODE_INDICATOR:
+		case LAYOUT_BLOCK_TYPE_STATUS_LINE_I3BAR:
+			if (block->block) {
+				block->_.in.min_width = block->block->_.out.dim.content_width;	
+			}
+			break;
+#if WITH_TRAY
+		case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM:
+			break;
+		case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM:
+			block->_.in.min_width = block->_.in.min_height = block->block->_.out.dim.content_height;
+			break;
+		case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE:
+			block->_.in.content_width = block->_.in.content_height =
+				(block->block->_.out.dim.content_height - (state.config.tray_padding * 2));
+			break;
+		case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_IMAGE:
+			block->_.in.content_width = block->_.in.content_height =
+				block->block->_.out.dim.content_height;
+			break;
+		case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR:
+			block->_.in.min_width = block->_.in.max_width = block->_.in.min_height = block->_.in.max_height =
+				(block->block->_.out.dim.content_height + (state.config.tray_padding * 2));
+			break;
+#endif /* WITH_TRAY */
+		default:
+			ASSERT_UNREACHABLE;
+		}
+		break;
+	case SW_LAYOUT_BLOCK_EVENT_PREPARED:
+		break;
+	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_IMAGE:
+	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_FONT:
+	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_TEXT:
+
+		break;
+	default:
+		ASSERT_UNREACHABLE;
+	}
+
+	return TRUE;
 }
-#endif /* DEBUG */
 
 static layout_block_t *layout_block_create(void) {
 	layout_block_t *block;
 	ALLOCCT(block, &gp_alloc);
-#if DEBUG
-	block->_.in.error = layout_block_handle_error;
-#endif /* DEBUG */
+	block->_.in.notify = layout_block_handle_event;
 
 	return block;
 }
@@ -362,12 +392,10 @@ static void layout_block_init_text(sw_layout_block_t *block, string_t *text) {
 	}
 }
 
-static void bar_update(bar_t *);
-
-static void update_bars(void) {
+static void bars_set_dirty(void) {
 	sw_wayland_surface_t *bar = state.sw.in.backend.wayland.layers.head;
 	for ( ; bar; bar = bar->next) {
-		bar_update((bar_t *)bar);
+		((bar_t *)bar)->dirty = TRUE;
 	}
 } 
 
@@ -452,30 +480,7 @@ static bool32_t workspace_block_pointer_button(layout_block_t *block,
 	return TRUE;
 }
 
-#if DEBUG
-static void ATTRIBUTE_NORETURN surface_handle_error(sw_wayland_surface_t *surface, sw_context_t *sw, sw_status_t status) {
-	NOTUSED(surface); NOTUSED(sw);
-	su_abort(1, "surface_handle_error: %u", (uint32_t)status);
-}
-#endif /* DEBUG */
-
 #if WITH_TRAY
-static bool32_t tray_sni_item_block_handle_prepare(sw_layout_block_t *block, sw_context_t *sw) {
-	int32_t v = ((layout_block_t *)block)->block->_.out.dim.content_height;
-	NOTUSED(sw);
-	block->in.min_width = v;
-	block->in.min_height = v;
-	return TRUE;
-}
-
-static bool32_t tray_sni_item_image_block_handle_prepare(sw_layout_block_t *block, sw_context_t *sw) {
-	int32_t v = (((layout_block_t *)block)->block->_.out.dim.content_height - (state.config.tray_padding * 2));
-	NOTUSED(sw);
-	block->in.content_width = v;
-	block->in.content_height = v;
-	return TRUE;
-}
-
 #if SW_WITH_SVG || SW_WITH_PNG
 static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
 	config_t *config = &state.config;
@@ -516,17 +521,24 @@ static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
 }
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
-static void tray_describe_sni_items(bar_t *bar) {
+static bool32_t tray_visible_on_bar(bar_t *bar) {
 	config_t *config = &state.config;
-	bool32_t visible = ((config->tray_outputs_count > 0) ? FALSE : TRUE);
-	size_t i;
-	for ( i = 0; i < config->tray_outputs_count; ++i) {
-		if (string_equal(bar->_.in._.layer.output->out.name, config->tray_outputs[i])) {
-			visible = TRUE;
-			break;
+	bool32_t visible = TRUE;
+	if (config->tray_outputs_count > 0) {
+		size_t i;
+		visible = FALSE;
+		for ( i = 0; i < config->tray_outputs_count; ++i) {
+			if (string_equal(bar->_.in._.layer.output->out.name, config->tray_outputs[i])) {
+				visible = TRUE;
+				break;
+			}
 		}
 	}
-	if (visible) {
+	return visible;
+}
+
+static void tray_describe_sni_items(bar_t *bar) {
+	if (tray_visible_on_bar(bar)) {
 		sni_item_t *item = sni_server.out.items.head;
 		for ( ; item; item = item->next) {
 			sni_item_properties_t *props = item->out.properties;
@@ -540,7 +552,6 @@ static void tray_describe_sni_items(bar_t *bar) {
 			/*block->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;*/
 			block->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 			block->block = (layout_block_t *)bar->_.in.root->in._.composite.children.head;
-			block->_.in.prepare = tray_sni_item_block_handle_prepare;
 
 			LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
 
@@ -552,7 +563,7 @@ static void tray_describe_sni_items(bar_t *bar) {
 				return;
 			}
 
-			switch(props->status) {
+			switch (props->status) {
 			case SNI_ITEM_STATUS_ACTIVE:
 				icon_name = props->icon_name;
 				if (props->icon_pixmaps_count > 0) {
@@ -589,10 +600,10 @@ static void tray_describe_sni_items(bar_t *bar) {
 
 			if (icon.type) {
 				layout_block_t *image = layout_block_create();
+				image->type = LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE;
 				image->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				image->_.in._.image = icon;
 				image->block = (layout_block_t *)bar->_.in.root->in._.composite.children.head;
-				image->_.in.prepare = tray_sni_item_image_block_handle_prepare;
 
 				block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 				block->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
@@ -605,32 +616,18 @@ static void tray_describe_sni_items(bar_t *bar) {
 }
 
 static void tray_dbusmenu_menu_popup_destroy(tray_dbusmenu_menu_popup_t *popup) {
-	/* TODO: remove recursion */
-
-	sw_wayland_surface_t *popup_ = popup->_.in.popups.head;
-
 	sni_dbusmenu_menu_item_event(popup->menu->parent_menu_item,
 		SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLOSED, TRUE);
 
-	for ( ; popup_; ) {
-		sw_wayland_surface_t *next = popup_->next;
-		tray_dbusmenu_menu_popup_destroy((tray_dbusmenu_menu_popup_t *)popup_);
-		popup_ = next;
-	}
-
-	if (popup->_.out.fini) {
-		popup->_.out.fini(&popup->_, &state.sw);
-	}
-
-	layout_block_destroy((layout_block_t *)popup->_.in.root);
-
-	state.update = TRUE;
+	popup->_.out.fini(&popup->_, &state.sw);
 
 	if (popup == state.tray.popup) {
 		state.tray.popup = NULL;
 	}
 
 	FREE(&gp_alloc, popup);
+
+	state.update = TRUE;
 }
 
 static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_menu_t *menu,
@@ -667,11 +664,9 @@ static void tray_dbusmenu_menu_item_pointer_button(sni_dbusmenu_menu_item_t *men
 		return;
 	}
 
-	if ((menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR)
-			&& menu_item->enabled) {
+	if ((menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) && menu_item->enabled) {
 		sni_dbusmenu_menu_item_event(menu_item,
 			SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLICKED, TRUE);
-
 #if 1
 		ASSERT(state.tray.popup->parent->in.popups.count == 1);
 		MEMSET(&state.tray.popup->parent->in.popups, 0, sizeof(state.tray.popup->parent->in.popups));
@@ -698,7 +693,7 @@ static sw_color_argb32_t tray_dbusmenu_menu_item_get_text_color(sni_dbusmenu_men
 	}
 }
 
-static void tray_dbusmenu_menu_popup_process_pointer_pos(tray_dbusmenu_menu_popup_t *popup,
+static void tray_dbusmenu_menu_popup_pointer_pos(tray_dbusmenu_menu_popup_t *popup,
 		int32_t x, int32_t y) {
 	sw_layout_block_t *test = popup->_.in.root->in._.composite.children.head;
 	sw_layout_block_t *block;
@@ -731,72 +726,6 @@ static void tray_dbusmenu_menu_popup_process_pointer_pos(tray_dbusmenu_menu_popu
 		tray_dbusmenu_menu_item_pointer_leave(menu_item, &popup->focused_block->_);
 		popup->focused_block = NULL;
 	}
-}
-
-static void tray_dbusmenu_menu_popup_handle_pointer_enter(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
-	NOTUSED(sw);
-	if (popup->seat != pointer->out.seat) {
-		return;
-	}
-
-	popup->focused_block = NULL;
-	tray_dbusmenu_menu_popup_process_pointer_pos(popup, pointer->out.pos_x, pointer->out.pos_y);
-}
-
-static void tray_dbusmenu_menu_popup_handle_pointer_motion(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
-	NOTUSED(sw);
-	if (popup->seat != pointer->out.seat) {
-		return;
-	}
-
-	tray_dbusmenu_menu_popup_process_pointer_pos(popup, pointer->out.pos_x, pointer->out.pos_y);
-}
-
-static void tray_dbusmenu_menu_popup_handle_pointer_leave(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
-	NOTUSED(sw);
-	if (popup->seat != pointer->out.seat) {
-		return;
-	}
-
-	if (popup->focused_block) {
-		sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
-		tray_dbusmenu_menu_item_pointer_leave(menu_item, &popup->focused_block->_);
-		popup->focused_block = NULL;
-	}
-}
-
-static void tray_dbusmenu_menu_popup_handle_pointer_button(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
-	NOTUSED(sw);
-	if (popup->seat != pointer->out.seat) {
-		return;
-	}
-
-	if (popup->focused_block) {
-		sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
-		tray_dbusmenu_menu_item_pointer_button(menu_item, pointer->out.btn_code, pointer->out.btn_state);
-	}
-}
-
-static bool32_t tray_dbusmenu_menu_popup_icon_block_handle_prepare(sw_layout_block_t *block, sw_context_t *sw) {
-	int32_t v = ((layout_block_t *)block)->block->_.out.dim.content_height;
-	NOTUSED(sw);
-	block->in.content_width = v;
-	block->in.content_height = v;
-	return TRUE;
-}
-
-static bool32_t tray_dbusmenu_menu_popup_decorator_block_handle_prepare(sw_layout_block_t *block, sw_context_t *sw) {
-	int32_t v = (((layout_block_t *)block)->block->_.out.dim.content_height + (state.config.tray_padding * 2));
-	NOTUSED(sw);
-	block->in.min_width = v;
-	block->in.max_width = v;
-	block->in.min_height = v;
-	block->in.max_height = v;
-	return TRUE;
 }
 
 static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, sni_dbusmenu_menu_t *menu) {
@@ -883,8 +812,8 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				icon->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				icon->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				if (label) {
+					icon->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_IMAGE;
 					icon->block = label;
-					icon->_.in.prepare = tray_dbusmenu_menu_popup_icon_block_handle_prepare;
 				}
 				tray_find_icon(menu_item->icon_name, &icon->_.in._.image);
 				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &icon->_);
@@ -906,8 +835,8 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				icon->_.in._.image.data.len = menu_item->icon_data.nbytes;
 				icon->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				if (label) {
+					icon->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_IMAGE;
 					icon->block = label;
-					icon->_.in.prepare = tray_dbusmenu_menu_popup_icon_block_handle_prepare;
 				}
 				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &icon->_);
 			}
@@ -930,9 +859,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					toggle->_.in.borders[3].width = config->tray_padding;
 				}
 				if (label) {
-					toggle->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
+					toggle->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
 					toggle->block = label;
-					toggle->_.in.prepare = tray_dbusmenu_menu_popup_decorator_block_handle_prepare;
+					toggle->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
 				}
 				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &toggle->_);
 				needs_spacer = TRUE;
@@ -956,9 +885,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					submenu->_.in.borders[3].width = config->tray_padding;
 				}
 				if (label) {
-					submenu->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
+					submenu->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
 					submenu->block = label;
-					submenu->_.in.prepare = tray_dbusmenu_menu_popup_decorator_block_handle_prepare;
+					submenu->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
 				}
 				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &submenu->_);
 				needs_spacer = TRUE;
@@ -977,9 +906,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				layout_block_t *b = (layout_block_t *)block->in._.composite.children.head;
 				if (b) {
 					layout_block_t *spacer = layout_block_create();
-					/*spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER; */
+					spacer->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
 					spacer->block = b;
-					spacer->_.in.prepare = tray_dbusmenu_menu_popup_decorator_block_handle_prepare;
+					/*spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER; */
 					spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 					LLIST_APPEND_TAIL(&block->in._.composite.children, &spacer->_);
 				}
@@ -990,11 +919,59 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 	state.update = TRUE;
 }
 
-static void tray_dbusmenu_menu_popup_destroy_sw(sw_wayland_surface_t *popup, sw_context_t *sw) {
-	tray_dbusmenu_menu_popup_t *p = (tray_dbusmenu_menu_popup_t *)popup;
-	NOTUSED(sw);
-	LLIST_POP(&p->parent->in.popups, &p->_);
-	tray_dbusmenu_menu_popup_destroy(p);
+static bool32_t tray_dbusmenu_menu_popup_handle_event(sw_wayland_notify_source_t *source,
+		sw_context_t *ctx, sw_wayland_event_t event) {
+	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
+	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
+
+	NOTUSED(ctx);
+
+	switch (event) {
+	case SW_WAYLAND_EVENT_SURFACE_CLOSED: {
+		popup = (tray_dbusmenu_menu_popup_t *)source;
+		MEMSET(&popup->parent->in.popups, 0, sizeof(popup->parent->in.popups));
+		tray_dbusmenu_menu_popup_destroy(popup);
+		break;
+	}
+	case SW_WAYLAND_EVENT_POINTER_ENTER:
+		if (popup->seat == pointer->out.seat) {
+			popup->focused_block = NULL;
+			tray_dbusmenu_menu_popup_pointer_pos(popup, pointer->out.pos_x, pointer->out.pos_y);
+		}
+		break;
+	case SW_WAYLAND_EVENT_POINTER_MOTION:
+		if (popup->seat == pointer->out.seat) {
+			tray_dbusmenu_menu_popup_pointer_pos(popup, pointer->out.pos_x, pointer->out.pos_y);
+		}
+		break;
+	case SW_WAYLAND_EVENT_POINTER_LEAVE:
+		if ((popup->seat == pointer->out.seat) && popup->focused_block) {
+			sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
+			tray_dbusmenu_menu_item_pointer_leave(menu_item, &popup->focused_block->_);
+			popup->focused_block = NULL;
+		}
+		break;
+	case SW_WAYLAND_EVENT_POINTER_BUTTON:
+		if ((popup->seat == pointer->out.seat) && popup->focused_block) {
+			sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
+			tray_dbusmenu_menu_item_pointer_button(menu_item, pointer->out.btn_code, pointer->out.btn_state);
+		}
+		break;
+	case SW_WAYLAND_EVENT_POINTER_SCROLL:
+		break;
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
+	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+		/* TODO: handle/log */
+		break;
+	default:
+		ASSERT_UNREACHABLE;
+	}
+	
+	return TRUE;
 }
 
 static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_menu_t *menu,
@@ -1010,24 +987,17 @@ static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_
 	popup->parent = parent;
 	popup->seat = seat;
 	popup->_.in.type = SW_WAYLAND_SURFACE_TYPE_POPUP;
+	popup->_.in.notify = tray_dbusmenu_menu_popup_handle_event;
 	popup->_.in.width = -1;
 	popup->_.in.height = -1;
-	popup->_.in.root = (sw_layout_block_t *)layout_block_create();
-	popup->_.in.destroy = tray_dbusmenu_menu_popup_destroy_sw;
-	popup->_.in.enter = tray_dbusmenu_menu_popup_handle_pointer_enter;
-	popup->_.in.motion = tray_dbusmenu_menu_popup_handle_pointer_motion;
-	popup->_.in.leave = tray_dbusmenu_menu_popup_handle_pointer_leave;
-	popup->_.in.button = tray_dbusmenu_menu_popup_handle_pointer_button;
 	popup->_.in._.popup.x = x;
 	popup->_.in._.popup.y = y;
 	popup->_.in._.popup.grab = seat->out.pointer;
 	popup->_.in._.popup.gravity = SW_WAYLAND_SURFACE_POPUP_GRAVITY_TOP_LEFT;
 	popup->_.in._.popup.constraint_adjustment = (SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_FLIP_X
 		| SW_WAYLAND_SURFACE_POPUP_CONSTRAINT_ADJUSTMENT_FLIP_Y);
-#if DEBUG
-	popup->_.in.error = surface_handle_error;
-#endif /* DEBUG */
 
+	popup->_.in.root = (sw_layout_block_t *)layout_block_create();
 	popup->_.in.root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 	popup->_.in.root->in._.composite.layout = SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL;
 	popup->_.in.root->in.color._.argb32 = state.config.colors.focused_background;
@@ -1133,8 +1103,15 @@ static void tray_sni_item_block_pointer_button(layout_block_t *block,
 }
 
 static void tray_sni_item_properties_updated_sni_server(sni_item_t *item) {
+	bar_t *bar;
+
 	NOTUSED(item);
-	update_bars();
+
+	for ( bar = (bar_t *)state.sw.in.backend.wayland.layers.head; bar; bar = (bar_t *)bar->_.next) {
+		if (tray_visible_on_bar(bar)) {
+			bar->dirty = TRUE;
+		}
+	}
 }
 
 static void tray_sni_item_dbusmenu_menu_updated_sni_server(sni_item_t *item) {
@@ -1165,7 +1142,14 @@ static void tray_sni_item_destroy_sni_server(sni_item_t *item) {
 
 	FREE(&gp_alloc, item);
 
-	update_bars();
+	{
+		bar_t *bar = (bar_t *)state.sw.in.backend.wayland.layers.head;
+		for ( ; bar; bar = (bar_t *)bar->_.next) {
+			if (tray_visible_on_bar(bar)) {
+				bar->dirty = TRUE;
+			}
+		}
+	}
 }
 
 static sni_item_t *tray_sni_item_create_sni_server(void) {
@@ -1217,29 +1201,14 @@ static void tray_update(void) {
 #endif /* WITH_TRAY */
 
 static void bar_destroy(bar_t *bar) {
-	sw_wayland_surface_t *popup_;
-
 	if (state.status.active && (state.sw.in.backend.wayland.layers.count == 0)) {
 		kill(-state.status.pid, state.status.stop_signal);
 	}
 
-#if WITH_TRAY
-	for ( popup_ = bar->_.in.popups.head; popup_; ) {
-		sw_wayland_surface_t *next = popup_->next;
-		tray_dbusmenu_menu_popup_destroy((tray_dbusmenu_menu_popup_t *)popup_);
-		popup_ = next;
-	}
-#endif /* WITH_TRAY */
-
-	if (bar->_.out.fini) {
-		bar->_.out.fini(&bar->_, &state.sw);
-	}
-
-	layout_block_destroy((layout_block_t *)bar->_.in.root);
+	bar->_.out.fini(&bar->_, &state.sw);
+	FREE(&gp_alloc, bar);
 
 	state.update = TRUE;
-
-	FREE(&gp_alloc, bar);
 }
 
 static void output_destroy(output_t *output) {
@@ -1519,15 +1488,8 @@ static void status_i3bar_block_pointer_button(layout_block_t *block,
 
 	if (write(state.status.write_fd, writer.buf.data, writer.buf.idx) == -1) {
 		status_set_error(string("[failed to write click event]"));
-		update_bars();
+		bars_set_dirty();
 	}
-}
-
-static bool32_t status_i3bar_block_handle_prepare(sw_layout_block_t *block, sw_context_t *sw) {
-	layout_block_t *b = (layout_block_t *)block;
-	NOTUSED(sw);
-	b->_.in.min_width = b->block->_.out.dim.content_width;
-	return TRUE;
 }
 
 static void status_describe(bar_t *bar) {
@@ -1633,7 +1595,6 @@ static void status_describe(bar_t *bar) {
 				LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &min_width->_);
 
 				block->block = min_width;
-				block->_.in.prepare = status_i3bar_block_handle_prepare;
 			} else if (i3bar_block->min_width > 0) {
 				block->_.in.min_width = i3bar_block->min_width;
 			}
@@ -2188,7 +2149,7 @@ static void bar_update(bar_t *bar) {
 	output_t *output = (output_t *)bar->_.in._.layer.output;
 	config_t *config = &state.config;
 	layout_block_t *min_height = layout_block_create();
-	string_t min_h = string(" ");
+	string_t min_height_str = string(" ");
 
 	sw_layout_block_t *block = bar->_.in.root->in._.composite.children.head;
 	for ( ; block; ) {
@@ -2198,7 +2159,7 @@ static void bar_update(bar_t *bar) {
 	}
 	MEMSET(&bar->_.in.root->in._.composite.children, 0, sizeof(bar->_.in.root->in._.composite.children));
 
-	layout_block_init_text(&min_height->_, &min_h);
+	layout_block_init_text(&min_height->_, &min_height_str);
 	min_height->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
 	LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &min_height->_);
 
@@ -2761,7 +2722,10 @@ static bool32_t bar_process_button_event(bar_t *bar,
 			case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM:
 				tray_sni_item_block_pointer_button((layout_block_t *)block, bar, code, state_, x, y, seat);
 				return TRUE;
+			case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE:
 			case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM:
+			case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_IMAGE:
+			case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR:
 #endif /* WITH_TRAY */
 			case LAYOUT_BLOCK_TYPE_BINDING_MODE_INDICATOR:
 			case LAYOUT_BLOCK_TYPE_DUMMY:
@@ -2785,72 +2749,84 @@ static bool32_t bar_process_button_event(bar_t *bar,
 	return FALSE;
 }
 
-static void bar_handle_pointer_button(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	NOTUSED(sw);
-	bar_process_button_event((bar_t *)pointer->out.focused_surface,
-		pointer->out.btn_code, pointer->out.btn_state,
-		pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat);
-}
+static bool32_t bar_handle_event(sw_wayland_notify_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
+	NOTUSED(ctx);
 
-static void bar_handle_pointer_scroll(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	uint32_t button_code;
-	bool32_t negative = (pointer->out.scroll_vector_length < 0);
-	bar_t *bar = (bar_t *)pointer->out.focused_surface;
-	
-	NOTUSED(sw);
-
-	switch (pointer->out.scroll_axis) {
-	case SW_WAYLAND_POINTER_AXIS_VERTICAL_SCROLL:
-		button_code = negative ? KEY_SCROLL_UP : KEY_SCROLL_DOWN;
+	switch (event) {
+	case SW_WAYLAND_EVENT_SURFACE_CLOSED: {
+		sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
+		LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
+		bar_destroy((bar_t *)source);
 		break;
-	case SW_WAYLAND_POINTER_AXIS_HORIZONTAL_SCROLL:
-		button_code = negative ? KEY_SCROLL_LEFT : KEY_SCROLL_RIGHT;
+	}
+	case SW_WAYLAND_EVENT_POINTER_BUTTON: {
+		sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
+		bar_process_button_event( (bar_t *)pointer->out.focused_surface,
+				pointer->out.btn_code, pointer->out.btn_state,
+				pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat);
+		break;
+	}
+	case SW_WAYLAND_EVENT_POINTER_SCROLL: {
+		sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
+		bar_t *bar = (bar_t *)pointer->out.focused_surface;
+		bool32_t negative = (pointer->out.scroll_vector_length < 0);
+		uint32_t button_code;
+
+		switch (pointer->out.scroll_axis) {
+		case SW_WAYLAND_POINTER_AXIS_VERTICAL_SCROLL:
+			button_code = (negative ? KEY_SCROLL_UP : KEY_SCROLL_DOWN);
+			break;
+		case SW_WAYLAND_POINTER_AXIS_HORIZONTAL_SCROLL:
+			button_code = (negative ? KEY_SCROLL_LEFT : KEY_SCROLL_RIGHT);
+			break;
+		default:
+			ASSERT_UNREACHABLE;
+		}
+
+		if (!bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED,
+					pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat)) {
+			bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED,
+				pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat);
+		}
+		break;
+	}
+	case SW_WAYLAND_EVENT_POINTER_ENTER:
+	case SW_WAYLAND_EVENT_POINTER_LEAVE:
+	case SW_WAYLAND_EVENT_POINTER_MOTION:
+		break;
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
+	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
+	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
+	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+		/* TODO: handle/log */
 		break;
 	default:
 		ASSERT_UNREACHABLE;
 	}
 
-	if (!bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED,
-				pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat)) {
-		bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED,
-			pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat);
-	}
-}
-
-static void bar_destroy_sw(sw_wayland_surface_t *bar, sw_context_t *sw) {
-	NOTUSED(sw);
-	LLIST_POP(&state.sw.in.backend.wayland.layers, bar);
-	bar_destroy((bar_t *)bar);
+	return TRUE;
 }
 
 static bar_t *bar_create(output_t *output) {
 	bar_t *bar;
-	ALLOCCT(bar, &gp_alloc);
 
 	if (state.status.active && (state.sw.in.backend.wayland.layers.count == 0)) {
 		kill(-state.status.pid, state.status.cont_signal);
 	}
 
+	ALLOCCT(bar, &gp_alloc);
+	bar->dirty = TRUE;
 	bar->_.in.type = SW_WAYLAND_SURFACE_TYPE_LAYER;
-	bar->_.in.root = (sw_layout_block_t *)layout_block_create();
+	bar->_.in.notify = bar_handle_event;
 	bar->_.in.height = -1;
-	bar->_.in.destroy = bar_destroy_sw;
-	bar->_.in.button = bar_handle_pointer_button;
-	bar->_.in.scroll = bar_handle_pointer_scroll;
 	bar->_.in._.layer.output = &output->_;
 	bar->_.in._.layer.exclusive_zone = INT_MIN;
-	bar->_.in._.layer.margins[0] = -1;
-	bar->_.in._.layer.margins[1] = -1;
-	bar->_.in._.layer.margins[2] = -1;
-	bar->_.in._.layer.margins[3] = -1;
-#if DEBUG
-	bar->_.in.error = surface_handle_error;
-#endif /* DEBUG */
 
+	bar->_.in.root = (sw_layout_block_t *)layout_block_create();
 	bar->_.in.root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 	bar->_.in.root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
-
-	bar_update(bar);
 
 	return bar;
 }
@@ -3049,7 +3025,7 @@ static void process_ipc(void) {
 					bar = bar_create((output_t *)output);
 					LLIST_APPEND_TAIL(&state.sw.in.backend.wayland.layers, &bar->_);
 				} else {
-					bar_update(bar);
+					bar->dirty = TRUE;
 				}
 			} else {
 				sw_wayland_surface_t *bar = state.sw.in.backend.wayland.layers.head;
@@ -3243,7 +3219,7 @@ static void run(void) {
 		if (state.status.active) {
 			if (state.poll_fds[POLL_FD_STATUS].revents & (state.poll_fds[POLL_FD_STATUS].events | err)) {
 				if (status_process()) {
-					update_bars();
+					bars_set_dirty();
 				}
 			}
 		}
@@ -3257,6 +3233,16 @@ static void run(void) {
 			}
 		}
 #endif /* WITH_TRAY */
+
+		{
+			bar_t *bar = (bar_t *)state.sw.in.backend.wayland.layers.head;
+			for ( ; bar; bar = (bar_t *)bar->_.next) {
+				if (bar->dirty) {
+					bar_update(bar);
+					bar->dirty = FALSE;
+				}
+			}
+		}
 	}
 }
 
