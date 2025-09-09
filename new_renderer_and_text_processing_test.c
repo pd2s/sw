@@ -778,20 +778,20 @@ static bool32_t surface_handle_event(sw_wayland_notify_source_t *source, sw_cont
     DEBUG_LOG("event: %u", event);
 
     switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSED:
+	case SW_WAYLAND_EVENT_SURFACE_CLOSE:
         running = FALSE;
         break;
+    case SW_WAYLAND_EVENT_POINTER_BUTTON:
+	case SW_WAYLAND_EVENT_POINTER_ENTER:
+	case SW_WAYLAND_EVENT_POINTER_LEAVE:
+	case SW_WAYLAND_EVENT_POINTER_MOTION:
+	case SW_WAYLAND_EVENT_POINTER_SCROLL:
 	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
 	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
 	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
 	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
 	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
 	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
-	case SW_WAYLAND_EVENT_POINTER_ENTER:
-	case SW_WAYLAND_EVENT_POINTER_LEAVE:
-	case SW_WAYLAND_EVENT_POINTER_MOTION:
-	case SW_WAYLAND_EVENT_POINTER_BUTTON:
-	case SW_WAYLAND_EVENT_POINTER_SCROLL:
         break;
     default:
         ASSERT_UNREACHABLE;
@@ -810,7 +810,7 @@ int main(void) {
     sw_pixmap_t *pm;
     static struct sigaction sigact;
     bool32_t c;
-    sw_wayland_surface_t *toplevel;
+    sw_wayland_surface_t *surface;
     sw_layout_block_t *root;
 
     setlocale(LC_ALL, "");
@@ -836,12 +836,13 @@ int main(void) {
     root->in._.image.data.ptr = pm;
     root->in._.image.data.len = (8 + (pm->width * pm->height * 4));
 
-    ALLOCCT(toplevel, &gp_alloc);
-    toplevel->in.notify = surface_handle_event;
-    toplevel->in._.toplevel.decoration_mode = SW_WAYLAND_TOPLEVEL_DECORATION_MODE_SERVER_SIDE;
-    toplevel->in.root = root;
+    ALLOCCT(surface, &gp_alloc);
+    surface->in.type = SW_WAYLAND_SURFACE_TYPE_TOPLEVEL;
+    surface->in.notify = surface_handle_event;
+    surface->in._.toplevel.decoration_mode = SW_WAYLAND_TOPLEVEL_DECORATION_MODE_SERVER_SIDE;
+    surface->in.root = root;
 
-    LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, toplevel);
+    LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, surface);
 
     c = sw_set(&sw);
     ASSERT(c == TRUE);

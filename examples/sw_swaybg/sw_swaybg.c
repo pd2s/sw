@@ -75,6 +75,8 @@ typedef struct config {
 
 typedef struct layout_block {
 	sw_layout_block_t _; /* must be first */
+	background_mode_t mode;
+	int32_t ratio;
 	sw_wayland_surface_t *surface;
 } layout_block_t;
 
@@ -191,7 +193,7 @@ static bool32_t surface_handle_event(sw_wayland_notify_source_t *source,
 	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
 
 	switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSED:
+	case SW_WAYLAND_EVENT_SURFACE_CLOSE:
 		LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
 		surface->out.fini(surface, sw);
 		FREE(&gp_alloc, surface);
@@ -276,12 +278,20 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	switch (config->mode) {
 	case BACKGROUND_MODE_FILL: /* TODO */
 	case BACKGROUND_MODE_FIT: /* TODO */
-	case BACKGROUND_MODE_CENTER: /* TODO */
-	case BACKGROUND_MODE_TILE:
-		root->_.in.content_repeat = SW_LAYOUT_BLOCK_CONTENT_REPEAT_NORMAL;
-		ATTRIBUTE_FALLTHROUGH;
 	case BACKGROUND_MODE_STRETCH:
 		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
+		root->_.in._.image.data = config->loaded_image;
+		root->surface = surface;
+		break;
+	case BACKGROUND_MODE_CENTER: /* ? TODO: match original swaybg behaviour with images > output w/h */
+		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
+		root->_.in._.image.data = config->loaded_image;
+		root->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
+		root->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
+		break;
+	case BACKGROUND_MODE_TILE:
+		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
+		root->_.in.content_repeat = SW_LAYOUT_BLOCK_CONTENT_REPEAT_NORMAL;
 		root->_.in._.image.data = config->loaded_image;
 		root->surface = surface;
 		break;

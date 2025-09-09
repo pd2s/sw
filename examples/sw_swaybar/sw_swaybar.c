@@ -927,7 +927,7 @@ static bool32_t tray_dbusmenu_menu_popup_handle_event(sw_wayland_notify_source_t
 	NOTUSED(ctx);
 
 	switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSED: {
+	case SW_WAYLAND_EVENT_SURFACE_CLOSE: {
 		popup = (tray_dbusmenu_menu_popup_t *)source;
 		MEMSET(&popup->parent->in.popups, 0, sizeof(popup->parent->in.popups));
 		tray_dbusmenu_menu_popup_destroy(popup);
@@ -1508,7 +1508,7 @@ static void status_describe(bar_t *bar) {
 			s.free_contents = FALSE;
 			s.nul_terminated = FALSE;
 			layout_block_init_text(&block->_, &s);
-			block->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
+			block->_.in.expand = (SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM);
 			block->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 			if (status->protocol == STATUS_PROTOCOL_TEXT) {
 				block->_.in._.text.color._.argb32 = output->focused ?
@@ -2753,7 +2753,7 @@ static bool32_t bar_handle_event(sw_wayland_notify_source_t *source, sw_context_
 	NOTUSED(ctx);
 
 	switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSED: {
+	case SW_WAYLAND_EVENT_SURFACE_CLOSE: {
 		sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
 		LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
 		bar_destroy((bar_t *)source);

@@ -5,7 +5,7 @@
 #error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
 #endif
 
-#define SU_IMPLEMENTATION
+/*#define SU_IMPLEMENTATION*/
 
 #if !defined(SU_WITH_SIMD)
 #define SU_WITH_SIMD 1
@@ -2028,9 +2028,9 @@ static int64_t su_timespec_to_ms(struct timespec timespec) {
 
 static int64_t su_now_ms(clockid_t clock_id) {
 	struct timespec ts;
-	int ret = clock_gettime(clock_id, &ts);
-	SU_NOTUSED(ret);
-	SU_ASSERT(ret == 0);
+	int c = clock_gettime(clock_id, &ts);
+	SU_NOTUSED(c);
+	SU_ASSERT(c == 0);
 	return su_timespec_to_ms(ts);
 }
 
@@ -2409,7 +2409,7 @@ static void su_json_writer_raw(su_json_writer_t *writer, su_allocator_t *alloc, 
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
 	su__json_writer_element(writer, alloc);
-	s.s = (SU_TYPEOF(s.s))data;
+	s.s = (char *)data;
 	s.len = len;
 	s.free_contents = SU_FALSE;
 	s.nul_terminated = SU_FALSE;
