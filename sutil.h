@@ -5,7 +5,7 @@
 #error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
 #endif
 
-/*#define SU_IMPLEMENTATION*/
+#define SU_IMPLEMENTATION
 
 #if !defined(SU_WITH_SIMD)
 #define SU_WITH_SIMD 1
@@ -181,8 +181,32 @@
 #error "TODO: implement __builtin_ctzg"
 #endif
 
+#if SU_HAS_BUILTIN(__builtin_clzg)
+#define SU_COUNT_LEADING_ZEROS(x, fallback) __builtin_clzg(x, fallback)
+#else
+#error "TODO: implement __builtin_clzg"
+#endif
+
+#if SU_HAS_BUILTIN(__builtin_bswap16)
+#define SU_BSWAP16(x) __builtin_bswap16(x)
+#else
+#error "TODO: implement __builtin_bswap16"
+#endif
+
+#if SU_HAS_BUILTIN(__builtin_bswap32)
+#define SU_BSWAP32(x) __builtin_bswap32(x)
+#else
+#error "TODO: implement __builtin_bswap32"
+#endif
+
+#if SU_HAS_BUILTIN(__builtin_bswap64)
+#define SU_BSWAP64(x) __builtin_bswap64(x)
+#else
+#error "TODO: implement __builtin_bswap64"
+#endif
+
 #if SU_HAS_BUILTIN(__builtin_unreachable)
-#define SU_ASSERT_UNREACHABLE SU_ASSERT(SU_UNREACHABLE); __builtin_unreachable()
+#define SU_ASSERT_UNREACHABLE do { SU_ASSERT(SU_UNREACHABLE); __builtin_unreachable(); } while(0)
 #else
 #define SU_ASSERT_UNREACHABLE SU_ASSERT(SU_UNREACHABLE)
 #endif
@@ -343,6 +367,15 @@ typedef char32_t su_c32_t;
 #else
 typedef uint32_t su_c32_t;
 #endif
+
+#if defined(__BYTE_ORDER__)
+#define SU_BYTE_ORDER_IS_LITTLE_ENDIAN (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#else
+/* TODO */
+#define SU_BYTE_ORDER_IS_LITTLE_ENDIAN 1
+#endif
+
+SU_STATIC_ASSERT(SU_BYTE_ORDER_IS_LITTLE_ENDIAN); /* TODO: support SU_BYTE_ORDER_BIG_ENDIAN */
 
 typedef uint32_t su_bool32_t;
 
@@ -595,6 +628,7 @@ static SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t);
 static SU_ATTRIBUTE_PURE size_t su_stbds_hash(su_fat_ptr_t);
 
 static void su_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t count);
+static void su_bswap32_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t count);
 static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t count);
 static void su_abgr_to_argb(uint32_t *dest, uint32_t *src, size_t count);
 
@@ -689,7 +723,12 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_js
 #define ATTRIBUTE_PURE SU_ATTRIBUTE_PURE
 #define ATTRIBUTE_NORETURN SU_ATTRIBUTE_NORETURN
 #define COUNT_TRAILING_ZEROS SU_COUNT_TRAILING_ZEROS
+#define COUNT_LEADING_ZEROS SU_COUNT_LEADING_ZEROS
+#define BSWAP16 SU_BSWAP16
+#define BSWAP32 SU_BSWAP32
+#define BSWAP64 SU_BSWAP64
 
+#define BYTE_ORDER_IS_LITTLE_ENDIAN SU_BYTE_ORDER_IS_LITTLE_ENDIAN
 #define UNREACHABLE SU_UNREACHABLE
 #define ASSERT SU_ASSERT
 #define ASSERT_UNREACHABLE SU_ASSERT_UNREACHABLE
@@ -1728,8 +1767,6 @@ static void su_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t coun
 #undef FROM2
 	);
 
-	SU_ASSERT(((uintptr_t)dest % 32) == 0);
-
 	for ( ; (i + 8) <= count; i += 8) {
 		__m256i px = _mm256_loadu_si256((__m256i_u *)&src[i]);
 
@@ -1753,7 +1790,7 @@ static void su_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t coun
 		packed = _mm256_packus_epi16(lo, hi);
 		result = _mm256_blendv_epi8(packed, px, blend_mask);
 
-		_mm256_store_si256((__m256i *)(void *)&dest[i], result);
+		_mm256_storeu_si256((__m256i *)(void *)&dest[i], result);
 	}
 #endif /* SU_WITH_SIMD && __AVX2__ */
 /* TODO: AVX512, WASM, ARM, ?SSE */
@@ -1761,16 +1798,100 @@ static void su_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t coun
 	for ( ; i < count; ++i) {
 		uint32_t p = src[i];
 
-		uint8_t a = (uint8_t)((p >> 24) & 0xFF);
-		uint8_t r = (uint8_t)((p >> 16) & 0xFF);
-		uint8_t g = (uint8_t)((p >> 8) & 0xFF);
-		uint8_t b = (uint8_t)((p >> 0) & 0xFF);
+		uint32_t a = ((p >> 24) & 0xFF);
+		uint32_t r = ((p >> 16) & 0xFF);
+		uint32_t g = ((p >> 8) & 0xFF);
+		uint32_t b = ((p >> 0) & 0xFF);
 
-		r = (uint8_t)((((uint32_t)r * (uint32_t)a + 127) * 257) >> 16);
-		g = (uint8_t)((((uint32_t)g * (uint32_t)a + 127) * 257) >> 16);
-		b = (uint8_t)((((uint32_t)b * (uint32_t)a + 127) * 257) >> 16);
+		r = (((r * a + 127) * 257) >> 16);
+		g = (((g * a + 127) * 257) >> 16);
+		b = (((b * a + 127) * 257) >> 16);
 
-		dest[i] = (((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | ((uint32_t)b << 0));
+		dest[i] = ((a << 24) | (r << 16) | (g << 8) | (b << 0));
+	}
+}
+
+static void su_bswap32_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t count) {
+	size_t i = 0;
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+    __m256i bswap_mask = _mm256_set_epi8(
+		28,29,30,31,24,25,26,27,
+		20,21,22,23,16,17,18,19,
+		12,13,14,15,8, 9, 10,11,
+		4, 5, 6, 7, 0, 1, 2, 3
+    );
+
+    __m256i zero = _mm256_setzero_si256();
+    __m256i const_127 = _mm256_set1_epi16(127);
+    __m256i const_257 = _mm256_set1_epi16(257);
+
+	__m256i extract_alpha_mask = _mm256_set_epi8(
+#define ZERO CHAR_MIN
+		ZERO, 14, ZERO, 14, ZERO, 14, ZERO, 14,
+		ZERO, 6, ZERO, 6, ZERO, 6, ZERO, 6,
+		ZERO, 30, ZERO, 30, ZERO, 30, ZERO, 30,
+		ZERO, 22, ZERO, 22, ZERO, 22, ZERO, 22
+#undef ZERO
+	);
+
+	__m256i blend_mask = _mm256_set_epi8(
+#define FROM1 0
+#define FROM2 CHAR_MIN
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1,
+		FROM2, FROM1, FROM1, FROM1
+#undef FROM1
+#undef FROM2
+	);
+
+	for ( ; (i + 8) <= count; i += 8) {
+		__m256i px_raw = _mm256_loadu_si256((__m256i_u *)&src[i]);
+		__m256i px = _mm256_shuffle_epi8(px_raw, bswap_mask);
+
+		__m256i lo = _mm256_unpacklo_epi8(px, zero);
+		__m256i hi = _mm256_unpackhi_epi8(px, zero);
+
+		__m256i alpha_lo = _mm256_shuffle_epi8(lo, extract_alpha_mask);
+		__m256i alpha_hi = _mm256_shuffle_epi8(hi, extract_alpha_mask);
+
+		__m256i packed, result;
+
+		lo = _mm256_mullo_epi16(lo, alpha_lo);
+		hi = _mm256_mullo_epi16(hi, alpha_hi);
+
+		lo = _mm256_add_epi16(lo, const_127);
+		hi = _mm256_add_epi16(hi, const_127);
+
+		lo = _mm256_mulhi_epu16(lo, const_257);
+		hi = _mm256_mulhi_epu16(hi, const_257);
+
+		packed = _mm256_packus_epi16(lo, hi);
+		result = _mm256_blendv_epi8(packed, px, blend_mask);
+
+		_mm256_storeu_si256((__m256i *)(void *)&dest[i], result);
+	}
+#endif /* SU_WITH_SIMD && __AVX2__ */
+/* TODO: AVX512, WASM, ARM, ?SSE */
+
+	for ( ; i < count; ++i) {
+		uint32_t p = src[i];
+
+		uint32_t a = ((p >> 0) & 0xFF);
+		uint32_t r = ((p >> 8) & 0xFF);
+		uint32_t g = ((p >> 16) & 0xFF);
+		uint32_t b = ((p >> 24) & 0xFF);
+
+		r = (((r * a + 127) * 257) >> 16);
+		g = (((g * a + 127) * 257) >> 16);
+		b = (((b * a + 127) * 257) >> 16);
+
+		dest[i] = ((a << 24) | (r << 16) | (g << 8) | (b << 0));
 	}
 }
 
@@ -1817,8 +1938,6 @@ static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, siz
 #undef FROM2
 	);
 
-	SU_ASSERT(((uintptr_t)dest % 32) == 0);
-
     for ( ; (i + 8) <= count; i += 8) {
         __m256i abgr = _mm256_loadu_si256((__m256i_u *)&src[i]);
 
@@ -1844,23 +1963,23 @@ static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, siz
 
 		argb = _mm256_shuffle_epi8(abgr, abgr_to_argb_mask);
 
-        _mm256_store_si256((__m256i *)(void *)&dest[i], argb);
+        _mm256_storeu_si256((__m256i *)(void *)&dest[i], argb);
     }
 #endif /* SU_WITH_SIMD && __AVX2__ */
 /* TODO: AVX512, WASM, ARM, ?SSE */
 
 	for ( ; i < count; ++i) {
 		uint32_t p = src[i];
-		uint8_t a = (uint8_t)((p >> 24) & 0xFF);
-		uint8_t b = (uint8_t)((p >> 16) & 0xFF);
-		uint8_t g = (uint8_t)((p >> 8) & 0xFF);
-		uint8_t r = (uint8_t)((p >> 0) & 0xFF);
+		uint32_t a = ((p >> 24) & 0xFF);
+		uint32_t b = ((p >> 16) & 0xFF);
+		uint32_t g = ((p >> 8) & 0xFF);
+		uint32_t r = ((p >> 0) & 0xFF);
 
-		r = (uint8_t)((((uint32_t)r * (uint32_t)a + 127) * 257) >> 16);
-		g = (uint8_t)((((uint32_t)g * (uint32_t)a + 127) * 257) >> 16);
-		b = (uint8_t)((((uint32_t)b * (uint32_t)a + 127) * 257) >> 16);
+		r = (((r * a + 127) * 257) >> 16);
+		g = (((g * a + 127) * 257) >> 16);
+		b = (((b * a + 127) * 257) >> 16);
 
-		dest[i] = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | ((uint32_t)b << 0);
+		dest[i] = (a << 24) | (r << 16) | (g << 8) | (b << 0);
 	}
 }
 
@@ -1879,23 +1998,21 @@ static void su_abgr_to_argb(uint32_t *dest, uint32_t *src, size_t count) {
 		3, 0, 1, 2
 	);
 
-	SU_ASSERT(((uintptr_t)dest % 32) == 0);
-
     for ( ; (i + 8) <= count; i += 8) {
         __m256i abgr = _mm256_loadu_si256((__m256i_u *)&src[i]);
         __m256i argb = _mm256_shuffle_epi8(abgr, mask);
-        _mm256_store_si256((__m256i *)(void *)&dest[i], argb);
+        _mm256_storeu_si256((__m256i *)(void *)&dest[i], argb);
     }
 #endif /* SU_WITH_SIMD && __AVX2__ */
 /* TODO: AVX512, WASM, ARM, ?SSE */
 
 	for ( ; i < count; ++i) {
 		uint32_t p = src[i];
-		uint8_t a = (uint8_t)((p >> 24) & 0xFF);
-		uint8_t b = (uint8_t)((p >> 16) & 0xFF);
-		uint8_t g = (uint8_t)((p >> 8) & 0xFF);
-		uint8_t r = (uint8_t)((p >> 0) & 0xFF);
-		dest[i] = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | ((uint32_t)b << 0);
+		uint32_t a = ((p >> 24) & 0xFF);
+		uint32_t b = ((p >> 16) & 0xFF);
+		uint32_t g = ((p >> 8) & 0xFF);
+		uint32_t r = ((p >> 0) & 0xFF);
+		dest[i] = (a << 24) | (r << 16) | (g << 8) | (b << 0);
 	}
 }
 
@@ -1916,7 +2033,7 @@ static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, su_a
 	}
 
 	data.len = (size_t)sb.st_size;
-	SU_ALLOCTSA(data.ptr, alloc, data.len + 1, 64);
+	SU_ALLOCTSA(data.ptr, alloc, data.len + 1, 32);
 
 	bytes_read = 0;
 	while (bytes_read < data.len) {

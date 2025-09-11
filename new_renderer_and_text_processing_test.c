@@ -231,7 +231,7 @@ FT_Error Load_SBit_Png(FT_GlyphSlot slot, FT_Int x_offset, FT_Int y_offset, FT_I
 
     if (populate_map_and_metrics) {
         /* TODO: slot->internal->flags |= FT_GLYPH_OWN_BITMAP; */
-        ALLOCTSA(slot->bitmap.buffer, &scratch_alloc, (slot->bitmap.rows * (size_t)slot->bitmap.pitch), 64);
+        ALLOCTSA(slot->bitmap.buffer, &scratch_alloc, (slot->bitmap.rows * (size_t)slot->bitmap.pitch), 32);
     }
 
 	if (ri.bits_per_channel != 8) {
@@ -636,7 +636,7 @@ static sw_pixmap_t *render(void) {
                         sw_color_argb32_t *src = (sw_color_argb32_t *)(void *)&((uint8_t *)bitmap->buffer)[
                             src_y * (int32_t)bitmap->pitch + src_x * 4];
                         sw_color_argb32_t *dst = (sw_color_argb32_t *)(void *)&((uint8_t *)ret->pixels)[
-                            (y + y_offs) * (int32_t)w * 4 + (x + x_offs) * 4];
+                            (y + dst_y_offs) * (int32_t)w * 4 + (x + dst_x_offs) * 4];
                         *dst = *src;
                     }
                 }
@@ -772,7 +772,7 @@ static sw_pixmap_t *render(void) {
     return ret;
 }
 
-static bool32_t surface_handle_event(sw_wayland_notify_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
+static bool32_t surface_handle_event(sw_wayland_event_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
     NOTUSED(source); NOTUSED(ctx);
 
     DEBUG_LOG("event: %u", event);
@@ -828,13 +828,13 @@ int main(void) {
     pm = render();
 
     ALLOCCT(root, &gp_alloc);
-    root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
+    root->in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES;
     root->in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
     root->in.color._.argb32.u32 = 0xFF000000;
     root->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
     root->in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP;
     root->in._.image.data.ptr = pm;
-    root->in._.image.data.len = (8 + (pm->width * pm->height * 4));
+    root->in._.image.data.len = ((sizeof(*pm) - sizeof(pm->pixels)) + (pm->width * pm->height * 4));
 
     ALLOCCT(surface, &gp_alloc);
     surface->in.type = SW_WAYLAND_SURFACE_TYPE_TOPLEVEL;

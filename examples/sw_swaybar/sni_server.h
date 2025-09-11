@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <time.h>
 #include <poll.h>
 
@@ -115,7 +114,7 @@ struct sni_dbusmenu {
 typedef struct sni_pixmap {
     int width;
     int height;
-    uint32_t pixels[1]; /* flexible array, ARGB32, native byte order */
+    uint32_t pixels[1]; /* ARGB32, native byte order, premultipled alpha */
 	/* width * height * 4 */
 } sni_pixmap_t;
 
@@ -136,7 +135,7 @@ typedef enum sni_item_category {
 
 typedef struct sni_item_properties_tooltip {
 	string_t icon_name;
-	sni_pixmap_t *icon_pixmaps[16]; /* qsorted size descending */ /* TODO: preallocate based on dbus array count */
+	sni_pixmap_t *icon_pixmaps[16]; /* qsorted size descending, premultiplied alpha */ /* TODO: preallocate based on dbus array count */
 	size_t icon_pixmaps_count;
 	string_t title;
 	string_t text;
@@ -146,13 +145,13 @@ typedef struct sni_item_properties {
     /* every field may be NULL */
     string_t icon_name;
     string_t icon_theme_path;
-	sni_pixmap_t *icon_pixmaps[16]; /* qsorted size descending */ /* TODO: preallocate based on dbus array count */
+	sni_pixmap_t *icon_pixmaps[16]; /* qsorted size descending, premultiplied alpha */ /* TODO: preallocate based on dbus array count */
 	size_t icon_pixmaps_count;
     sni_item_status_t status;
     sni_item_category_t category;
     string_t menu;
     string_t attention_icon_name;
-	sni_pixmap_t *attention_icon_pixmaps[16]; /* qsorted size descending */ /* TODO: preallocate based on dbus array count */
+	sni_pixmap_t *attention_icon_pixmaps[16]; /* qsorted size descending, premultiplied alpha */ /* TODO: preallocate based on dbus array count */
 	size_t attention_icon_pixmaps_count;
     int item_is_menu; /* bool */
     int window_id;
@@ -160,7 +159,7 @@ typedef struct sni_item_properties {
     string_t title;
     string_t attention_movie_name;
     string_t overlay_icon_name;
-	sni_pixmap_t *overlay_icon_pixmaps[16]; /* qsorted size descending */ /* TODO: preallocate based on dbus array count */
+	sni_pixmap_t *overlay_icon_pixmaps[16]; /* qsorted size descending, premultiplied alpha */ /* TODO: preallocate based on dbus array count */
 	size_t overlay_icon_pixmaps_count;
     sni_item_properties_tooltip_t tooltip;
 } sni_item_properties_t;
@@ -283,14 +282,17 @@ static void sni__item_read_pixmap( sd_bus_message *msg,
 		sd_bus_message_read_basic(msg, 'i', &height);
 		sd_bus_message_read_array(msg, 'y', &bytes, &nbytes);
 		if (((size_t)width * (size_t)height * 4) == nbytes) {
-			int i;
 			sni_pixmap_t *pixmap;
 			ALLOCTS(pixmap, sni_server.in.alloc, ((sizeof(*pixmap) - sizeof(pixmap->pixels)) + nbytes));
 			pixmap->width = width;
 			pixmap->height = height;
-			for ( i = 0; i < (width * height); ++i) {
-				pixmap->pixels[i] = ntohl(((uint32_t *)(uintptr_t)bytes)[i]);
-			}
+
+#if (BYTE_ORDER_IS_LITTLE_ENDIAN)
+			su_bswap32_argb_premultiply_alpha(pixmap->pixels, (uint32_t *)(uintptr_t)bytes, ((size_t)width * (size_t)height));
+#else
+			su_argb_premultiply_alpha(pixmap->pixels, (uint32_t *)(uintptr_t)bytes, ((size_t)width * (size_t)height));
+#endif
+			
 			dest[(*dest_count)++] = pixmap;
 		}
 		sd_bus_message_exit_container(msg);
@@ -467,7 +469,7 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 			} else if (string_equal(s, string("icon-data"))) {
 				const void *bytes;
 				sd_bus_message_read_array(msg, 'y', &bytes, &menu_item->icon_data.nbytes);
-				ALLOCTSA(menu_item->icon_data.bytes, alloc, menu_item->icon_data.nbytes, 64);
+				ALLOCTSA(menu_item->icon_data.bytes, alloc, menu_item->icon_data.nbytes, 32);
 				MEMCPY(menu_item->icon_data.bytes, bytes, menu_item->icon_data.nbytes);
 			/*} else if (string_equal(key_str, string("shortcut"))) { */
 			} else if (string_equal(s, string("toggle-type"))) {

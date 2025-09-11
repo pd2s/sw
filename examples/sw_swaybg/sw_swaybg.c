@@ -188,7 +188,7 @@ static void store_config(config_t *config) {
 	MEMCPY(&state.configs[state.configs_count++], config, sizeof(*config));
 }
 
-static bool32_t surface_handle_event(sw_wayland_notify_source_t *source,
+static bool32_t surface_handle_event(sw_wayland_event_source_t *source,
 		sw_context_t *sw, sw_wayland_event_t event) {
 	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
 
@@ -286,7 +286,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	case BACKGROUND_MODE_CENTER: /* ? TODO: match original swaybg behaviour with images > output w/h */
 		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 		root->_.in._.image.data = config->loaded_image;
-		root->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
+		root->_.in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES;
 		root->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
 		break;
 	case BACKGROUND_MODE_TILE:
@@ -297,7 +297,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 		break;
 	case BACKGROUND_MODE_SOLID_COLOR:
 		root->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
-		root->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES;
+		root->_.in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES;
 		root->_.in.color._.argb32.u32 = config->color.u32;
 		break;
 	case BACKGROUND_MODE_INVALID:

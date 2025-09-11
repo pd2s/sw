@@ -607,7 +607,7 @@ static void tray_describe_sni_items(bar_t *bar) {
 
 				block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 				block->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
-				block->_.in.expand = (SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM);
+				block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 
 				LLIST_APPEND_TAIL(&block->_.in._.composite.children, &image->_);
 			}
@@ -763,7 +763,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 		block = layout_block_create();
 		block->data = menu_item;
 		block->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM;
-		block->_.in.expand = (SW_LAYOUT_BLOCK_EXPAND_LEFT | SW_LAYOUT_BLOCK_EXPAND_RIGHT);
+		block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_LEFT | SW_LAYOUT_BLOCK_FILL_RIGHT);
 		if (menu_item->type == SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) {
 			/*block->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;*/
 			block->_.in.min_height = 2;
@@ -847,8 +847,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 			case SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO: {
 				layout_block_t *toggle = layout_block_create();
 				string_t s = ((menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
-					? ((menu_item->toggle_state == 1) ? string("\xF3\xB0\x90\xBE") : string("\xF3\xB0\x84\xAF"))
-					: ((menu_item->toggle_state == 1) ? string("\xF3\xB0\x84\xB2") : string("\xF3\xB0\x84\xAE")));
+					/* TODO: replace with images */
+					? ((menu_item->toggle_state == 1) ? string("󰐾") : string("󰄯"))
+					: ((menu_item->toggle_state == 1) ? string("󰄲") : string("󰄮")));
 				layout_block_init_text(&toggle->_, &s);
 				toggle->_.in._.text.color._.argb32 = tray_dbusmenu_menu_item_get_text_color(menu_item);
 				toggle->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
@@ -874,7 +875,8 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 
 			if (menu_item->submenu) {
 				layout_block_t *submenu = layout_block_create();
-				string_t s = string("\xF3\xB0\x8D\x9E");
+				/* TODO: replace with image */
+				string_t s = string("󰍞");
 				layout_block_init_text(&submenu->_, &s);
 				submenu->_.in._.text.color._.argb32 = tray_dbusmenu_menu_item_get_text_color(menu_item);
 				submenu->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
@@ -919,7 +921,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 	state.update = TRUE;
 }
 
-static bool32_t tray_dbusmenu_menu_popup_handle_event(sw_wayland_notify_source_t *source,
+static bool32_t tray_dbusmenu_menu_popup_handle_event(sw_wayland_event_source_t *source,
 		sw_context_t *ctx, sw_wayland_event_t event) {
 	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
 	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
@@ -1508,7 +1510,7 @@ static void status_describe(bar_t *bar) {
 			s.free_contents = FALSE;
 			s.nul_terminated = FALSE;
 			layout_block_init_text(&block->_, &s);
-			block->_.in.expand = (SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM);
+			block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 			block->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 			if (status->protocol == STATUS_PROTOCOL_TEXT) {
 				block->_.in._.text.color._.argb32 = output->focused ?
@@ -1543,7 +1545,7 @@ static void status_describe(bar_t *bar) {
 				layout_block_t *spacer = layout_block_create();
 				/*spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;*/
 				spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
-				spacer->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
+				spacer->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 				spacer->_.in.min_width = config->status_edge_padding;
 				LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &spacer->_);
 			} else if (!edge && ((i3bar_block->separator_block_width > 0) || i3bar_block->separator)) {
@@ -1581,7 +1583,7 @@ static void status_describe(bar_t *bar) {
 						separator->_.in.min_width = i3bar_block->separator_block_width;
 					}
 				}
-				separator->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
+				separator->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 				LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &separator->_);
 			}
 
@@ -1600,7 +1602,7 @@ static void status_describe(bar_t *bar) {
 			}
 			block->_.in.color._.argb32 = i3bar_block->urgent ?
 				config->colors.urgent_workspace.background : i3bar_block->background_color;
-			block->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
+			block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 			block->_.in.content_anchor = i3bar_block->content_anchor;
 			if (i3bar_block->border_color_set || i3bar_block->urgent) {
 				size_t j = 0;
@@ -1641,7 +1643,7 @@ static void status_describe(bar_t *bar) {
 static bool32_t parse_sway_color(string_t str, sw_color_argb32_t *dest) {
 	char *p;
 	uint32_t rgba;
-	uint8_t a, r ,g ,b;
+	uint32_t a, r ,g ,b;
 
 	ASSERT(str.nul_terminated); /* TODO: remove */
 
@@ -1664,18 +1666,18 @@ static bool32_t parse_sway_color(string_t str, sw_color_argb32_t *dest) {
 	}
 
 	if (str.len == 8) {
-		a = (uint8_t)(rgba & 0xFF);
-		b = (uint8_t)((rgba >> 8) & 0xFF);
-		g = (uint8_t)((rgba >> 16) & 0xFF);
-		r = (uint8_t)((rgba >> 24) & 0xFF);
+		a = (rgba & 0xFF);
+		b = ((rgba >> 8) & 0xFF);
+		g = ((rgba >> 16) & 0xFF);
+		r = ((rgba >> 24) & 0xFF);
 	} else {
 		a = 0xFF;
-		b = (uint8_t)(rgba & 0xFF);
-		g = (uint8_t)((rgba >> 8) & 0xFF);
-		r = (uint8_t)((rgba >> 16) & 0xFF);
+		b = (rgba & 0xFF);
+		g = ((rgba >> 8) & 0xFF);
+		r = ((rgba >> 16) & 0xFF);
 	}
 
-	dest->u32 = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g<< 8) | ((uint32_t)b << 0);
+	dest->u32 = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | ((uint32_t)b << 0);
 
 	return TRUE;
 }
@@ -2062,7 +2064,7 @@ static void workspaces_describe(bar_t *bar) {
 		block->type = LAYOUT_BLOCK_TYPE_WORKSPACE;
 		block->data = workspace;
 		block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-		block->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
+		block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 		if (config->workspace_min_width > 0) {
 			block->_.in.min_width = config->workspace_min_width;
 			block->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
@@ -2118,7 +2120,7 @@ static void binding_mode_indicator_describe(bar_t *bar) {
 	block = layout_block_create();
 	block->type = LAYOUT_BLOCK_TYPE_BINDING_MODE_INDICATOR;
 	block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-	block->_.in.expand = SW_LAYOUT_BLOCK_EXPAND_TOP | SW_LAYOUT_BLOCK_EXPAND_BOTTOM;
+	block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 	if (config->workspace_min_width > 0) {
 		block->_.in.min_width = config->workspace_min_width;
 	}
@@ -2749,14 +2751,14 @@ static bool32_t bar_process_button_event(bar_t *bar,
 	return FALSE;
 }
 
-static bool32_t bar_handle_event(sw_wayland_notify_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
+static bool32_t bar_handle_event(sw_wayland_event_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
 	NOTUSED(ctx);
 
 	switch (event) {
 	case SW_WAYLAND_EVENT_SURFACE_CLOSE: {
 		sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
 		LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
-		bar_destroy((bar_t *)source);
+		bar_destroy((bar_t *)surface);
 		break;
 	}
 	case SW_WAYLAND_EVENT_POINTER_BUTTON: {
@@ -2826,7 +2828,7 @@ static bar_t *bar_create(output_t *output) {
 
 	bar->_.in.root = (sw_layout_block_t *)layout_block_create();
 	bar->_.in.root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-	bar->_.in.root->in.expand = SW_LAYOUT_BLOCK_EXPAND_ALL_SIDES_CONTENT;
+	bar->_.in.root->in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES_CONTENT;
 
 	return bar;
 }
