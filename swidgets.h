@@ -1,7 +1,7 @@
 #if !defined(SW_HEADER)
 #define SW_HEADER
 
-#define SW_IMPLEMENTATION
+/*#define SW_IMPLEMENTATION*/
 
 #if !defined(SW_WITH_DEBUG)
 #define SW_WITH_DEBUG 1
@@ -2675,14 +2675,12 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
 	pixman_image_t *color;
 
-	SU_ASSERT(dim.width > 0);
-	SU_ASSERT(dim.height > 0);
-	SU_ASSERT(dim.width >= dim.content_width);
-	SU_ASSERT(dim.height >= dim.content_height);
-
 	if (SU_UNLIKELY(!block_priv->valid)) {
 		return;
 	}
+
+	SU_ASSERT(dim.width > 0);
+	SU_ASSERT(dim.height > 0);
 
 	if (block->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) {
 		sw_layout_block_t *b = block->in._.composite.children.head;
@@ -3217,7 +3215,7 @@ static void sw__wayland_surface_layer_handle_preferred_buffer_scale(void *data,
 	}
 }
 
-static void sw__wayland_surface_layer_handle_layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *layer_surface,
+static void sw__wayland_surface_layer_handle_configure(void *data, struct zwlr_layer_surface_v1 *layer_surface,
 		uint32_t serial, uint32_t width_, uint32_t height_) {
 	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)data;
 	sw__wayland_surface_t *surface_priv = (sw__wayland_surface_t *)&surface->sw__private;
@@ -3255,7 +3253,7 @@ static void sw__wayland_surface_layer_handle_layer_surface_configure(void *data,
 	}
 }
 
-static void sw__wayland_surface_layer_handle_layer_surface_closed(void *data,
+static void sw__wayland_surface_layer_handle_closed(void *data,
 		struct zwlr_layer_surface_v1 *layer_surface) {
 	sw_wayland_surface_t *surface = (sw_wayland_surface_t *)data;
 	SU_NOTUSED(layer_surface);
@@ -3438,8 +3436,8 @@ static su_bool32_t sw__wayland_surface_layer_init(sw_wayland_surface_t *surface,
 		sw__wayland_surface_handle_preferred_buffer_transform
 	};
 	static struct zwlr_layer_surface_v1_listener layer_surface_listener = {
-		sw__wayland_surface_layer_handle_layer_surface_configure,
-		sw__wayland_surface_layer_handle_layer_surface_closed
+		sw__wayland_surface_layer_handle_configure,
+		sw__wayland_surface_layer_handle_closed
 	};
 
 	if (SU_UNLIKELY(!sw_priv->_.wayland.layer_shell)) {

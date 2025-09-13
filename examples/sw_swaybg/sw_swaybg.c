@@ -109,7 +109,7 @@ static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
 	char *p;
     size_t len;
 	uint32_t rgba;
-	uint8_t a, r ,g ,b;
+	uint32_t a, r, g ,b;
 
     if (!cstr || ((len = STRLEN(cstr)) == 0)) {
         return FALSE;
@@ -130,18 +130,18 @@ static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
 	}
 
 	if (len == 8) {
-		a = (uint8_t)(rgba & 0xFF);
-		b = (uint8_t)((rgba >> 8) & 0xFF);
-		g = (uint8_t)((rgba >> 16) & 0xFF);
-		r = (uint8_t)((rgba >> 24) & 0xFF);
+		a = ((rgba >> 0) & 0xFF);
+		r = ((rgba >> 24) & 0xFF);
+		g = ((rgba >> 16) & 0xFF);
+		b = ((rgba >> 8) & 0xFF);
 	} else {
 		a = 0xFF;
-		b = (uint8_t)(rgba & 0xFF);
-		g = (uint8_t)((rgba >> 8) & 0xFF);
-		r = (uint8_t)((rgba >> 16) & 0xFF);
+		r = ((rgba >> 16) & 0xFF);
+		g = ((rgba >> 8) & 0xFF);
+		b = ((rgba >> 0) & 0xFF);
 	}
 
-	dest->u32 = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g<< 8) | ((uint32_t)b << 0);
+	dest->u32 = ((a << 24) | (r << 16) | (g << 8) | (b << 0));
 
 	return TRUE;
 }
@@ -194,7 +194,7 @@ static bool32_t surface_handle_event(sw_wayland_event_source_t *source,
 
 	switch (event) {
 	case SW_WAYLAND_EVENT_SURFACE_CLOSE:
-		LLIST_POP(&state.sw.in.backend.wayland.layers, surface);
+		MEMSET(&state.sw.in.backend.wayland.layers, 0, sizeof(state.sw.in.backend.wayland.layers));
 		surface->out.fini(surface, sw);
 		FREE(&gp_alloc, surface);
 		break;
@@ -202,8 +202,9 @@ static bool32_t surface_handle_event(sw_wayland_event_source_t *source,
 	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
 	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
 	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
-		/* TODO: print code with string */
-		su_abort(errno, "Failed to create surface for output " STRING_PF_FMT, STRING_PF_ARGS(surface->in._.layer.output->out.name));
+		/* TODO: string */
+		su_abort(errno, "Failed to create layer surface for output " STRING_FMT ": (%u)",
+				STRING_ARG(surface->in._.layer.output->out.name), event);
 	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
 	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
 	case SW_WAYLAND_EVENT_POINTER_ENTER:
@@ -232,7 +233,7 @@ static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_contex
 		for ( ; i < state.configs_count; ++i) {
 			config_t *config = &state.configs[i];
 			if (config->loaded_image.ptr == block->_.in._.image.data.ptr) {
-				su_abort(errno, "Failed to load image: " STRING_PF_FMT, STRING_PF_ARGS(config->image_path));
+				su_abort(errno, "Failed to load image: " STRING_FMT, STRING_ARG(config->image_path));
 			}
 		}
 		break;
@@ -253,8 +254,8 @@ static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_contex
 }
 
 static void configure_output(sw_wayland_output_t *output, config_t *config) {
-	sw_wayland_surface_t *surface;
 	static sw_wayland_region_t empty_input_region = { 0, 0, 0, 0 };
+	sw_wayland_surface_t *surface;
 	layout_block_t *root;
 	sw_wayland_surface_layer_t *layer;
 
@@ -310,14 +311,15 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 	state.update = TRUE;
 }
 
-static sw_wayland_output_t *output_create_sw(sw_wayland_output_t *output, sw_context_t *sw) {
+static sw_wayland_output_t *output_handle_create(sw_wayland_output_t *output, sw_context_t *sw) {
 	size_t i = 0;
 
     NOTUSED(sw);
 
 	for ( ; i < state.configs_count; ++i) {
 		config_t *config = &state.configs[i];
-		if (string_equal(config->output, string("*")) || string_equal(config->output, output->out.name)) {
+		if (string_equal(config->output, string("*")) ||
+				string_equal(config->output, output->out.name)) {
 			configure_output(output, config);
 			return output;
 		}
@@ -417,7 +419,7 @@ static void setup(int argc, char *argv[]) {
 		}
 		if (c->image_path.len > 0) {
 			if (!read_entire_file(c->image_path, &c->loaded_image, &gp_alloc)) {
-				su_abort(errno, "Failed to read file: " STRING_PF_FMT, STRING_PF_ARGS(c->image_path));
+				su_abort(errno, "Failed to read file: " STRING_FMT, STRING_ARG(c->image_path));
 			}
 		}
     }
@@ -433,7 +435,7 @@ static void setup(int argc, char *argv[]) {
 	state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
 	state.sw.in.gp_alloc = &gp_alloc;
 	state.sw.in.scratch_alloc = &scratch_alloc;
-	state.sw.in.backend.wayland.output_create = output_create_sw;
+	state.sw.in.backend.wayland.output_create = output_handle_create;
     state.update = TRUE;
     state.running = TRUE;
 }

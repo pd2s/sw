@@ -119,7 +119,7 @@ static int sway_ipc_connect(char socket_path[PATH_MAX]) {
 
 static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload) {
 	char header[SWAY_IPC__HEADER_SIZE];
-	uint32_t len = payload ? (uint32_t)payload->len : 0;
+	uint32_t len = (payload ? (uint32_t)payload->len : 0);
 	size_t total = 0;
 
 	MEMCPY(header, sway_ipc__magic, sizeof(sway_ipc__magic));

@@ -1368,6 +1368,8 @@ static int sni_server_init(void) {
 	allocator_t *alloc = sni_server.in.alloc;
 	static sd_bus_vtable watcher_vtable[11];
 
+	ASSERT(sni_server.in.alloc != NULL);
+
 	MEMSET(&sni_server.out, 0, sizeof(sni_server.out));
 	MEMSET(&sni_server.priv, 0, sizeof(sni_server.priv));
 

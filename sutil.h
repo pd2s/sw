@@ -5,7 +5,7 @@
 #error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
 #endif
 
-#define SU_IMPLEMENTATION
+/*#define SU_IMPLEMENTATION*/
 
 #if !defined(SU_WITH_SIMD)
 #define SU_WITH_SIMD 1
@@ -414,8 +414,8 @@ typedef struct su_string {
 	char *s;
 } su_string_t;
 
-#define SU_STRING_PF_FMT "%.*s"
-#define SU_STRING_PF_ARGS(str) (int)(str).len, (str).s
+#define SU_STRING_FMT "%.*s"
+#define SU_STRING_ARG(str) (int)(str).len, (str).s
 
 typedef struct su_arena_block {
 	size_t ptr;
@@ -754,8 +754,8 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_js
 
 #define DEBUG_LOG SU_DEBUG_LOG
 
-#define STRING_PF_FMT SU_STRING_PF_FMT
-#define STRING_PF_ARGS SU_STRING_PF_ARGS
+#define STRING_FMT SU_STRING_FMT
+#define STRING_ARG SU_STRING_ARG
 
 #define LLIST_FIELDS SU_LLIST_FIELDS
 #define LLIST_NODE_FIELDS SU_LLIST_NODE_FIELDS
@@ -1088,6 +1088,7 @@ static void *su_libc_alloc(su_allocator_t *alloc, size_t size, size_t alignment)
 	if ( SU_UNLIKELY(s != 0)) {
 		su_abort(s, "posix_memalign: %s", strerror(s));
 	}
+
 	SU_ASSERT(((uintptr_t)ptr % alignment) == 0);
 	return ptr;
 }
@@ -1187,16 +1188,17 @@ static char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, v
 	
 	SU_NOTUSED(buf);
 
+	str->len += (size_t)len;
+
 	if (len == STB_SPRINTF_MIN) {
 		/* TODO: handle last cb when len == STB_SPRINTF_MIN */
 		char *new_s;
-		SU_ALLOCTS(new_s, alloc, str->len + ((size_t)len * 2));
+		SU_ALLOCTS(new_s, alloc, str->len + STB_SPRINTF_MIN);
 		SU_MEMCPY(new_s, str->s, str->len);
 		SU_FREE(alloc, str->s);
 		str->s = new_s;
 	}
 
-	str->len += (size_t)len;
 	str->s[str->len] = '\0';
 
 	return &str->s[str->len];
