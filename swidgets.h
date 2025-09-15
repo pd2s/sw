@@ -2117,8 +2117,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 			SU_ARRAY_ALLOC(c32, scratch_alloc, (text.text.len + 1));
 
 			while (consumed < text.text.len) {
-				su_c32_t c;
-				size_t ret = mbrtoc32(&c, &text.text.s[consumed],
+				size_t ret = mbrtoc32(&c32[c32_count++], &text.text.s[consumed],
 						text.text.len - consumed, &s);
 				switch (ret) {
 				case 0: /* ? TODO: do not treat as error */
@@ -2129,7 +2128,6 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 					error = SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_TEXT;
 					goto error;
 				default:
-					c32[c32_count++] = c;
 					consumed += ret;
 				}
 			}
@@ -2678,9 +2676,6 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 	if (SU_UNLIKELY(!block_priv->valid)) {
 		return;
 	}
-
-	SU_ASSERT(dim.width > 0);
-	SU_ASSERT(dim.height > 0);
 
 	if (block->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) {
 		sw_layout_block_t *b = block->in._.composite.children.head;

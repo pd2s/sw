@@ -1190,12 +1190,14 @@ static char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, v
 
 	str->len += (size_t)len;
 
-	if (len == STB_SPRINTF_MIN) {
-		/* TODO: handle last cb when len == STB_SPRINTF_MIN */
+	{
+		/* TODO: optimize size */
 		char *new_s;
 		SU_ALLOCTS(new_s, alloc, str->len + STB_SPRINTF_MIN);
 		SU_MEMCPY(new_s, str->s, str->len);
-		SU_FREE(alloc, str->s);
+		if (str->len != (size_t)len) {
+			SU_FREE(alloc, str->s);
+		}
 		str->s = new_s;
 	}
 
@@ -1210,6 +1212,7 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *
 		su_string_t *str;
 		su_allocator_t *alloc;
 	} data;
+	char buf[STB_SPRINTF_MIN];
 
 	va_list args;
 	va_start(args, fmt);
@@ -1217,8 +1220,8 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *
 	data.str = str;
 	data.alloc = alloc;
 
+	str->s = buf;
 	str->len = 0;
-	SU_ALLOCTS(str->s, alloc, STB_SPRINTF_MIN);
 	stbsp_vsprintfcb(su__string_init_format_stbsp_vsprintfcb_callback, &data, str->s, fmt, args);
 	str->free_contents = SU_TRUE;
 	str->nul_terminated = SU_TRUE;
@@ -2018,7 +2021,7 @@ static void su_abgr_to_argb(uint32_t *dest, uint32_t *src, size_t count) {
 	}
 }
 
-static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, su_allocator_t *alloc) {\
+static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, su_allocator_t *alloc) {
 	int fd;
 	struct stat sb;
 	su_fat_ptr_t data;

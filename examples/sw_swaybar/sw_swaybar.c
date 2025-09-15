@@ -841,14 +841,14 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				if (menu_item->toggle_state == 1) {
 					string_init_format( &svg, &popup->block_allocator.alloc,
 						(menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
-						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" width=\"32\" height=\"32\"><circle cx=\"50\" cy=\"50\" r=\"35\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"6\"/><circle cx=\"50\" cy=\"50\" r=\"18\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>"
-						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" width=\"32\" height=\"32\"><rect x=\"15\" y=\"15\" width=\"70\" height=\"70\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"6\"/><polyline points=\"30,55 45,70 70,35\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"8\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"/></svg>",
+						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"1.92\"/><circle cx=\"16\" cy=\"16\" r=\"6.4\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>"
+						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><mask id=\"a\"><rect width=\"32\" height=\"32\" fill=\"#fff\"/><polyline points=\"8,17 13,22 24,10\" fill=\"none\" stroke=\"#000\" stroke-width=\"3\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"/></mask><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02hhx%02hhx%02hhx%02hhx\" mask=\"url(#a)\"/></svg>",
 						color.c.r, color.c.g, color.c.b, color.c.a, color.c.r, color.c.g, color.c.b, color.c.a);
 				} else {
 					string_init_format( &svg, &popup->block_allocator.alloc,
 						(menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
-						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" width=\"32\" height=\"32\"><circle cx=\"50\" cy=\"50\" r=\"35\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"6\"/></svg>"
-						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" width=\"32\" height=\"32\"><rect x=\"15\" y=\"15\" width=\"70\" height=\"70\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"6\"/></svg>",
+						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"1.92\"/></svg>"
+						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>",
 						color.c.r, color.c.g, color.c.b, color.c.a);
 				}
 				toggle->_.in._.image.data.ptr = svg.s;
@@ -879,7 +879,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				submenu->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				submenu->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
 				string_init_format( &svg, &popup->block_allocator.alloc,
-					"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\" width=\"32\" height=\"32\"><polygon points=\"80,10 80,90 20,50\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>",
+					"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><polygon points=\"25.6,3.2 25.6,28.8 6.4,16\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>",
 					color.c.r, color.c.g, color.c.b, color.c.a);
 				submenu->_.in._.image.data.ptr = svg.s;
 				submenu->_.in._.image.data.len = svg.len;

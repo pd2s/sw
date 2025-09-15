@@ -436,7 +436,7 @@ static sw_pixmap_t *render(void) {
     for ( f = 0; f < LENGTH(fonts); ++f) {
         font_t *font = &fonts[f];
         read_entire_file(string(font_files[f]), &font->data, &scratch_alloc);
-        font->pixel_size = 32;
+        font->pixel_size = 48;
         font->idx = 0;
     }
 
@@ -489,7 +489,7 @@ static sw_pixmap_t *render(void) {
 
             e = FT_Set_Char_Size(font->face, (FT_F26Dot6)(font->pixel_size * 64.), 0, 72, 72);
             if (e != FT_Err_Ok) {
-                ASSERT(e == 23);
+                ASSERT(e == FT_Err_Invalid_Pixel_Size);
                 e = FT_Select_Size(font->face, 0);
                 ASSERT(e == FT_Err_Ok);
             }
@@ -517,7 +517,7 @@ static sw_pixmap_t *render(void) {
             /*}*/
 
             hb_buffer_guess_segment_properties(hb_buf);
-            hb_shape(font->hb_font, hb_buf, NULL, 0); /* TODO: features */
+            hb_shape(font->hb_font, hb_buf, NULL, 0);
 
             glyph_infos = hb_buffer_get_glyph_infos(hb_buf, &gc);
             glyph_pos = hb_buffer_get_glyph_positions(hb_buf, &gc);
@@ -613,6 +613,7 @@ static sw_pixmap_t *render(void) {
         ASSERT(e == FT_Err_Ok);
         ASSERT(font->face->glyph->format == FT_GLYPH_FORMAT_BITMAP);
 
+        /* TODO: simd */
         if (bitmap->buffer) {
             if (scale) {
                 float s = MIN(
@@ -641,7 +642,6 @@ static sw_pixmap_t *render(void) {
                     }
                 }
 #else
-                /* TODO: bounds check outside the loop */
                 for ( y = 0; y < dst_h; ++y) {
                     float fy = ((float)y / s);
                     int32_t y0 = (int32_t)fy;
@@ -750,16 +750,45 @@ static sw_pixmap_t *render(void) {
                     for ( row = start_row; row < end_row; ++row) {
                         sw_color_argb32_t *s =
                             (sw_color_argb32_t *)(void *)&bitmap->buffer[row * bitmap->pitch + start_col * 4];
-                        sw_color_argb32_t *d = &ret->pixels[(row + y_offs) * (int32_t)w + (x_offs + start_col)];
+                        sw_color_argb32_t *d = &ret->pixels[(row + dst_y_offs) * (int32_t)w + (dst_x_offs + start_col)];
 
                         MEMCPY(d, s, span_bytes);
                     }
 #endif
                     break;
                 }
-                /*case FT_PIXEL_MODE_MONO: {
+                case FT_PIXEL_MODE_MONO: {
+                    for ( row = start_row; row < end_row; ++row) {
+                        uint8_t *src = &bitmap->buffer[row * bitmap->pitch + start_col];
+                        sw_color_argb32_t *dst = &ret->pixels[(row + dst_y_offs) * (int32_t)w + (dst_x_offs + start_col)];
+                        /* TODO: optimize */
+                        for ( col = start_col; col < end_col; ++col) {
+                            int32_t byte_index = (col / 8);
+                            int32_t bit_index = (7 - (col % 8));
+                            if ((src[byte_index] & (1 << bit_index))) {
+#if 1
+                                sw_color_argb32_t *d = &dst[col];
+                                uint32_t inv_a = (255 - text_color.c.a);
+                                d->c.a = (uint8_t)(text_color.c.a + ((d->c.a * inv_a) >> 8));
+                                d->c.r = (uint8_t)(text_color.c.r + ((d->c.r * inv_a) >> 8));
+                                d->c.g = (uint8_t)(text_color.c.g + ((d->c.g * inv_a) >> 8));
+                                d->c.b = (uint8_t)(text_color.c.b + ((d->c.b * inv_a) >> 8));
+#else
+                                dst[col] = text_color;
+#endif
+                            }
+                        }
+                    }
                     break;
-                }*/
+                }
+                case FT_PIXEL_MODE_LCD: {
+                    /* TODO */
+                    break;
+                }
+                case FT_PIXEL_MODE_LCD_V: {
+                    /* TODO */
+                    break;
+                }
                 default:
                     ASSERT_UNREACHABLE;
                 }
