@@ -20,8 +20,12 @@
 #include <stddef.h>
 #include <stdarg.h>
 
+#define SU__CONCAT(a, b) a##b
+#define SU_CONCAT(a, b) SU__CONCAT(a, b)
+
 #define SU_PRAGMA(x) _Pragma(#x)
 
+#if defined(__GNUC__)
 #define SU_IGNORE_WARNING(w) SU_PRAGMA(GCC diagnostic ignored w)
 #define SU_IGNORE_WARNINGS_START \
 	SU_PRAGMA(GCC diagnostic push) \
@@ -29,7 +33,6 @@
 	SU_IGNORE_WARNING("-Wunknown-warning-option")
 #define SU_IGNORE_WARNINGS_END SU_PRAGMA(GCC diagnostic pop)
 
-#if defined(__GNUC__)
 #define inline __inline
 #define restrict __restrict
 
@@ -75,10 +78,18 @@
 #endif /* SU_STRLEN */
 
 #else
+#define SU_IGNORE_WARNING(w)
+#define SU_IGNORE_WARNINGS_START
+#define SU_IGNORE_WARNINGS_END
+
+#if defined(__TINYC__)
+#define SU_ALIGNOF __alignof__
+#else
 #define SU_ALIGNOF alignof
-#define SU_TYPEOF typeof
+#endif
 #define SU_THREAD_LOCAL thread_local
-#define SU_STATIC_ASSERT(x) static_assert(x, "")
+#define SU_TYPEOF typeof
+#define SU_STATIC_ASSERT(x) typedef char SU_CONCAT(static_assertion_, __LINE__)[(x) ? 1 : -1]
 
 /* ? TODO: default simd impls instead of libc ones */
 #if !defined(SU_MEMCPY)
@@ -686,6 +697,8 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_js
 
 /* ? TODO: strip by default, flag to enable */
 #if defined(SU_STRIP_PREFIXES)
+
+#define CONCAT SU_CONCAT
 
 #define PRAGMA SU_PRAGMA
 

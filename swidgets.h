@@ -1473,17 +1473,19 @@ static pixman_color_t sw__color_argb32_to_pixman_color(sw_color_argb32_t color) 
 }
 
 static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_t *scratch_alloc) {
+	pixman_image_t *image;
+
 	switch (color.type) {
 	case SW_COLOR_TYPE_ARGB32: {
 		pixman_color_t c = sw__color_argb32_to_pixman_color(color._.argb32);
-		return pixman_image_create_solid_fill(&c);
+		image = pixman_image_create_solid_fill(&c);
+		break;
 	}
 	case SW_COLOR_TYPE_LINEAR_GRADIENT: {
 		sw_color_linear_gradient_t linear_gradient = color._.linear_gradient;
 		pixman_gradient_stop_t *stops;
 		sw_color_gradient_stop_t prev_stop = linear_gradient.stops[0];
 		pixman_point_fixed_t p1, p2;
-		pixman_image_t *image;
 		size_t i = 0;
 
 		SU_NOTUSED(prev_stop);
@@ -1507,7 +1509,7 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 			&p1, &p2, stops, (int)linear_gradient.stops_count);
 
 		SU_FREE(scratch_alloc, stops);
-		return image;
+		break;
 	}
 	case SW_COLOR_TYPE_CONICAL_GRADIENT: {
 		sw_color_conical_gradient_t conical_gradient = color._.conical_gradient;
@@ -1515,7 +1517,6 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 		sw_color_gradient_stop_t prev_stop = conical_gradient.stops[0];
 		size_t i = 0;
 		pixman_point_fixed_t center;
-		pixman_image_t *image;
 
 		SU_NOTUSED(prev_stop);
 		SU_ASSERT(conical_gradient.stops_count >= 2);
@@ -1536,7 +1537,7 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 			stops, (int)conical_gradient.stops_count);
 
 		SU_FREE(scratch_alloc, stops);
-		return image;
+		break;
 	}
 	case SW_COLOR_TYPE_RADIAL_GRADIENT: {
 		sw_color_radial_gradient_t radial_gradient = color._.radial_gradient;
@@ -1544,7 +1545,6 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 		sw_color_gradient_stop_t prev_stop = radial_gradient.stops[0];
 		size_t i = 0;
 		pixman_point_fixed_t p_inner, p_outer;
-		pixman_image_t *image;
 
 		SU_NOTUSED(prev_stop);
 		SU_ASSERT(radial_gradient.stops_count >= 2);
@@ -1569,11 +1569,13 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 			stops, (int)radial_gradient.stops_count);
 
 		SU_FREE(scratch_alloc, stops);
-		return image;
+		break;
 	}
 	default:
 		SU_ASSERT_UNREACHABLE;
 	}
+
+	return image;
 }
 
 static void sw__image_handle_destroy(pixman_image_t *image, void *data) {

@@ -112,18 +112,20 @@ case "$CFLAGS" in
     esac
 esac
 
+OBJS=$(find "$BUILD_PATH" -maxdepth 1 -type f -name '*.o' -print)
+
 case "$1" in
   header)
-    echo $DEPS_FLAGS -isystem${BUILD_PATH}/include ${BUILD_PATH}/*.o
+    echo $DEPS_FLAGS -isystem${BUILD_PATH}/include $OBJS
     ;;
   shared)
     $CC $CFLAGS $DEPS_FLAGS -D_XOPEN_SOURCE=700 -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
-    $CC $CFLAGS -shared $DEPS_FLAGS ${BUILD_PATH}/*.o -o ${BUILD_PATH}/libsw.so
+    $CC $CFLAGS -shared $DEPS_FLAGS $OBJS -o ${BUILD_PATH}/libsw.so
     echo "-L${BUILD_PATH} -Wl,-rpath,${BUILD_PATH} -lsw -isystem${BUILD_PATH}/include -DSW_FUNC_DEF=extern"
     ;;
   static)
     $CC $CFLAGS $DEPS_FLAGS -D_XOPEN_SOURCE=700 -isystem${BUILD_PATH}/include -DSW_IMPLEMENTATION -DSW_FUNC_DEF=extern -c -xc ${BUILD_PATH}/include/swidgets.h -o ${BUILD_PATH}/sw.o
-    $AR rcs ${BUILD_PATH}/libsw.a ${BUILD_PATH}/*.o
+    $AR rcs ${BUILD_PATH}/libsw.a $OBJS
     echo "${BUILD_PATH}/libsw.a $DEPS_FLAGS -isystem${BUILD_PATH}/include -DSW_FUNC_DEF=extern"
     ;;
 esac

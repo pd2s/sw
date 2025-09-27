@@ -891,6 +891,9 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
 
 static void sni__item_destroy(sni_item_t *item) {
 	allocator_t *alloc = sni_server.in.alloc;
+	sni_dbusmenu_t *dbusmenu = item->out.dbusmenu;
+	sni_item_properties_t *properties = item->out.properties;
+
 	sni__slot_t *slot = item->priv.slots.head;
 	for ( ; slot; ) {
 		sni__slot_t *next = slot->next;
@@ -899,10 +902,6 @@ static void sni__item_destroy(sni_item_t *item) {
         slot = next;
 	}
 
-	sni__dbusmenu_destroy(item->out.dbusmenu);
-
-	sni__item_properties_destroy(item->out.properties);
-
     string_fini(&item->priv.watcher_id, alloc);
 	string_fini(&item->priv.service, alloc);
 	string_fini(&item->priv.path, alloc);
@@ -910,6 +909,10 @@ static void sni__item_destroy(sni_item_t *item) {
 	if (item->in.destroy) {
 		item->in.destroy(item);
 	}
+
+	sni__dbusmenu_destroy(dbusmenu);
+
+	sni__item_properties_destroy(properties);
 }
 
 static sni_item_t *sni__item_create(string_t id) {

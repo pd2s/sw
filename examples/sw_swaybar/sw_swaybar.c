@@ -125,7 +125,7 @@ typedef struct box_colors {
 typedef struct tray_dbusmenu_menu_popup {
 	sw_wayland_surface_t _; /* must be first */
 	sni_dbusmenu_menu_t *menu;
-	sw_wayland_surface_t *parent;
+	sw_wayland_surface_t *parent; /* ? TODO: use internal field */
 	sw_wayland_seat_t *seat;
 	layout_block_t *focused_block;
 	layout_block_allocator_t block_allocator;
@@ -611,7 +611,9 @@ static void tray_dbusmenu_menu_popup_destroy(tray_dbusmenu_menu_popup_t *popup) 
 	sni_dbusmenu_menu_item_event(popup->menu->parent_menu_item,
 		SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLOSED, TRUE);
 
-	popup->_.out.fini(&popup->_, &state.sw);
+	if (popup->_.out.fini) {
+		popup->_.out.fini(&popup->_, &state.sw);
+	}
 	arena_fini(&popup->block_allocator.arena, &gp_alloc);
 
 	if (popup == state.tray.popup) {
@@ -733,7 +735,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 		MEMSET(children, 0, sizeof(*children));
 	}
 
-	if (popup->_.in.root) {
+	if (popup->_.in.root && popup->_.in.root->out.fini) {
 		popup->_.in.root->out.fini(popup->_.in.root, &state.sw);
 	}
 	arena_reset(&popup->block_allocator.arena, &gp_alloc);
@@ -831,6 +833,8 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 			}
 #endif /* SW_WITH_PNG */
 
+/* ? TODO: use raw pixels instead os svgs */
+#if SW_WITH_SVG
 			switch (menu_item->toggle_type) {
 			case SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_CHECKMARK:
 			case SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO: {
@@ -897,6 +901,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 
 				needs_spacer = TRUE;
 			}
+#endif /* SW_WITH_SVG */
 		}
 		LLIST_APPEND_TAIL(&root->in._.composite.children, &block->_);
 	}
@@ -1207,7 +1212,9 @@ static void bar_destroy(bar_t *bar) {
 		kill(-status->pid, status->stop_signal);
 	}
 
-	bar->_.out.fini(&bar->_, &state.sw);
+	if (bar->_.out.fini) {
+		bar->_.out.fini(&bar->_, &state.sw);
+	}
 	arena_fini(&bar->block_allocator.arena, &gp_alloc);
 	FREE(&gp_alloc, bar);
 
@@ -2071,7 +2078,7 @@ static void bar_update(bar_t *bar) {
 	layout_block_t *min_height;
 	string_t min_height_str = string(" ");
 
-	if (surface->in.root) {
+	if (surface->in.root && surface->in.root->out.fini) {
 		surface->in.root->out.fini(surface->in.root, &state.sw);
 	}
 	arena_reset(&bar->block_allocator.arena, &gp_alloc);
