@@ -321,10 +321,10 @@ typedef struct su_hash_table__##type { \
 	size_t capacity; \
 } su_hash_table__##type##__t; \
 \
-static void su_hash_table__##type##__init(su_hash_table__##type##__t *, su_allocator_t *, size_t initial_size); \
-static void su_hash_table__##type##__fini(su_hash_table__##type##__t *, su_allocator_t *); \
-static void su_hash_table__##type##__resize(su_hash_table__##type##__t *, su_allocator_t *, size_t new_size); \
-static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *, su_allocator_t *, key_type, type **out); \
+static void su_hash_table__##type##__init(su_hash_table__##type##__t *, const su_allocator_t *, size_t initial_size); \
+static void su_hash_table__##type##__fini(su_hash_table__##type##__t *, const su_allocator_t *); \
+static void su_hash_table__##type##__resize(su_hash_table__##type##__t *, const su_allocator_t *, size_t new_size); \
+static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *, const su_allocator_t *, key_type, type **out); \
 static su_bool32_t su_hash_table__##type##__get(su_hash_table__##type##__t *, key_type, type **out); \
 static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *, key_type, type *out)
 
@@ -396,13 +396,18 @@ typedef struct su_fat_ptr {
 } su_fat_ptr_t;
 
 typedef struct su_allocator su_allocator_t;
-typedef void *(*su_allocator_alloc_func_t)(su_allocator_t *, size_t size, size_t alignment);
-typedef void (*su_allocator_free_func_t)(su_allocator_t *, void *ptr);
+typedef void *(*su_allocator_alloc_func_t)(const su_allocator_t *, size_t size, size_t alignment);
+typedef void (*su_allocator_free_func_t)(const su_allocator_t *, void *ptr);
 
 struct su_allocator {
 	su_allocator_alloc_func_t alloc;
 	su_allocator_free_func_t free;
 };
+
+typedef struct su_page_allocator_header {
+	void *ptr;
+	size_t size;
+} su_page_allocator_header_t;
 
 #define SU_ALLOCT(dest, alloc_)                    (dest) = (SU_TYPEOF(dest))(alloc_)->alloc((alloc_), sizeof(*(dest)), SU_ALIGNOF(*(dest)))
 #define SU_ALLOCTS(dest, alloc_, size)             (dest) = (SU_TYPEOF(dest))(alloc_)->alloc((alloc_), (size), SU_ALIGNOF(*(dest)))
@@ -601,12 +606,12 @@ static SU_ATTRIBUTE_NORETURN SU_ATTRIBUTE_FORMAT_PRINTF(2, 3) void su_abort(int 
 
 static inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *literal);
 static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(
-	su_string_t *, su_allocator_t *, const char *fmt, ...);
-static void su_string_init_len(su_string_t *, su_allocator_t *,
+	su_string_t *, const su_allocator_t *, const char *fmt, ...);
+static void su_string_init_len(su_string_t *, const su_allocator_t *,
 		const char *s, size_t len, su_bool32_t nul_terminate);
-static void su_string_init_string(su_string_t *, su_allocator_t *, su_string_t src);
-static void su_string_init(su_string_t *, su_allocator_t *, const char *src);
-static void su_string_fini(su_string_t *, su_allocator_t *);
+static void su_string_init_string(su_string_t *, const su_allocator_t *, su_string_t src);
+static void su_string_init(su_string_t *, const su_allocator_t *, const char *src);
+static void su_string_fini(su_string_t *, const su_allocator_t *);
 static su_string_t su_string_view(su_string_t);
 static su_bool32_t su_string_equal(su_string_t str1, su_string_t str2);
 static int su_string_compare(su_string_t str1, su_string_t str2, size_t max);
@@ -619,17 +624,17 @@ static su_bool32_t su_string_to_uint64(su_string_t, uint64_t *out);
 static su_bool32_t su_string_to_int64(su_string_t, int64_t *out);
 
 /* ? TODO: variants without su_allocator_t */
-static void *su_libc_alloc(su_allocator_t *, size_t size, size_t alignment);
-static void su_libc_free(su_allocator_t *, void *ptr);
-static void *su_page_alloc(size_t size);
-static void su_page_free(void *ptr, size_t size);
+static void *su_libc_alloc(const su_allocator_t *, size_t size, size_t alignment);
+static void su_libc_free(const su_allocator_t *, void *ptr);
+static void *su_page_alloc(const su_allocator_t *, size_t size, size_t alignment);
+static void su_page_free(const su_allocator_t *, void *ptr);
 
-static void su_arena_init(su_arena_t *, su_allocator_t *, size_t initial_block_size);
-static void su_arena_fini(su_arena_t *, su_allocator_t *);
-static su_arena_block_t *su_arena_add_block(su_arena_t *, su_allocator_t *, size_t size);
-static void *su_arena_alloc(su_arena_t *, su_allocator_t *, size_t size, size_t alignment);
+static void su_arena_init(su_arena_t *, const su_allocator_t *, size_t initial_block_size);
+static void su_arena_fini(su_arena_t *, const su_allocator_t *);
+static su_arena_block_t *su_arena_add_block(su_arena_t *, const su_allocator_t *, size_t size);
+static void *su_arena_alloc(su_arena_t *, const su_allocator_t *, size_t size, size_t alignment);
 static size_t su_arena_alloc_get_size(void *ptr);
-static void su_arena_reset(su_arena_t *, su_allocator_t *);
+static void su_arena_reset(su_arena_t *, const su_allocator_t *);
 
 static su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b);
 
@@ -643,9 +648,9 @@ static void su_bswap32_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, siz
 static void su_abgr_to_argb_premultiply_alpha(uint32_t *dest, uint32_t *src, size_t count);
 static void su_abgr_to_argb(uint32_t *dest, uint32_t *src, size_t count);
 
-static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, su_allocator_t *);
+static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *);
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
-	su_allocator_t *, su_hash_table__su_file_cache_t__t *cache);
+	const su_allocator_t *, su_hash_table__su_file_cache_t__t *cache);
 
 static su_bool32_t su_fd_set_nonblock(int);
 static su_bool32_t su_fd_set_cloexec(int);
@@ -656,43 +661,44 @@ static int64_t su_now_ms(clockid_t);
 static su_bool32_t su_locale_is_utf8(void);
 static void su_nop(void *notused, ...);
 
-/*static void *su_base64_decode(su_string_t, su_allocator_t *);*/
+/*static void *su_base64_decode(su_string_t, const su_allocator_t *);*/
 
-static void su_json_writer_init(su_json_writer_t *, su_allocator_t *, size_t initial_bufsize);
-static void su_json_writer_fini(su_json_writer_t *, su_allocator_t *);
+static void su_json_writer_init(su_json_writer_t *, const su_allocator_t *, size_t initial_bufsize);
+static void su_json_writer_fini(su_json_writer_t *, const su_allocator_t *);
 static void su_json_writer_reset(su_json_writer_t *);
 
-static void su_json_writer_object_begin(su_json_writer_t *, su_allocator_t *);
-static void su_json_writer_object_end(su_json_writer_t *, su_allocator_t *);
-static void su_json_writer_object_key_escape(su_json_writer_t *, su_allocator_t *, su_string_t);
-static void su_json_writer_object_key(su_json_writer_t *, su_allocator_t *, su_string_t);
+static void su_json_writer_object_begin(su_json_writer_t *, const su_allocator_t *);
+static void su_json_writer_object_end(su_json_writer_t *, const su_allocator_t *);
+static void su_json_writer_object_key_escape(su_json_writer_t *, const su_allocator_t *, su_string_t);
+static void su_json_writer_object_key(su_json_writer_t *, const su_allocator_t *, su_string_t);
 
-static void su_json_writer_array_begin(su_json_writer_t *, su_allocator_t *);
-static void su_json_writer_array_end(su_json_writer_t *, su_allocator_t *);
+static void su_json_writer_array_begin(su_json_writer_t *, const su_allocator_t *);
+static void su_json_writer_array_end(su_json_writer_t *, const su_allocator_t *);
 
-static void su_json_writer_null(su_json_writer_t *, su_allocator_t *);
-static void su_json_writer_bool(su_json_writer_t *, su_allocator_t *, su_bool32_t);
-static void su_json_writer_int(su_json_writer_t *, su_allocator_t *, int64_t);
-static void su_json_writer_uint(su_json_writer_t *, su_allocator_t *, uint64_t);
-static void su_json_writer_double(su_json_writer_t *, su_allocator_t *, double);
-static void su_json_writer_string_escape(su_json_writer_t *, su_allocator_t *, su_string_t);
-static void su_json_writer_string(su_json_writer_t *, su_allocator_t *, su_string_t);
+static void su_json_writer_null(su_json_writer_t *, const su_allocator_t *);
+static void su_json_writer_bool(su_json_writer_t *, const su_allocator_t *, su_bool32_t);
+static void su_json_writer_int(su_json_writer_t *, const su_allocator_t *, int64_t);
+static void su_json_writer_uint(su_json_writer_t *, const su_allocator_t *, uint64_t);
+static void su_json_writer_double(su_json_writer_t *, const su_allocator_t *, double);
+static void su_json_writer_string_escape(su_json_writer_t *, const su_allocator_t *, su_string_t);
+static void su_json_writer_string(su_json_writer_t *, const su_allocator_t *, su_string_t);
 
-static void su_json_writer_raw(su_json_writer_t *, su_allocator_t *, void *data, size_t len);
-static void su_json_writer_token(su_json_writer_t *, su_allocator_t *, su_json_token_t);
-static void su_json_writer_ast_node(su_json_writer_t *, su_allocator_t *, su_json_ast_node_t *);
+static void su_json_writer_raw(su_json_writer_t *, const su_allocator_t *, void *data, size_t len);
+static void su_json_writer_token(su_json_writer_t *, const su_allocator_t *, su_json_token_t);
+static void su_json_writer_ast_node(su_json_writer_t *, const su_allocator_t *, su_json_ast_node_t *);
 
-static void su_json_tokener_set_string(su_json_tokener_t *, su_allocator_t *, su_string_t);
+static void su_json_tokener_set_string(su_json_tokener_t *, const su_allocator_t *, su_string_t);
 static su_json_tokener_state_t su_json_tokener_next(su_json_tokener_t *,
-	su_allocator_t *, su_json_token_t *out);
-static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *, su_allocator_t *,
+	const su_allocator_t *, su_json_token_t *out);
+static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *, const su_allocator_t *,
 	su_json_ast_t *, uint32_t stop_depth, su_bool32_t check_for_repeating_keys);
 static void su_json_ast_reset(su_json_ast_t *);
 
 static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *, su_string_t key);
-static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert(su_json_tokener_t *, su_allocator_t *,
-	su_json_token_t *token_out);
-static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(su_json_tokener_t *, su_allocator_t *,
+static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert(su_json_tokener_t *,
+	const su_allocator_t *, su_json_token_t *token_out);
+static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
+	su_json_tokener_t *, const su_allocator_t *,
 	su_json_token_t *token_out, su_json_token_type_t expected_type);
 
 /* ? TODO: strip by default, flag to enable */
@@ -795,6 +801,7 @@ typedef su_string_t string_t;
 typedef su_allocator_t allocator_t;
 typedef su_allocator_alloc_func_t alloc_func_t;
 typedef su_allocator_free_func_t free_func_t;
+typedef su_page_allocator_header_t page_allocator_header_t;
 
 typedef su_arena_block_t arena_block_t;
 typedef su_arena_t arena_t;
@@ -988,17 +995,17 @@ typedef su_json_ast_t json_ast_t;
 /* TODO: rework */
 #define SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
 \
-static void su_hash_table__##type##__init(su_hash_table__##type##__t *ht, su_allocator_t *alloc, size_t initial_size) { \
+static void su_hash_table__##type##__init(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, size_t initial_size) { \
 	SU_ASSERT(initial_size > 0); \
 	SU_ARRAY_ALLOCC(ht->items, alloc, initial_size); \
 	ht->capacity = initial_size; \
 } \
 \
-static void su_hash_table__##type##__fini(su_hash_table__##type##__t *ht, su_allocator_t *alloc) { \
+static void su_hash_table__##type##__fini(su_hash_table__##type##__t *ht, const su_allocator_t *alloc) { \
 	SU_FREE(alloc, ht->items); \
 } \
 \
-static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, su_allocator_t *alloc, size_t new_size) { \
+static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, size_t new_size) { \
 	size_t i; \
 	su_hash_table__##type##__t new_ht; \
 	su_hash_table__##type##__init(&new_ht, alloc, new_size); \
@@ -1012,7 +1019,7 @@ static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, su_a
 	*ht = new_ht; \
 } \
 \
-static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, su_allocator_t *alloc, key_type key, type **out) { \
+static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, key_type key, type **out) { \
 	size_t h = (hash_key_func(key) % ht->capacity); \
 	type *it = &ht->items[h]; \
 	size_t c = 0; \
@@ -1086,7 +1093,7 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, 
 	SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize)
 
 
-static void *su_libc_alloc(su_allocator_t *alloc, size_t size, size_t alignment) {
+static void *su_libc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
 	void *ptr;
 	int s;
 
@@ -1106,23 +1113,43 @@ static void *su_libc_alloc(su_allocator_t *alloc, size_t size, size_t alignment)
 	return ptr;
 }
 
-static void su_libc_free(su_allocator_t *alloc, void *ptr) {
+static void su_libc_free(const su_allocator_t *alloc, void *ptr) {
 	SU_NOTUSED(alloc);
 	free(ptr);
 }
 
-static void *su_page_alloc(size_t size) {
-	void *ret = mmap(NULL, size, (PROT_READ | PROT_WRITE), (MAP_ANONYMOUS | MAP_PRIVATE), -1, 0);
-	if (SU_UNLIKELY(ret == MAP_FAILED)) {
+static void *su_page_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
+	void *ret;
+	su_page_allocator_header_t *hdr;
+	size_t real_size;
+	void *ptr;
+
+	SU_ASSERT(size > 0);
+	SU_ASSERT((alignment > 0) && ((alignment == 1) || ((alignment & (alignment - 1)) == 0)));
+	SU_NOTUSED(alloc);
+
+	real_size = (size + alignment + sizeof(*hdr));
+	ptr = mmap(NULL, real_size, (PROT_READ | PROT_WRITE), (MAP_ANONYMOUS | MAP_PRIVATE), -1, 0);
+	if (SU_UNLIKELY(ptr == MAP_FAILED)) {
 		su_abort(errno, "mmap: %s", strerror(errno));
 	}
+
+	ret = (void *)((((uintptr_t)ptr + sizeof(*hdr)) + (alignment - 1)) & ~(alignment - 1));
+	hdr = (su_page_allocator_header_t *)(void *)((uint8_t *)ret - sizeof(*hdr));
+	hdr->size = real_size;
+	hdr->ptr = ptr;
+
+	SU_ASSERT(((uintptr_t)ret % alignment) == 0);
 	return ret;
 }
 
-static void su_page_free(void *ptr, size_t size) {
-	int r = munmap(ptr, size);
-	SU_ASSERT(r == 0);
-	SU_NOTUSED(r);
+static void su_page_free(const su_allocator_t *alloc, void *ptr) {
+	if (ptr) {
+		su_page_allocator_header_t *hdr = (su_page_allocator_header_t *)(void *)((uint8_t *)ptr - sizeof(*hdr));
+		int r = munmap(hdr->ptr, hdr->size);
+		SU_ASSERT(r == 0);
+		SU_NOTUSED(alloc); SU_NOTUSED(r);
+	}
 }
 
 static su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b) {
@@ -1194,10 +1221,10 @@ static inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *lite
 static char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, void *data, int len) {
 	struct d {
 		su_string_t *str;
-		su_allocator_t *alloc;
+		const su_allocator_t *alloc;
 	} *_data = (struct d *)data;
 	su_string_t *str = _data->str;
-	su_allocator_t *alloc = _data->alloc;
+	const su_allocator_t *alloc = _data->alloc;
 	
 	SU_NOTUSED(buf);
 
@@ -1220,10 +1247,10 @@ static char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, v
 }
 
 static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *str,
-		su_allocator_t *alloc, const char *fmt, ...) {
+		const su_allocator_t *alloc, const char *fmt, ...) {
 	struct data {
 		su_string_t *str;
-		su_allocator_t *alloc;
+		const su_allocator_t *alloc;
 	} data;
 	char buf[STB_SPRINTF_MIN];
 
@@ -1242,7 +1269,7 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *
 	va_end(args);
 }
 
-static void su_string_init_len(su_string_t *str, su_allocator_t *alloc,
+static void su_string_init_len(su_string_t *str, const su_allocator_t *alloc,
 		const char *s, size_t len, su_bool32_t nul_terminate) {
 	SU_ASSERT((len > 0) || nul_terminate);
 	SU_ALLOCTS(str->s, alloc, len + nul_terminate);
@@ -1255,11 +1282,11 @@ static void su_string_init_len(su_string_t *str, su_allocator_t *alloc,
 	str->nul_terminated = nul_terminate;
 }
 
-static void su_string_init_string(su_string_t *str, su_allocator_t *alloc, su_string_t src) {
+static void su_string_init_string(su_string_t *str, const su_allocator_t *alloc, su_string_t src) {
 	su_string_init_len(str, alloc, src.s, src.len, src.nul_terminated);
 }
 
-static void su_string_init(su_string_t *str, su_allocator_t *alloc, const char *src) {
+static void su_string_init(su_string_t *str, const su_allocator_t *alloc, const char *src) {
 	str->len = SU_STRLEN(src);
 	SU_ALLOCTS(str->s, alloc, str->len + 1);
 	SU_MEMCPY(str->s, src, str->len + 1);
@@ -1267,7 +1294,7 @@ static void su_string_init(su_string_t *str, su_allocator_t *alloc, const char *
 	str->nul_terminated = SU_TRUE;
 }
 
-static void su_string_fini(su_string_t *str, su_allocator_t *alloc) {
+static void su_string_fini(su_string_t *str, const su_allocator_t *alloc) {
 	if (str->free_contents) {
 		SU_FREE(alloc, str->s);
 	}
@@ -1578,14 +1605,14 @@ static su_bool32_t su_string_to_int64(su_string_t str, int64_t *out) {
 	return SU_TRUE;
 }
 
-static void su_arena_init(su_arena_t *arena, su_allocator_t *alloc, size_t initial_block_size) {
+static void su_arena_init(su_arena_t *arena, const su_allocator_t *alloc, size_t initial_block_size) {
 	arena->blocks_capacity = 8;
 	SU_ARRAY_ALLOC(arena->blocks, alloc, arena->blocks_capacity);
 	arena->blocks_count = 0;
 	su_arena_add_block(arena, alloc, initial_block_size);
 }
 
-static void su_arena_fini(su_arena_t *arena, su_allocator_t *alloc) {
+static void su_arena_fini(su_arena_t *arena, const su_allocator_t *alloc) {
 	size_t i = 0;
 	for ( ; i < arena->blocks_count; ++i) {
 		su_arena_block_t *block = &arena->blocks[i];
@@ -1597,7 +1624,7 @@ static void su_arena_fini(su_arena_t *arena, su_allocator_t *alloc) {
 	SU_FREE(alloc, arena->blocks);
 }
 
-static su_arena_block_t *su_arena_add_block(su_arena_t *arena, su_allocator_t *alloc, size_t size) {
+static su_arena_block_t *su_arena_add_block(su_arena_t *arena, const su_allocator_t *alloc, size_t size) {
 	su_arena_block_t block;
 
 	size = (size + (4096 - 1)) & (size_t)~(4096 - 1);
@@ -1622,7 +1649,7 @@ static su_arena_block_t *su_arena_add_block(su_arena_t *arena, su_allocator_t *a
 	return &arena->blocks[arena->blocks_count - 1];
 }
 
-static void *su_arena_alloc(su_arena_t *arena, su_allocator_t *alloc, size_t size, size_t alignment) {
+static void *su_arena_alloc(su_arena_t *arena, const su_allocator_t *alloc, size_t size, size_t alignment) {
 	su_arena_block_t *block;
 	size_t new_size = size;
 	size_t new_ptr;
@@ -1665,7 +1692,7 @@ static size_t su_arena_alloc_get_size(void *ptr) {
 	return ret;
 }
 
-static void su_arena_reset(su_arena_t *arena, su_allocator_t *alloc) {
+static void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
 	su_arena_block_t *first_block = &arena->blocks[0];
 	size_t size = first_block->size;
 	size_t i = 1;
@@ -1733,10 +1760,10 @@ static SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t s) {
 		hash = ROTATE_LEFT(hash, 9) + (unsigned char)s.s[i];
 	}
 
-	hash = (~hash) + (hash << 18);
-	hash ^= hash ^ ROTATE_RIGHT(hash, 31);
-	hash = hash * 21;
-	hash ^= hash ^ ROTATE_RIGHT(hash, 11);
+	hash = ((~hash) + (hash << 18));
+	hash ^= (hash ^ ROTATE_RIGHT(hash, 31));
+	hash = (hash * 21);
+	hash ^= (hash ^ ROTATE_RIGHT(hash, 11));
 	hash += (hash << 6);
 	hash ^= ROTATE_RIGHT(hash, 22);
 
@@ -2034,7 +2061,7 @@ static void su_abgr_to_argb(uint32_t *dest, uint32_t *src, size_t count) {
 	}
 }
 
-static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, su_allocator_t *alloc) {
+static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *alloc) {
 	int fd;
 	struct stat sb;
 	su_fat_ptr_t data;
@@ -2081,7 +2108,7 @@ error:
 SU_HASH_TABLE_DEFINE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, 16)
 
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
-		su_allocator_t *alloc, su_hash_table__su_file_cache_t__t *cache) {
+		const su_allocator_t *alloc, su_hash_table__su_file_cache_t__t *cache) {
 	su_file_cache_t *e = NULL;
 	static char buf[PATH_MAX];
 	struct stat sb;
@@ -2186,7 +2213,7 @@ static void su_nop(void *notused, ...) {
 	SU_NOTUSED(notused);
 }
 
-/*static void *su_base64_decode(su_string_t text, su_allocator_t *alloc) {
+/*static void *su_base64_decode(su_string_t text, const su_allocator_t *alloc) {
 	uint8_t *ret;
 	size_t i = 0, o = 0;
 
@@ -2247,7 +2274,7 @@ error:
     return NULL;
 }*/
 
-static void su__json_buffer_add_char(su_json_buffer_t *buffer, su_allocator_t *alloc, char c) {
+static void su__json_buffer_add_char(su_json_buffer_t *buffer, const su_allocator_t *alloc, char c) {
 	if (SU_UNLIKELY(buffer->size == buffer->idx)) {
 		char *new_data;
 		buffer->size = ((buffer->size + 1) * 2);
@@ -2273,7 +2300,7 @@ static void su__json_buffer_put_string_nocheck(su_json_buffer_t *buffer, size_t 
 	*idx += str.len;
 }
 
-static void su__json_buffer_add_string(su_json_buffer_t *buffer, su_allocator_t *alloc, su_string_t str) {
+static void su__json_buffer_add_string(su_json_buffer_t *buffer, const su_allocator_t *alloc, su_string_t str) {
 	if (SU_UNLIKELY((buffer->idx + str.len) > buffer->size)) {
 		char *new_data;
 		buffer->size = ((buffer->size + str.len) * 2);
@@ -2292,7 +2319,7 @@ static void su__json_buffer_add_string_nocheck(su_json_buffer_t *buffer, su_stri
 }
 
 static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su__json_buffer_add_format(su_json_buffer_t *buffer,
-		su_allocator_t *alloc, const char *fmt, ...) {
+		const su_allocator_t *alloc, const char *fmt, ...) {
 	char buf[512];
 	size_t len;
 
@@ -2314,7 +2341,7 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su__json_buffer_add_format(su_json_
     va_end(args);
 }
 
-static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, su_allocator_t *alloc, su_string_t str) {
+static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, const su_allocator_t *alloc, su_string_t str) {
 	/* TODO: simd */
 
 	size_t i = 0;
@@ -2358,7 +2385,7 @@ static su__json_writer_state_t su__json_writer_get_state(su_json_writer_t *write
 	return SU__JSON_WRITER_STATE_ROOT;
 }
 
-static void su__json_writer_add_state(su_json_writer_t *writer, su_allocator_t *alloc, su__json_writer_state_t state) {
+static void su__json_writer_add_state(su_json_writer_t *writer, const su_allocator_t *alloc, su__json_writer_state_t state) {
     if (SU_UNLIKELY(writer->state_capacity == writer->state_count)) {
 		su__json_writer_state_t *new_state;
 		writer->state_capacity *= 2;
@@ -2370,7 +2397,7 @@ static void su__json_writer_add_state(su_json_writer_t *writer, su_allocator_t *
     writer->state[writer->state_count++] = state;
 }
 
-static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su__json_writer_element(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	switch (su__json_writer_get_state(writer)) {
 	case SU__JSON_WRITER_STATE_ROOT:
 		break;
@@ -2392,7 +2419,7 @@ static void su__json_writer_element(su_json_writer_t *writer, su_allocator_t *al
 	}
 }
 
-static void su_json_writer_init(su_json_writer_t *writer, su_allocator_t *alloc, size_t initial_bufsize) {
+static void su_json_writer_init(su_json_writer_t *writer, const su_allocator_t *alloc, size_t initial_bufsize) {
 	writer->state_capacity = initial_bufsize;
 	SU_ARRAY_ALLOC(writer->state, alloc, writer->state_capacity);
 	SU_ALLOCTS(writer->buf.data, alloc, initial_bufsize);
@@ -2401,7 +2428,7 @@ static void su_json_writer_init(su_json_writer_t *writer, su_allocator_t *alloc,
 	writer->buf.idx = 0;
 }
 
-static void su_json_writer_fini(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su_json_writer_fini(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	SU_FREE(alloc, writer->buf.data);
 	SU_FREE(alloc, writer->state);
 }
@@ -2411,7 +2438,7 @@ static void su_json_writer_reset(su_json_writer_t *writer) {
 	writer->state_count = 0;
 }
 
-static void su_json_writer_object_begin(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su_json_writer_object_begin(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2420,7 +2447,7 @@ static void su_json_writer_object_begin(su_json_writer_t *writer, su_allocator_t
 	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_OBJECT);
 }
 
-static void su_json_writer_object_end(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su_json_writer_object_end(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2428,7 +2455,7 @@ static void su_json_writer_object_end(su_json_writer_t *writer, su_allocator_t *
 	writer->state_count--;
 }
 
-static void su_json_writer_object_key_escape(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t key) {
+static void su_json_writer_object_key_escape(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t key) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2440,7 +2467,7 @@ static void su_json_writer_object_key_escape(su_json_writer_t *writer, su_alloca
 	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
-static void su_json_writer_object_key(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t key) {
+static void su_json_writer_object_key(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t key) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2452,7 +2479,7 @@ static void su_json_writer_object_key(su_json_writer_t *writer, su_allocator_t *
 	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
-static void su_json_writer_array_begin(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su_json_writer_array_begin(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2461,7 +2488,7 @@ static void su_json_writer_array_begin(su_json_writer_t *writer, su_allocator_t 
 	su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_ARRAY);
 }
 
-static void su_json_writer_array_end(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su_json_writer_array_end(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state == SU__JSON_WRITER_STATE_ARRAY) || (state == SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA));
@@ -2469,7 +2496,7 @@ static void su_json_writer_array_end(su_json_writer_t *writer, su_allocator_t *a
 	writer->state_count--;
 }
 
-static void su_json_writer_null(su_json_writer_t *writer, su_allocator_t *alloc) {
+static void su_json_writer_null(su_json_writer_t *writer, const su_allocator_t *alloc) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2477,7 +2504,7 @@ static void su_json_writer_null(su_json_writer_t *writer, su_allocator_t *alloc)
 	su__json_buffer_add_string(&writer->buf, alloc, su_string_("null"));
 }
 
-static void su_json_writer_bool(su_json_writer_t *writer, su_allocator_t *alloc, su_bool32_t b) {
+static void su_json_writer_bool(su_json_writer_t *writer, const su_allocator_t *alloc, su_bool32_t b) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2489,7 +2516,7 @@ static void su_json_writer_bool(su_json_writer_t *writer, su_allocator_t *alloc,
 	}
 }
 
-static void su_json_writer_int(su_json_writer_t *writer, su_allocator_t *alloc, int64_t i) {
+static void su_json_writer_int(su_json_writer_t *writer, const su_allocator_t *alloc, int64_t i) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2497,7 +2524,7 @@ static void su_json_writer_int(su_json_writer_t *writer, su_allocator_t *alloc, 
 	su__json_buffer_add_format(&writer->buf, alloc, "%ld", i);
 }
 
-static void su_json_writer_uint(su_json_writer_t *writer, su_allocator_t *alloc, uint64_t u) {
+static void su_json_writer_uint(su_json_writer_t *writer, const su_allocator_t *alloc, uint64_t u) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2505,7 +2532,7 @@ static void su_json_writer_uint(su_json_writer_t *writer, su_allocator_t *alloc,
 	su__json_buffer_add_format(&writer->buf, alloc, "%lu", u);
 }
 
-static void su_json_writer_double(su_json_writer_t *writer, su_allocator_t *alloc, double d) {
+static void su_json_writer_double(su_json_writer_t *writer, const su_allocator_t *alloc, double d) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2518,7 +2545,7 @@ static void su_json_writer_double(su_json_writer_t *writer, su_allocator_t *allo
 	}
 }
 
-static void su_json_writer_string_escape(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t str) {
+static void su_json_writer_string_escape(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t str) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2528,7 +2555,7 @@ static void su_json_writer_string_escape(su_json_writer_t *writer, su_allocator_
 	su__json_buffer_add_char(&writer->buf, alloc, '"');
 }
 
-static void su_json_writer_string(su_json_writer_t *writer, su_allocator_t *alloc, su_string_t str) {
+static void su_json_writer_string(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t str) {
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
 	SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -2538,7 +2565,7 @@ static void su_json_writer_string(su_json_writer_t *writer, su_allocator_t *allo
 	su__json_buffer_add_char(&writer->buf, alloc, '"');
 }
 
-static void su_json_writer_raw(su_json_writer_t *writer, su_allocator_t *alloc, void *data, size_t len) {
+static void su_json_writer_raw(su_json_writer_t *writer, const su_allocator_t *alloc, void *data, size_t len) {
 	su_string_t s;
 	su__json_writer_state_t state = su__json_writer_get_state(writer);
 	SU_NOTUSED(state);
@@ -2551,7 +2578,7 @@ static void su_json_writer_raw(su_json_writer_t *writer, su_allocator_t *alloc, 
 	su__json_buffer_add_string(&writer->buf, alloc, s);
 }
 
-static void su_json_writer_token(su_json_writer_t *writer, su_allocator_t *alloc, su_json_token_t token) {
+static void su_json_writer_token(su_json_writer_t *writer, const su_allocator_t *alloc, su_json_token_t token) {
 	switch (token.type) {
 	case SU_JSON_TOKEN_TYPE_OBJECT_START:
 		su_json_writer_object_begin(writer, alloc);
@@ -2591,7 +2618,7 @@ static void su_json_writer_token(su_json_writer_t *writer, su_allocator_t *alloc
 	}
 }
 
-static void su_json_writer_ast_node(su_json_writer_t *writer, su_allocator_t *alloc, su_json_ast_node_t *node) {
+static void su_json_writer_ast_node(su_json_writer_t *writer, const su_allocator_t *alloc, su_json_ast_node_t *node) {
 	/* TODO: remove recursion */
 	switch (node->type) {
 	case SU_JSON_AST_NODE_TYPE_OBJECT: {
@@ -2640,7 +2667,7 @@ static void su_json_writer_ast_node(su_json_writer_t *writer, su_allocator_t *al
 }
 
 static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener_t *tokener,
-		su_allocator_t *alloc, su_string_t *out) {
+		const su_allocator_t *alloc, su_string_t *out) {
 	static uint8_t escape_lut[256] = {
 		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -2843,7 +2870,7 @@ static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener
 	return SU_JSON_TOKENER_STATE_SUCCESS;
 }
 
-static void su_json_tokener_set_string(su_json_tokener_t *tokener, su_allocator_t *alloc, su_string_t str) {
+static void su_json_tokener_set_string(su_json_tokener_t *tokener, const su_allocator_t *alloc, su_string_t str) {
 	if (str.len >= (tokener->buf.size - tokener->buf.idx)) {
 		char *new_data;
 		tokener->buf.size = ((str.len + tokener->buf.size) * 2);
@@ -2903,7 +2930,7 @@ static void su__json_tokener_value_end(su_json_tokener_t *tokener) {
 }
 
 static su_json_tokener_state_t su_json_tokener_next(su_json_tokener_t *tokener,
-		su_allocator_t *alloc, su_json_token_t *out) {
+		const su_allocator_t *alloc, su_json_token_t *out) {
 	su__json_tokener_state_t state = su__json_tokener_get_state(tokener);
 	switch (state) {
 	case SU__JSON_TOKENER_STATE_STRING:
@@ -3442,7 +3469,7 @@ static void su_json_ast_reset(su_json_ast_t *ast) {
 	ast->current = &ast->root;
 }
 
-static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, su_allocator_t *alloc,
+static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, const su_allocator_t *alloc,
 		su_json_ast_t *ast, uint32_t stop_depth, su_bool32_t check_for_repeating_keys) {
 	/* ? TODO: min/max depth */
 	su_json_tokener_state_t state;
@@ -3563,13 +3590,14 @@ static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *node,
 }
 
 static SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert(su_json_tokener_t *tokener,
-		su_allocator_t *alloc, su_json_token_t *token_out) {
+		const su_allocator_t *alloc, su_json_token_t *token_out) {
 	su_json_tokener_state_t s = su_json_tokener_next(tokener, alloc, token_out);
 	SU_NOTUSED(s);
 	SU_ASSERT(s == SU_JSON_TOKENER_STATE_SUCCESS);
 }
 
-static SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert_type(su_json_tokener_t *tokener, su_allocator_t *alloc,
+static SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert_type(
+		su_json_tokener_t *tokener, const su_allocator_t *alloc,
 		su_json_token_t *token_out, su_json_token_type_t expected_type) {
 	SU_NOTUSED(expected_type);
 	su_json_tokener_advance_assert(tokener, alloc, token_out);

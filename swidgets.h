@@ -1,7 +1,7 @@
 #if !defined(SW_HEADER)
 #define SW_HEADER
 
-/*#define SW_IMPLEMENTATION*/
+#define SW_IMPLEMENTATION
 
 #if !defined(SW_WITH_DEBUG)
 #define SW_WITH_DEBUG 1
@@ -757,8 +757,8 @@ typedef union sw_backend_out {
 } sw_backend_out_t;
 
 typedef struct sw_context_in {
-	su_allocator_t *gp_alloc;
-	su_allocator_t *scratch_alloc;
+	const su_allocator_t *gp_alloc;
+	const su_allocator_t *scratch_alloc;
 	SU_PAD32;
 	sw_backend_type_t backend_type;
 	sw_backend_in_t backend;
@@ -1445,7 +1445,7 @@ static void sw__free_stbi(void *ptr) {
 }
 
 static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size) {
-	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
+	const su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
 	void *ret;
 	SU_ALLOCTSA(ret, scratch_alloc, new_size, 32);
 	if (ptr) {
@@ -1472,7 +1472,7 @@ static pixman_color_t sw__color_argb32_to_pixman_color(sw_color_argb32_t color) 
 	return c;
 }
 
-static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_t *scratch_alloc) {
+static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, const su_allocator_t *scratch_alloc) {
 	pixman_image_t *image;
 
 	switch (color.type) {
@@ -1579,7 +1579,7 @@ static pixman_image_t *sw__color_to_pixman_image(sw_color_t color, su_allocator_
 }
 
 static void sw__image_handle_destroy(pixman_image_t *image, void *data) {
-	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	const su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
 	sw__image_data_t *image_data = (sw__image_data_t *)data;
 
 	SU_NOTUSED(image);
@@ -1617,7 +1617,7 @@ static void sw__image_handle_destroy(pixman_image_t *image, void *data) {
 	SU_FREE(gp_alloc, image_data);
 }
 
-static pixman_image_t *sw__image_create( su_allocator_t *gp_alloc,
+static pixman_image_t *sw__image_create( const su_allocator_t *gp_alloc,
 		int width, int height, sw__image_data_t **data_out) {
 	sw__image_data_t *data;
 	int stride;
@@ -1649,7 +1649,7 @@ static pixman_image_t *sw__image_create( su_allocator_t *gp_alloc,
 	return image;
 }
 
-static pixman_image_t *sw__load_pixmap(su_allocator_t *gp_alloc, su_fat_ptr_t data) {
+static pixman_image_t *sw__load_pixmap(const su_allocator_t *gp_alloc, su_fat_ptr_t data) {
 	sw_pixmap_t *pixmap;
 	pixman_image_t *image;
 	sw__image_data_t *image_data;
@@ -1673,7 +1673,7 @@ static pixman_image_t *sw__load_pixmap(su_allocator_t *gp_alloc, su_fat_ptr_t da
 }
 
 #if SW_WITH_SVG
-static pixman_image_t *sw__render_svg(su_allocator_t *gp_alloc, resvg_render_tree *tree,
+static pixman_image_t *sw__render_svg(const su_allocator_t *gp_alloc, resvg_render_tree *tree,
 		sw__image_data_t **image_data_out, int32_t target_width, int32_t target_height) {
 	resvg_size image_size = resvg_get_image_size(tree); /* ? TODO: resvg_get_image_bbox, etc */
 	int32_t width = (int32_t)image_size.width;
@@ -1707,7 +1707,7 @@ static pixman_image_t *sw__render_svg(su_allocator_t *gp_alloc, resvg_render_tre
 	return image;
 }
 
-static pixman_image_t *sw__load_svg(su_allocator_t *gp_alloc, su_fat_ptr_t data) {
+static pixman_image_t *sw__load_svg(const su_allocator_t *gp_alloc, su_fat_ptr_t data) {
 	pixman_image_t *image;
 	resvg_render_tree *tree = NULL;
 	resvg_options *opt = resvg_options_create();
@@ -1745,7 +1745,7 @@ error:
 #endif /* SW_WITH_SVG */
 
 #if SW_WITH_PNG
-static pixman_image_t *sw__load_png(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_png(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__result_info ri;
@@ -1774,7 +1774,7 @@ static pixman_image_t *sw__load_png(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_PNG */
 
 #if SW_WITH_JPG
-static pixman_image_t *sw__load_jpg(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_jpg(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__context ctx;
@@ -1796,7 +1796,7 @@ static pixman_image_t *sw__load_jpg(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_JPG */
 
 #if SW_WITH_TGA
-static pixman_image_t *sw__load_tga(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_tga(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__context ctx;
@@ -1818,7 +1818,7 @@ static pixman_image_t *sw__load_tga(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_TGA */
 
 #if SW_WITH_BMP
-static pixman_image_t *sw__load_bmp(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_bmp(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__context ctx;
@@ -1840,7 +1840,7 @@ static pixman_image_t *sw__load_bmp(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_BMP */
 
 #if SW_WITH_PSD
-static pixman_image_t *sw__load_psd(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_psd(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__result_info ri;
@@ -1869,7 +1869,7 @@ static pixman_image_t *sw__load_psd(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_PSD */
 
 #if SW_WITH_GIF
-static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_gif(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		sw_layout_block_image_t *data) {
 	pixman_image_t *image = NULL;
 	int width, height, unused, *frame_delays, frame_count;
@@ -1921,7 +1921,7 @@ static pixman_image_t *sw__load_gif(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_GIF */
 
 #if SW_WITH_HDR
-static pixman_image_t *sw__load_hdr(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_hdr(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__context ctx;
@@ -1946,7 +1946,7 @@ static pixman_image_t *sw__load_hdr(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_HDR */
 
 #if SW_WITH_PIC
-static pixman_image_t *sw__load_pic(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_pic(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__context ctx;
@@ -1968,7 +1968,7 @@ static pixman_image_t *sw__load_pic(su_allocator_t *gp_alloc, su_allocator_t *sc
 #endif /* SW_WITH_PIC */
 
 #if SW_WITH_PNM
-static pixman_image_t *sw__load_pnm(su_allocator_t *gp_alloc, su_allocator_t *scratch_alloc,
+static pixman_image_t *sw__load_pnm(const su_allocator_t *gp_alloc, const su_allocator_t *scratch_alloc,
 		su_fat_ptr_t data) {
 	pixman_image_t *image = NULL;
 	stbi__result_info ri;
@@ -2046,8 +2046,8 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
 
 	sw__context_t *sw_priv = (sw__context_t *)&sw__context->sw__private;
 	sw__layout_block_t *block_priv = (sw__layout_block_t *)&block->sw__private;
-	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
-	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
+	const su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	const su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
 	sw_layout_block_event_t error;
 	sw_layout_block_type_t block_type = block->in.type;
 
@@ -2672,7 +2672,7 @@ static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *de
 
 	sw__layout_block_t *block_priv = (sw__layout_block_t *)&block->sw__private;
 	sw_layout_block_dimensions_t dim = block->out.dim;
-	su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
+	const su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
 	pixman_image_t *color;
 
 	if (SU_UNLIKELY(!block_priv->valid)) {
@@ -3107,7 +3107,9 @@ static su_bool32_t sw__wayland_surface_buffer_init(sw__wayland_surface_buffer_t 
 	int32_t stride = (width * 4);
 	struct wl_shm_pool *wl_shm_pool;
 
-	static struct wl_buffer_listener wl_buffer_listener = { sw__wayland_surface_buffer_handle_release };
+	static const struct wl_buffer_listener wl_buffer_listener = {
+		sw__wayland_surface_buffer_handle_release
+	};
 
 	SU_ASSERT(width > 0);
 	SU_ASSERT(height > 0);
@@ -3313,7 +3315,7 @@ static void sw__wayland_surface_toplevel_handle_configure(void *data, struct xdg
 	for (state = (uint32_t *)states->data;
 			(uint8_t *)state < ((uint8_t *)states->data + states->size);
 			++state) {
-		surface->out._.toplevel.states |= (1 << *state);
+		surface->out._.toplevel.states |= (1u << *state);
 	}
 	
 	if (!(surface->out._.toplevel.states & SW_WAYLAND_SURFACE_TOPLEVEL_STATE_MAXIMIZED)) {
@@ -3372,22 +3374,22 @@ static su_bool32_t sw__wayland_surface_toplevel_init(sw_wayland_surface_t *surfa
 	sw__wayland_surface_toplevel_t *toplevel_priv = &surface_priv->_.toplevel;
 	sw__context_t *sw_priv = (sw__context_t *)&sw__context->sw__private;
 	
-	static struct wl_surface_listener wl_surface_listener = {
+	static const struct wl_surface_listener wl_surface_listener = {
 		sw__wayland_surface_handle_enter,
 		sw__wayland_surface_handle_leave,
 		sw__wayland_surface_toplevel_handle_preferred_buffer_scale,
 		sw__wayland_surface_handle_preferred_buffer_transform
 	};
-	static struct xdg_surface_listener xdg_surface_listener = {
+	static const struct xdg_surface_listener xdg_surface_listener = {
 		sw__wayland_xdg_surface_handle_configure
 	};
-	static struct xdg_toplevel_listener xdg_toplevel_listener = {
+	static const struct xdg_toplevel_listener xdg_toplevel_listener = {
 		sw__wayland_surface_toplevel_handle_configure,
 		sw__wayland_surface_toplevel_handle_close,
 		NULL,
 		NULL
 	};
-	static struct zxdg_toplevel_decoration_v1_listener decoration_listener = {
+	static const struct zxdg_toplevel_decoration_v1_listener decoration_listener = {
 		sw__wayland_surface_toplevel_handle_decoration_configure
 	};
 
@@ -3426,13 +3428,13 @@ static su_bool32_t sw__wayland_surface_layer_init(sw_wayland_surface_t *surface,
 	sw__wayland_output_t *output_priv = (sw__wayland_output_t *)&surface->in._.layer.output->sw__private;
 	sw__wayland_surface_layer_t *layer_priv = &surface_priv->_.layer;
 
-	static struct wl_surface_listener wl_surface_listener = {
+	static const struct wl_surface_listener wl_surface_listener = {
 		sw__wayland_surface_handle_enter,
 		sw__wayland_surface_handle_leave,
 		sw__wayland_surface_layer_handle_preferred_buffer_scale,
 		sw__wayland_surface_handle_preferred_buffer_transform
 	};
-	static struct zwlr_layer_surface_v1_listener layer_surface_listener = {
+	static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
 		sw__wayland_surface_layer_handle_configure,
 		sw__wayland_surface_layer_handle_closed
 	};
@@ -3469,13 +3471,13 @@ static su_bool32_t sw__wayland_surface_popup_init_stage1( sw_wayland_surface_t *
 	sw__wayland_surface_t *surface_priv = (sw__wayland_surface_t *)&surface->sw__private;
 	sw__wayland_surface_popup_t *popup_priv = &surface_priv->_.popup;
 
-	static struct wl_surface_listener wl_surface_listener = {
+	static const struct wl_surface_listener wl_surface_listener = {
 		sw__wayland_surface_handle_enter,
 		sw__wayland_surface_handle_leave,
 		sw__wayland_surface_popup_handle_preferred_buffer_scale,
 		sw__wayland_surface_handle_preferred_buffer_transform,
 	};
-	static struct xdg_surface_listener xdg_surface_listener = {
+	static const struct xdg_surface_listener xdg_surface_listener = {
 		sw__wayland_xdg_surface_handle_configure
 	};
 
@@ -3557,7 +3559,7 @@ static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_waylan
 	sw__wayland_surface_t *surface_priv = (sw__wayland_surface_t *)&surface->sw__private;
 	sw_wayland_cursor_shape_t cursor_shape = ((surface->in.cursor_shape == SW_WAYLAND_CURSOR_SHAPE_DEFAULT)
 		? SW_WAYLAND_CURSOR_SHAPE_DEFAULT_ : surface->in.cursor_shape);
-	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	const su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
 
 	SU_ASSERT(surface->in.root != NULL);
 
@@ -3798,7 +3800,7 @@ static void sw__wayland_surface_popup_init_stage2(sw_wayland_surface_t *surface)
 	sw__wayland_surface_popup_t *popup_priv = &surface_priv->_.popup;
 	sw__wayland_surface_t *parent_priv = (sw__wayland_surface_t *)&popup_priv->parent->sw__private;
 
-	static struct xdg_popup_listener xdg_popup_listener = {
+	static const struct xdg_popup_listener xdg_popup_listener = {
 		sw__wayland_surface_popup_handle_configure,
 		sw__wayland_surface_popup_handle_done,
 		sw__wayland_surface_popup_handle_repositioned,
@@ -3838,7 +3840,7 @@ static void sw__wayland_surface_popup_init_stage2(sw_wayland_surface_t *surface)
 
 static void sw__wayland_output_destroy(sw_wayland_output_t *output) {
 	sw__wayland_output_t *output_priv = (sw__wayland_output_t *)&output->sw__private;
-	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	const su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
 	sw_wayland_surface_t *surface = sw__context->in.backend.wayland.layers.head;
 	for ( ; surface; ) {
 		sw_wayland_surface_t *next = surface->next;
@@ -3865,7 +3867,7 @@ static void sw__wayland_output_handle_geometry(void *data, struct wl_output *wl_
 		int32_t x, int32_t y, int32_t physical_width, int32_t physical_height,
 		int32_t subpixel, const char *make, const char *model, int32_t transform) {
 	sw_wayland_output_t *output = (sw_wayland_output_t *)data;
-	su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
+	const su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
 	size_t len;
 
 	SU_NOTUSED(wl_output);
@@ -3966,7 +3968,7 @@ static void sw__wayland_output_handle_destroy(sw_wayland_output_t *output, sw_co
 }
 
 static sw_wayland_output_t *sw__wayland_output_create(uint32_t wl_name) {
-	static struct wl_output_listener output_listener = {
+	static const struct wl_output_listener output_listener = {
 		sw__wayland_output_handle_geometry,
 		sw__wayland_output_handle_mode,
 		sw__wayland_output_handle_done,
@@ -4096,7 +4098,7 @@ static sw_wayland_pointer_t *sw__wayland_pointer_create(sw_wayland_seat_t *seat)
 		sw__wayland_pointer_t *pointer_priv = (sw__wayland_pointer_t *)&pointer->sw__private;
 		sw__wayland_seat_t *seat_priv = (sw__wayland_seat_t *)&seat->sw__private;
 
-		static struct wl_pointer_listener pointer_listener = {
+		static const struct wl_pointer_listener pointer_listener = {
 			sw__wayland_pointer_handle_enter,
 			sw__wayland_pointer_handle_leave,
 			sw__wayland_pointer_handle_motion,
@@ -4205,7 +4207,7 @@ static sw_wayland_seat_t *sw__wayland_seat_create(uint32_t wl_name) {
 	sw_wayland_seat_t *seat;
 	sw__wayland_seat_t *seat_priv;
 
-	static struct wl_seat_listener seat_listener = {
+	static const struct wl_seat_listener seat_listener = {
 		sw__wayland_seat_handle_capabilities,
 		sw__wayland_seat_handle_name,
 	};
@@ -4250,7 +4252,9 @@ static void sw__wayland_registry_handle_global(void *data, struct wl_registry *w
 		wayland_priv->layer_shell = (struct zwlr_layer_shell_v1 *)wl_registry_bind(
 			wayland_priv->registry, wl_name, &zwlr_layer_shell_v1_interface, 2);
 	} else if (SU_STRCMP(interface, xdg_wm_base_interface.name) == 0) {
-		static struct xdg_wm_base_listener wm_base_listener = { sw__wayland_wm_base_handle_ping };
+		static const struct xdg_wm_base_listener wm_base_listener = {
+			sw__wayland_wm_base_handle_ping
+		};
 		wayland_priv->wm_base = (struct xdg_wm_base *)wl_registry_bind(
 			wayland_priv->registry,wl_name, &xdg_wm_base_interface, 3);
 		xdg_wm_base_add_listener(wayland_priv->wm_base, &wm_base_listener, NULL);
@@ -4294,7 +4298,7 @@ static void sw__wayland_registry_handle_global_remove(void *data, struct wl_regi
 SW_FUNC_DEF void sw_cleanup(sw_context_t *sw) {
 	sw__context_t *sw_priv = (sw__context_t *)&sw->sw__private;
 	sw_context_t *old_context = sw__context;
-	su_allocator_t *gp_alloc = sw->in.gp_alloc;
+	const su_allocator_t *gp_alloc = sw->in.gp_alloc;
 	size_t i;
 
 	sw__context = sw;
@@ -4548,7 +4552,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
 		sw_wayland_surface_t *s;
 
 		if (SU_UNLIKELY(!wayland_priv->display)) {
-			static struct wl_registry_listener registry_listener = {
+			static const struct wl_registry_listener registry_listener = {
 				sw__wayland_registry_handle_global,
 				sw__wayland_registry_handle_global_remove,
 			};

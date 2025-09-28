@@ -46,7 +46,7 @@ typedef struct xdg_icon_theme__theme xdg_icon_theme__theme_t;
 
 struct xdg_icon_theme__theme {
 	allocator_t alloc; /* must be first */
-	allocator_t *user_alloc;
+	const allocator_t *user_alloc;
 	string_t path, name;
 	su_hash_table__xdg_icon_theme__icon_t__t icons;
 	pthread_mutex_t lock;
@@ -63,9 +63,9 @@ typedef struct xdg_icon_theme_cache {
 	xdg_icon_theme__theme_t *themes; /* singly linked list */
 } xdg_icon_theme_cache_t;
 
-static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *, allocator_t *);
-static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *, allocator_t *);
-static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *, allocator_t *, string_t path);
+static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *, const allocator_t *);
+static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *, const allocator_t *);
+static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *, const allocator_t *, string_t path);
 static bool32_t xdg_icon_theme_cache_find_icon(xdg_icon_theme_cache_t *,
 		string_t **svgs_out, size_t *svgs_count_out,
 		string_t **pngs_out, size_t *pngs_count_out,
@@ -209,8 +209,8 @@ static void xdg_icon_theme__theme_populate(xdg_icon_theme__theme_t *theme, strin
 	closedir(dir);
 }
 
-static void *xdg_icon_theme__theme_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
-	xdg_icon_theme__theme_t *theme = (xdg_icon_theme__theme_t *)alloc;
+static void *xdg_icon_theme__theme_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
+	xdg_icon_theme__theme_t *theme = (xdg_icon_theme__theme_t *)(uintptr_t)alloc;
 	void *ret = arena_alloc(&theme->arena, theme->user_alloc, size, alignment);
 	return ret;
 }
@@ -229,7 +229,7 @@ static void *xdg_icon_theme__theme_populate_thread(void *data) {
 }
 
 static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
-		allocator_t *alloc, string_t path, string_t name) {
+		const allocator_t *alloc, string_t path, string_t name) {
 	xdg_icon_theme__theme_t *theme = NULL;
 	pthread_t th;
 	xdg_icon_theme__theme_t *t = cache->themes;
@@ -262,7 +262,7 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 			(0 == pthread_create(&th, NULL, xdg_icon_theme__theme_populate_thread, theme))) {
 		cache->threads[cache->threads_count++] = th;
 	} else {
-		DEBUG_LOG("warning: failed to create thread/thread pool is full. threads_count = %zu", cache->threads_count);
+		DEBUG_LOG("warning: failed to create thread/thread pool is full. threads_count = %lu", cache->threads_count);
 		xdg_icon_theme__theme_populate(theme, path);
 	}
 
@@ -270,7 +270,7 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 }
 
 static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
-		allocator_t *alloc, string_t path) {
+		const allocator_t *alloc, string_t path) {
 	static char abspath_buf[PATH_MAX];
 	DIR *dir;
 	int dir_fd;
@@ -366,7 +366,7 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 	return TRUE;
 }
 
-static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t *alloc) {
+static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, const allocator_t *alloc) {
 	char *data_home = getenv("XDG_DATA_HOME");
 	char *data_dirs = getenv("XDG_DATA_DIRS");
 	static char buf[PATH_MAX];
@@ -436,7 +436,7 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, allocator_t
 	xdg_icon_theme_cache_add_basedir(cache, alloc, string("/usr/share/pixmaps"));
 }
 
-static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, allocator_t *alloc) {
+static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, const allocator_t *alloc) {
 	size_t i;
 	xdg_icon_theme__theme_t *theme;
 

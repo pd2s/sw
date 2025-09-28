@@ -93,13 +93,13 @@ static state_t state;
 
 static allocator_t gp_alloc = { libc_alloc, libc_free };
 
-static void *scratch_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
+static void *scratch_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
 	void *ret = arena_alloc(&state.scratch_arena, &gp_alloc, size, alignment);
 	NOTUSED(alloc);
 	return ret;
 }
 
-static void scratch_alloc_free(allocator_t *alloc, void *ptr) {
+static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 

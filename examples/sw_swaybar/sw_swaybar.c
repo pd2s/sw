@@ -301,15 +301,16 @@ typedef struct state {
 
 static state_t state;
 
-static allocator_t gp_alloc = { libc_alloc, libc_free };
+static const allocator_t gp_alloc = { libc_alloc, libc_free };
+static const allocator_t page_allocator = { page_alloc, page_free };
 
-static void *scratch_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
-	void *ret = arena_alloc(&state.scratch_arena, &gp_alloc, size, alignment);
+static void *scratch_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
+	void *ret = arena_alloc(&state.scratch_arena, &page_allocator, size, alignment);
 	NOTUSED(alloc);
 	return ret;
 }
 
-static void scratch_alloc_free(allocator_t *alloc, void *ptr) {
+static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 
@@ -361,13 +362,13 @@ static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_contex
 	return TRUE;
 }
 
-static void *layout_block_alloc_alloc(allocator_t *data, size_t size, size_t alignment) {
-	layout_block_allocator_t *alloc = (layout_block_allocator_t *)data;
-	void *ret = arena_alloc(&alloc->arena, &gp_alloc, size, alignment);
+static void *layout_block_alloc_alloc(const allocator_t *data, size_t size, size_t alignment) {
+	layout_block_allocator_t *alloc = (layout_block_allocator_t *)(uintptr_t)data;
+	void *ret = arena_alloc(&alloc->arena, &page_allocator, size, alignment);
 	return ret;
 }
 
-static void layout_block_alloc_free(allocator_t *alloc, void *ptr) {
+static void layout_block_alloc_free(const allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 
@@ -575,7 +576,7 @@ static void tray_describe_sni_items(bar_t *bar) {
 #if SW_WITH_SVG || SW_WITH_PNG
 			if (icon_name.len > 0) {
 				if (props->icon_theme_path.len > 0) {
-					xdg_icon_theme_cache_add_basedir(&state.tray.cache, &gp_alloc, props->icon_theme_path);
+					xdg_icon_theme_cache_add_basedir(&state.tray.cache, &page_allocator, props->icon_theme_path);
 				}
 				tray_find_icon(icon_name, &icon);
 			}
@@ -614,7 +615,7 @@ static void tray_dbusmenu_menu_popup_destroy(tray_dbusmenu_menu_popup_t *popup) 
 	if (popup->_.out.fini) {
 		popup->_.out.fini(&popup->_, &state.sw);
 	}
-	arena_fini(&popup->block_allocator.arena, &gp_alloc);
+	arena_fini(&popup->block_allocator.arena, &page_allocator);
 
 	if (popup == state.tray.popup) {
 		state.tray.popup = NULL;
@@ -738,7 +739,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 	if (popup->_.in.root && popup->_.in.root->out.fini) {
 		popup->_.in.root->out.fini(popup->_.in.root, &state.sw);
 	}
-	arena_reset(&popup->block_allocator.arena, &gp_alloc);
+	arena_reset(&popup->block_allocator.arena, &page_allocator);
 
 	root = (sw_layout_block_t *)layout_block_create(&popup->block_allocator);
 	root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
@@ -787,14 +788,14 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				sni_dbusmenu_t *dbusmenu = menu_item->parent_menu->dbusmenu;
 				if ( dbusmenu->item->out.properties &&
 						(dbusmenu->item->out.properties->icon_theme_path.len > 0)) {
-					xdg_icon_theme_cache_add_basedir(&state.tray.cache, &gp_alloc,
+					xdg_icon_theme_cache_add_basedir(&state.tray.cache, &page_allocator,
 						dbusmenu->item->out.properties->icon_theme_path);
 				}
 				if (dbusmenu->properties) {
 					size_t j = 0;
 					for ( ; j < dbusmenu->properties->icon_theme_path_count; ++j) {
 						xdg_icon_theme_cache_add_basedir( &state.tray.cache,
-							&gp_alloc, dbusmenu->properties->icon_theme_path[j]);
+							&page_allocator, dbusmenu->properties->icon_theme_path[j]);
 					}
 				}
 				icon = layout_block_create(&popup->block_allocator);
@@ -845,14 +846,14 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				if (menu_item->toggle_state == 1) {
 					string_init_format( &svg, &popup->block_allocator.alloc,
 						(menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
-						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"1.92\"/><circle cx=\"16\" cy=\"16\" r=\"6.4\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>"
-						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><mask id=\"a\"><rect width=\"32\" height=\"32\" fill=\"#fff\"/><polyline points=\"8,17 13,22 24,10\" fill=\"none\" stroke=\"#000\" stroke-width=\"3\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"/></mask><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02hhx%02hhx%02hhx%02hhx\" mask=\"url(#a)\"/></svg>",
+						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02x%02x%02x%02x\" stroke-width=\"1.92\"/><circle cx=\"16\" cy=\"16\" r=\"6.4\" fill=\"#%02x%02x%02x%02x\"/></svg>"
+						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><mask id=\"a\"><rect width=\"32\" height=\"32\" fill=\"#fff\"/><polyline points=\"8,17 13,22 24,10\" fill=\"none\" stroke=\"#000\" stroke-width=\"3\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"/></mask><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02x%02x%02x%02x\" mask=\"url(#a)\"/></svg>",
 						color.c.r, color.c.g, color.c.b, color.c.a, color.c.r, color.c.g, color.c.b, color.c.a);
 				} else {
 					string_init_format( &svg, &popup->block_allocator.alloc,
 						(menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
-						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02hhx%02hhx%02hhx%02hhx\" stroke-width=\"1.92\"/></svg>"
-						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>",
+						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02x%02x%02x%02x\" stroke-width=\"1.92\"/></svg>"
+						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02x%02x%02x%02x\"/></svg>",
 						color.c.r, color.c.g, color.c.b, color.c.a);
 				}
 				toggle->_.in._.image.data.ptr = svg.s;
@@ -883,7 +884,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				submenu->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				submenu->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
 				string_init_format( &svg, &popup->block_allocator.alloc,
-					"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><polygon points=\"25.6,3.2 25.6,28.8 6.4,16\" fill=\"#%02hhx%02hhx%02hhx%02hhx\"/></svg>",
+					"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><polygon points=\"25.6,3.2 25.6,28.8 6.4,16\" fill=\"#%02x%02x%02x%02x\"/></svg>",
 					color.c.r, color.c.g, color.c.b, color.c.a);
 				submenu->_.in._.image.data.ptr = svg.s;
 				submenu->_.in._.image.data.len = svg.len;
@@ -991,7 +992,7 @@ static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_
 	sni_dbusmenu_menu_about_to_show(menu, TRUE);
 
 	ALLOCCT(surface, &gp_alloc);
-	arena_init(&surface->block_allocator.arena, &gp_alloc, 8192);
+	arena_init(&surface->block_allocator.arena, &page_allocator, 8192);
 	surface->block_allocator.alloc.alloc = layout_block_alloc_alloc;
 	surface->block_allocator.alloc.free = layout_block_alloc_free;
 	surface->parent = parent;
@@ -1169,7 +1170,7 @@ static void tray_init(void) {
 	int ret;
 
 #if SW_WITH_SVG || SW_WITH_PNG
-	xdg_icon_theme_cache_init(&state.tray.cache, &gp_alloc);
+	xdg_icon_theme_cache_init(&state.tray.cache, &page_allocator);
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
 	sni_server.in.alloc = &gp_alloc;
@@ -1190,7 +1191,7 @@ static void tray_fini(void) {
 	sni_server_fini();
 
 #if SW_WITH_SVG || SW_WITH_PNG
-	xdg_icon_theme_cache_fini(&tray->cache, &gp_alloc);
+	xdg_icon_theme_cache_fini(&tray->cache, &page_allocator);
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
 	MEMSET(tray, 0, sizeof(*tray));
@@ -1200,8 +1201,8 @@ static void tray_fini(void) {
 static void tray_update(void) {
 #if SW_WITH_SVG || SW_WITH_PNG
 	tray_t *tray = &state.tray;
-	xdg_icon_theme_cache_fini(&tray->cache, &gp_alloc);
-	xdg_icon_theme_cache_init(&tray->cache, &gp_alloc);
+	xdg_icon_theme_cache_fini(&tray->cache, &page_allocator);
+	xdg_icon_theme_cache_init(&tray->cache, &page_allocator);
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 }
 #endif /* WITH_TRAY */
@@ -1215,7 +1216,7 @@ static void bar_destroy(bar_t *bar) {
 	if (bar->_.out.fini) {
 		bar->_.out.fini(&bar->_, &state.sw);
 	}
-	arena_fini(&bar->block_allocator.arena, &gp_alloc);
+	arena_fini(&bar->block_allocator.arena, &page_allocator);
 	FREE(&gp_alloc, bar);
 
 	state.update = TRUE;
@@ -1322,7 +1323,7 @@ static void status_init(void) {
 
 	MEMSET(status, 0, sizeof(*status));
 	status->buf.size = 8192;
-	ALLOCTS(status->buf.data, &gp_alloc, 8192);
+	ALLOCTS(status->buf.data, &page_allocator, 8192);
 	status->stop_signal = SIGSTOP;
 	status->cont_signal = SIGCONT;
 	status->pid = pid;
@@ -1359,7 +1360,7 @@ static void status_fini(void) {
 
 	status_close_pipes();
 
-	FREE(&gp_alloc, status->buf.data);
+	FREE(&page_allocator, status->buf.data);
 
 	if (status->protocol == STATUS_PROTOCOL_I3BAR) {
 		size_t i = 0;
@@ -1385,8 +1386,8 @@ static void status_set_error(string_t text) {
 		FREE(&gp_alloc, status->blocks);
 	}
 
-	FREE(&gp_alloc, status->buf.data);
-	ALLOCTS(status->buf.data, &gp_alloc, text.len);
+	FREE(&page_allocator, status->buf.data);
+	ALLOCTS(status->buf.data, &page_allocator, text.len);
 	MEMCPY(status->buf.data, text.s, text.len);
 	status->buf.size = text.len;
 	status->buf.idx = text.len;
@@ -1799,9 +1800,10 @@ static void status_i3bar_parse_json(json_ast_node_t *json) {
 	for ( i = 0; i < status->blocks_count; ++i) {
 		status_i3bar_block_fini(&status->blocks[i]);
 	}
-	FREE(&gp_alloc, status->blocks);
-
-	ARRAY_ALLOC(status->blocks, &gp_alloc, json->value.a.count);
+	if (status->blocks_count != json->value.a.count) {
+		FREE(&gp_alloc, status->blocks);
+		ARRAY_ALLOC(status->blocks, &gp_alloc, json->value.a.count);
+	}
 	status->blocks_count = 0;
 
 	for ( i = 0; i < json->value.a.count; ++i) {
@@ -1835,9 +1837,9 @@ static bool32_t status_process(void) {
 			if (status->buf.idx == status->buf.size) {
 				uint8_t *new_data;
 				status->buf.size *= 2;
-				ALLOCTS(new_data, &gp_alloc, status->buf.size);
+				ALLOCTS(new_data, &page_allocator, status->buf.size);
 				MEMCPY(new_data, status->buf.data, status->buf.idx);
-				FREE(&gp_alloc, status->buf.data);
+				FREE(&page_allocator, status->buf.data);
 				status->buf.data = new_data;
 			}
 		}
@@ -2081,7 +2083,7 @@ static void bar_update(bar_t *bar) {
 	if (surface->in.root && surface->in.root->out.fini) {
 		surface->in.root->out.fini(surface->in.root, &state.sw);
 	}
-	arena_reset(&bar->block_allocator.arena, &gp_alloc);
+	arena_reset(&bar->block_allocator.arena, &page_allocator);
 
 	surface->in.input_regions_count = 0;
 	surface->in.height = config->height;
@@ -2744,7 +2746,7 @@ static bar_t *bar_create(output_t *output) {
 	}
 
 	ALLOCCT(bar, &gp_alloc);
-	arena_init(&bar->block_allocator.arena, &gp_alloc, 8192);
+	arena_init(&bar->block_allocator.arena, &page_allocator, 8192);
 	bar->block_allocator.alloc.alloc = layout_block_alloc_alloc;
 	bar->block_allocator.alloc.free = layout_block_alloc_free;
 	bar->dirty = TRUE;
@@ -2791,8 +2793,10 @@ static void process_ipc(void) {
 			for ( i = 0; i < output->workspaces_count; ++i) {
 				string_fini(&output->workspaces[i].name, &gp_alloc);
 			}
-			FREE(&gp_alloc, output->workspaces);
-			ARRAY_ALLOC(output->workspaces, &gp_alloc, ast.root.value.a.count);
+			if (output->workspaces_count != ast.root.value.a.count) {
+				FREE(&gp_alloc, output->workspaces);
+				ARRAY_ALLOC(output->workspaces, &gp_alloc, ast.root.value.a.count);
+			}
 			output->workspaces_count = 0;
 			output->focused = FALSE;
 		}
@@ -3050,7 +3054,7 @@ static void setup(int argc, char *argv[]) {
 		su_abort(1, "No bar id passed. Provide -b or use swaybar_command in sway config file");
 	}
 
-	arena_init(&state.scratch_arena, &gp_alloc, 16384);
+	arena_init(&state.scratch_arena, &page_allocator, 16384);
 	su_hash_table__su_file_cache_t__init(&state.icon_cache, &gp_alloc, 512);
 
     state.poll_fds[POLL_FD_STATUS].fd = -1;
@@ -3104,7 +3108,7 @@ static void run(void) {
 			su_abort(errno, "sw_flush: %s", strerror(errno));
 		}
 
-		arena_reset(&state.scratch_arena, &gp_alloc);
+		arena_reset(&state.scratch_arena, &page_allocator);
 
 #if WITH_TRAY
 		if (state.tray.active) {
@@ -3227,7 +3231,7 @@ static void cleanup(void) {
 		string_fini(&state.binding_mode_indicator_text, &gp_alloc);
 		string_fini(&state.bar_id, &gp_alloc);
 
-		arena_fini(&state.scratch_arena, &gp_alloc);
+		arena_fini(&state.scratch_arena, &page_allocator);
 	}
 #endif /* DEBUG */
 

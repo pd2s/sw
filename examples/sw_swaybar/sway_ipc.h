@@ -68,9 +68,9 @@ static bool32_t sway_ipc_get_socket_path(char out[PATH_MAX]);
 static int sway_ipc_connect(char socket_path[PATH_MAX]);
 
 static int sway_ipc_send(int fd, sway_ipc_message_type_t, string_t *payload);
-static sway_ipc_response_t *sway_ipc_receive(int fd, allocator_t *alloc);
+static sway_ipc_response_t *sway_ipc_receive(int fd, const allocator_t *alloc);
 
-static void sway_ipc_response_free(sway_ipc_response_t *, allocator_t *alloc);
+static void sway_ipc_response_free(sway_ipc_response_t *, const allocator_t *alloc);
 
 
 static char sway_ipc__magic[] = {'i', '3', '-', 'i', 'p', 'c'};
@@ -146,12 +146,12 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
 	return 1;
 }
 
-static void sway_ipc_response_free(sway_ipc_response_t *response, allocator_t *alloc) {
+static void sway_ipc_response_free(sway_ipc_response_t *response, const allocator_t *alloc) {
 	string_fini(&response->payload, alloc);
 	FREE(alloc, response);
 }
 
-static sway_ipc_response_t *sway_ipc_receive(int fd, allocator_t *alloc) {
+static sway_ipc_response_t *sway_ipc_receive(int fd, const allocator_t *alloc) {
 	sway_ipc_response_t *response;
 	uint32_t len;
 	char header[SWAY_IPC__HEADER_SIZE];

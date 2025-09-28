@@ -209,7 +209,7 @@ struct sni_item {
 };
 
 typedef struct sni_server_in {
-	allocator_t *alloc;
+	const allocator_t *alloc;
 	sni_item_create_func_t item_create; /* may be NULL */
 } sni_server_in_t;
 
@@ -304,7 +304,7 @@ static void sni__item_read_pixmap( sd_bus_message *msg,
 
 static void sni__item_properties_destroy(sni_item_properties_t *properties) {
 	size_t i;
-	allocator_t *alloc;
+	const allocator_t *alloc;
 
 	if (properties == NULL) {
 		return;
@@ -349,7 +349,7 @@ static void sni__dbusmenu_menu_destroy(sni_dbusmenu_menu_t *menu) {
 	/* TODO: remove recursion */
 
 	size_t i;
-	allocator_t *alloc;
+	const allocator_t *alloc;
 
 	if (menu == NULL) {
 		return;
@@ -397,7 +397,7 @@ static void sni__dbusmenu_destroy(sni_dbusmenu_t *dbusmenu) {
 static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 		sni_dbusmenu_t *dbusmenu, sni_dbusmenu_menu_item_t *parent_menu_item) {
 	/* TODO: remove recursion */
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 
 	sni_dbusmenu_menu_t *menu;
 	ALLOCT(menu, alloc);
@@ -556,7 +556,7 @@ static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
 
 static int sni__dbusmenu_get_layout(sni_dbusmenu_t *dbusmenu) {
 	int ret;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni_item_t *item = dbusmenu->item;
 	sni__slot_t *slot;
 	ALLOCT(slot, alloc);
@@ -590,7 +590,7 @@ static int sni__dbusmenu_handle_signal(sd_bus_message *msg, void *data,
 static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
 	sni__slot_t *slot = (sni__slot_t *)data;
-	allocator_t *alloc;
+	const allocator_t *alloc;
 	sni_dbusmenu_t *dbusmenu = slot->item->out.dbusmenu;
 	sni_dbusmenu_properties_t *props;
 	int ret;
@@ -673,7 +673,7 @@ exit_con:
 static sni_dbusmenu_t *sni__dbusmenu_create(sni_item_t *item) {
 	sni__slot_t *slot1, *slot2;
 	sni_dbusmenu_t *dbusmenu;
-	allocator_t *alloc;
+	const allocator_t *alloc;
 	int ret;
 
 	if (item->out.properties->menu.len == 0) {
@@ -722,7 +722,7 @@ static int sni__item_handle_get_properties(sd_bus_message *msg, void *data,
 	sni__slot_t *slot = (sni__slot_t *)data;
 	sni_item_t *item = slot->item;
 	sni_item_properties_t *props;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	int ret;
 
 	NOTUSED(ret_error);
@@ -868,7 +868,7 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
 	/* ? TODO: error check */
 	sni_item_t *item = (sni_item_t *)data;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni__slot_t *slot;
 	int ret;
 
@@ -890,7 +890,7 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
 }
 
 static void sni__item_destroy(sni_item_t *item) {
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni_dbusmenu_t *dbusmenu = item->out.dbusmenu;
 	sni_item_properties_t *properties = item->out.properties;
 
@@ -920,7 +920,7 @@ static sni_item_t *sni__item_create(string_t id) {
 	sni__slot_t *slot;
 	sd_bus_slot *slot_;
 	string_t path;
-	allocator_t *alloc;
+	const allocator_t *alloc;
 	int ret;
 
 	if (!string_find_char(id, '/', &path)) {
@@ -1088,7 +1088,7 @@ static int sni__watcher_handle_get_registered_items(sd_bus *b, const char *path,
 		const char *iface, const char *prop, sd_bus_message *reply,
 		void *data, sd_bus_error *ret_error) {
 	/* ? TODO: scratch alloc */
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	char **array;
 	size_t i = 0;
 	int ret;
@@ -1340,7 +1340,7 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
 }
 
 static void sni_server_fini(void) {
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	size_t i;
 	sni_item_t *item = sni_server.out.items.tail;
 	for ( ; item; ) {
@@ -1368,7 +1368,7 @@ static void sni_server_fini(void) {
 
 static int sni_server_init(void) {
 	int ret;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	static sd_bus_vtable watcher_vtable[11];
 
 	ASSERT(sni_server.in.alloc != NULL);
@@ -1568,7 +1568,7 @@ static int sni_item_context_menu(sni_item_t *item, int x, int y) {
 
 static int sni_item_context_menu_async(sni_item_t *item, int x, int y) {
 	int ret;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni__slot_t *slot;
 	ALLOCT(slot, alloc);
 	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
@@ -1599,7 +1599,7 @@ static int sni_item_activate(sni_item_t *item, int x, int y) {
 
 static int sni_item_activate_async(sni_item_t *item, int x, int y) {
 	int ret;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni__slot_t *slot;
 	ALLOCT(slot, alloc);
 	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
@@ -1630,7 +1630,7 @@ static int sni_item_secondary_activate(sni_item_t *item, int x, int y) {
 
 static int sni_item_secondary_activate_async(sni_item_t *item, int x, int y) {
 	int ret;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni__slot_t *slot;
 	ALLOCT(slot, alloc);
 	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
@@ -1661,7 +1661,7 @@ static int sni_item_scroll(sni_item_t *item, int delta, sni_item_scroll_orientat
 
 static int sni_item_scroll_async(sni_item_t *item, int delta, sni_item_scroll_orientation_t orientation) {
 	int ret;
-	allocator_t *alloc = sni_server.in.alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	sni__slot_t *slot;
 	ALLOCT(slot, alloc);
 	ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
@@ -1700,7 +1700,7 @@ static int sni_dbusmenu_menu_item_event(sni_dbusmenu_menu_item_t *menu_item,
 
 	if (async) {
 		int ret;
-		allocator_t *alloc = sni_server.in.alloc;
+		const allocator_t *alloc = sni_server.in.alloc;
 		sni__slot_t *slot;
 		ALLOCT(slot, alloc);
 		ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
@@ -1757,7 +1757,7 @@ static int sni_dbusmenu_menu_about_to_show(sni_dbusmenu_menu_t *menu, bool32_t a
 
 	if (async) {
 		int ret;
-		allocator_t *alloc = sni_server.in.alloc;
+		const allocator_t *alloc = sni_server.in.alloc;
 		sni__slot_t *slot;
 		ALLOCT(slot, alloc);
 		ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
