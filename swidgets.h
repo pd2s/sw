@@ -1,7 +1,7 @@
 #if !defined(SW_HEADER)
 #define SW_HEADER
 
-#define SW_IMPLEMENTATION
+/*#define SW_IMPLEMENTATION*/
 
 #if !defined(SW_WITH_DEBUG)
 #define SW_WITH_DEBUG 1
@@ -12,6 +12,9 @@
 #if !defined(SW_WITH_WAYLAND_BACKEND)
 #define SW_WITH_WAYLAND_BACKEND 1
 #endif /* !defined(SW_WITH_WAYLAND_BACKEND) */
+#if !defined(SW_WITH_WAYLAND_KEYBOARD)
+#define SW_WITH_WAYLAND_KEYBOARD 1
+#endif /* !defined(SW_WITH_WAYLAND_KEYBOARD) */
 #if !defined(SW_WITH_TEXT)
 #define SW_WITH_TEXT 1
 #endif /* !defined(SW_WITH_TEXT) */
@@ -104,6 +107,13 @@ typedef enum sw_wayland_event {
 	SW_WAYLAND_EVENT_POINTER_MOTION,
 	SW_WAYLAND_EVENT_POINTER_BUTTON,
 	SW_WAYLAND_EVENT_POINTER_SCROLL
+#if SW_WITH_WAYLAND_KEYBOARD
+	,SW_WAYLAND_EVENT_KEYBOARD_ENTER
+	,SW_WAYLAND_EVENT_KEYBOARD_LEAVE
+	,SW_WAYLAND_EVENT_KEYBOARD_KEY
+	,SW_WAYLAND_EVENT_KEYBOARD_KEY_REPEAT
+	,SW_WAYLAND_EVENT_KEYBOARD_STATE_UPDATED
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 } sw_wayland_event_t;
 
 typedef enum sw_wayland_pointer_button_state {
@@ -175,10 +185,10 @@ typedef struct sw_wayland_surface sw_wayland_surface_t;
 typedef struct sw_wayland_pointer_out {
 	sw_wayland_seat_t *seat;
 	sw_wayland_surface_t *focused_surface;
+	uint32_t time;
 	int32_t pos_x, pos_y;
 	uint32_t btn_code;
 	sw_wayland_pointer_button_state_t btn_state;
-	SU_PAD32;
 	sw_wayland_pointer_scroll_axis_t scroll_axis;
 	double scroll_vector_length;
 } sw_wayland_pointer_out_t;
@@ -189,17 +199,80 @@ struct sw_wayland_pointer {
 	SW__PRIVATE_FIELDS(24);
 };
 
+#if SW_WITH_WAYLAND_KEYBOARD
+typedef struct sw_wayland_keyboard sw_wayland_keyboard_t;
+typedef void (*sw_wayland_keyboard_func_t)(sw_wayland_keyboard_t *, sw_context_t *);
+typedef sw_wayland_keyboard_t *(*sw_wayland_keyboard_create_func_t)(sw_wayland_seat_t *, sw_context_t *);
+
+typedef struct sw_wayland_keyboard_in {
+	sw_wayland_keyboard_func_t destroy; /* may be NULL */
+} sw_wayland_keyboard_in_t;
+
+typedef enum sw_wayland_keyboard_key_state {
+	SW_WAYLAND_KEYBOARD_KEY_STATE_RELEASED = 0,
+	SW_WAYLAND_KEYBOARD_KEY_STATE_PRESSED = 1,
+	SW_WAYLAND_KEYBOARD_KEY_STATE_REPEATED = 2
+} sw_wayland_keyboard_key_state_t;
+
+typedef enum sw_wayland_keyboard_mod {
+	SW_WAYLAND_KEYBOARD_MOD_SHIFT = (1 << 1),
+	SW_WAYLAND_KEYBOARD_MOD_CAPS = (1 << 2),
+	SW_WAYLAND_KEYBOARD_MOD_CTRL = (1 << 3),
+	SW_WAYLAND_KEYBOARD_MOD_1 = (1 << 4),
+	SW_WAYLAND_KEYBOARD_MOD_2 = (1 << 5),
+	SW_WAYLAND_KEYBOARD_MOD_3 = (1 << 6),
+	SW_WAYLAND_KEYBOARD_MOD_4 = (1 << 7),
+	SW_WAYLAND_KEYBOARD_MOD_5 = (1 << 8),
+	SW_WAYLAND_KEYBOARD_MOD_VALT = (1 << 9),
+	SW_WAYLAND_KEYBOARD_MOD_VHYPER = (1 << 10),
+	SW_WAYLAND_KEYBOARD_MOD_VLEVEL3 = (1 << 11),
+	SW_WAYLAND_KEYBOARD_MOD_VLEVEL5 = (1 << 12),
+	SW_WAYLAND_KEYBOARD_MOD_VMETA = (1 << 13),
+	SW_WAYLAND_KEYBOARD_MOD_VNUM = (1 << 14),
+	SW_WAYLAND_KEYBOARD_MOD_VSCROLL = (1 << 15),
+	SW_WAYLAND_KEYBOARD_MOD_VSUPER = (1 << 16)
+} sw_wayland_keyboard_mod_t;
+
+typedef struct sw_wayland_keyboard_out {
+	sw_wayland_seat_t *seat;
+	sw_wayland_surface_t *focused_surface;
+	struct {
+		uint32_t cp;
+		sw_wayland_keyboard_key_state_t state;
+		int64_t time;
+	} key;
+	struct {
+		uint32_t mods; /* sw_wayland_keyboard_mod_t | */
+		SU_PAD32;
+	} state;
+	int32_t repeat_rate;
+	int32_t repeat_delay;
+} sw_wayland_keyboard_out_t;
+
+struct sw_wayland_keyboard {
+	sw_wayland_keyboard_in_t in;
+	sw_wayland_keyboard_out_t out;
+	SW__PRIVATE_FIELDS(48);
+};
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
+
 typedef sw_wayland_seat_t *(*sw_wayland_seat_create_func_t)(sw_wayland_seat_t *, sw_context_t *);
 typedef void (*sw_wayland_seat_destroy_func_t)(sw_wayland_seat_t *, sw_context_t *);
 
 typedef struct sw_wayland_seat_in {
 	sw_wayland_seat_destroy_func_t destroy; /* may be NULL */
 	sw_wayland_pointer_create_func_t pointer_create; /* may be NULL */
+#if SW_WITH_WAYLAND_KEYBOARD
+	sw_wayland_keyboard_create_func_t keyboard_create; /* may be NULL */
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 } sw_wayland_seat_in_t;
 
 typedef struct sw_wayland_seat_out {
 	su_string_t name;
 	sw_wayland_pointer_t *pointer;
+#if SW_WITH_WAYLAND_KEYBOARD
+	sw_wayland_keyboard_t *keyboard;
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 } sw_wayland_seat_out_t;
 
 struct sw_wayland_seat {
@@ -303,10 +376,19 @@ typedef enum sw_wayland_surface_type {
 typedef union sw_wayland_notify {
 	sw_wayland_surface_t *surface;
 	sw_wayland_pointer_t *pointer;
+#if SW_WITH_WAYLAND_KEYBOARD
+	sw_wayland_keyboard_t *keyboard;
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 } sw_wayland_event_source_t;
 
 typedef su_bool32_t (*sw_wayland_notify_func_t)(sw_wayland_event_source_t *, sw_context_t *, sw_wayland_event_t );
 typedef void (*sw_wayland_surface_fini_func_t)(sw_wayland_surface_t *, sw_context_t *);
+
+typedef enum sw_wayland_surface_layer_keyboard_interactivity {
+	SW_WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_NONE,
+	SW_WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_EXCLUSIVE,
+	SW_WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_ON_DEMAND
+} sw_wayland_surface_layer_keyboard_interactivity_t;
 
 typedef struct sw_wayland_surface_layer {
 	sw_wayland_output_t *output;
@@ -314,7 +396,7 @@ typedef struct sw_wayland_surface_layer {
 	uint32_t anchor; /* sw_wayland_surface_layer_anchor_t | */
 	sw_wayland_surface_layer_layer_t layer;
 	int32_t margins[4]; /* top right bottom left */
-	SU_PAD32;
+	sw_wayland_surface_layer_keyboard_interactivity_t keyboard_interactivity;
 } sw_wayland_surface_layer_t;
 
 typedef struct sw_wayland_surface_popup {
@@ -850,11 +932,43 @@ typedef sw_wayland_pointer_out_t wayland_pointer_out_t;
 typedef sw_wayland_pointer_t wayland_pointer_t;
 typedef sw_wayland_pointer_func_t wayland_pointer_func_t;
 typedef sw_wayland_pointer_create_func_t wayland_pointer_create_func_t;
+#if SW_WITH_WAYLAND_KEYBOARD
+typedef sw_wayland_keyboard_t wayland_keyboard_t;
+typedef sw_wayland_keyboard_in_t wayland_keyboard_in_t;
+typedef sw_wayland_keyboard_out_t wayland_keyboard_out_t;
+typedef sw_wayland_keyboard_func_t wayland_keyboard_func_t;
+typedef sw_wayland_keyboard_create_func_t wayland_keyboard_create_func_t;
+typedef sw_wayland_keyboard_mod_t wayland_keyboard_mod_t;
+#define WAYLAND_KEYBOARD_MOD_SHIFT SW_WAYLAND_KEYBOARD_MOD_SHIFT
+#define WAYLAND_KEYBOARD_MOD_CAPS SW_WAYLAND_KEYBOARD_MOD_CAPS
+#define WAYLAND_KEYBOARD_MOD_CTRL SW_WAYLAND_KEYBOARD_MOD_CTRL
+#define WAYLAND_KEYBOARD_MOD_1 SW_WAYLAND_KEYBOARD_MOD_1
+#define WAYLAND_KEYBOARD_MOD_2 SW_WAYLAND_KEYBOARD_MOD_2
+#define WAYLAND_KEYBOARD_MOD_3 SW_WAYLAND_KEYBOARD_MOD_3
+#define WAYLAND_KEYBOARD_MOD_4 SW_WAYLAND_KEYBOARD_MOD_4
+#define WAYLAND_KEYBOARD_MOD_5 SW_WAYLAND_KEYBOARD_MOD_5
+#define WAYLAND_KEYBOARD_MOD_VALT SW_WAYLAND_KEYBOARD_MOD_VALT
+#define WAYLAND_KEYBOARD_MOD_VHYPER SW_WAYLAND_KEYBOARD_MOD_VHYPER
+#define WAYLAND_KEYBOARD_MOD_VLEVEL3 SW_WAYLAND_KEYBOARD_MOD_VLEVEL3
+#define WAYLAND_KEYBOARD_MOD_VLEVEL5 SW_WAYLAND_KEYBOARD_MOD_VLEVEL5
+#define WAYLAND_KEYBOARD_MOD_VMETA SW_WAYLAND_KEYBOARD_MOD_VMETA
+#define WAYLAND_KEYBOARD_MOD_VNUM SW_WAYLAND_KEYBOARD_MOD_VNUM
+#define WAYLAND_KEYBOARD_MOD_VSCROLL SW_WAYLAND_KEYBOARD_MOD_VSCROLL
+#define WAYLAND_KEYBOARD_MOD_VSUPER SW_WAYLAND_KEYBOARD_MOD_VSUPER
+typedef sw_wayland_keyboard_key_state_t wayland_keyboard_key_state_t;
+#define WAYLAND_KEYBOARD_KEY_STATE_RELEASED SW_WAYLAND_KEYBOARD_KEY_STATE_RELEASED
+#define WAYLAND_KEYBOARD_KEY_STATE_PRESSED SW_WAYLAND_KEYBOARD_KEY_STATE_PRESSED
+#define WAYLAND_KEYBOARD_KEY_STATE_REPEATED SW_WAYLAND_KEYBOARD_KEY_STATE_REPEATED
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 typedef sw_wayland_seat_in_t wayland_seat_in_t;
 typedef sw_wayland_seat_out_t wayland_seat_out_t;
 typedef sw_wayland_seat_t wayland_seat_t;
 typedef sw_wayland_seat_destroy_func_t wayland_seat_destroy_func_t;
 typedef sw_wayland_seat_create_func_t wayland_seat_create_func_t;
+typedef sw_wayland_surface_layer_keyboard_interactivity_t wayland_surface_layer_keyboard_interactivity_t;
+#define WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_NONE SW_WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_NONE
+#define WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_EXCLUSIVE SW_WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_EXCLUSIVE
+#define WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_ON_DEMAND SW_WAYLAND_SURFACE_LAYER_KEYBOARD_INTERACTIVITY_ON_DEMAND
 typedef sw_wayland_surface_layer_anchor_t wayland_surface_layer_anchor_t;
 #define WAYLAND_SURFACE_LAYER_ANCHOR_NONE SW_WAYLAND_SURFACE_LAYER_ANCHOR_NONE
 #define WAYLAND_SURFACE_LAYER_ANCHOR_TOP SW_WAYLAND_SURFACE_LAYER_ANCHOR_TOP
@@ -1228,6 +1342,14 @@ SU_IGNORE_WARNING("-Wcast-qual")
 #include <xdg-decoration-unstable-v1.h>
 #include <xdg-decoration-unstable-v1.c>
 
+#if SW_WITH_WAYLAND_KEYBOARD
+#if SU_HAS_INCLUDE(<xkbcommon/xkbcommon.h>)
+#include <xkbcommon/xkbcommon.h>
+#else
+#include <xkbcommon.h>
+#endif
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
+
 SU_IGNORE_WARNINGS_END
 
 typedef struct sw__wayland_output {
@@ -1241,6 +1363,18 @@ typedef struct sw__wayland_pointer {
 	struct wp_cursor_shape_device_v1 *cursor_shape_device;
 	uint32_t enter_serial, button_serial;
 } sw__wayland_pointer_t;
+
+#if SW_WITH_WAYLAND_KEYBOARD
+typedef struct sw__wayland_keyboard {
+	struct wl_keyboard *wl_keyboard;
+	struct xkb_context *xkb_context;
+	struct xkb_keymap *xkb_keymap;
+	struct xkb_state *xkb_state;
+	uint32_t repeat_cp;
+	SU_PAD32;
+	int64_t repeat_next; /* absolute ms */
+} sw__wayland_keyboard_t;
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 
 typedef struct sw__wayland_seat {
 	struct wl_seat *wl_seat;
@@ -1273,7 +1407,7 @@ typedef struct sw__wayland_surface_layer {
 	uint32_t anchor; /* sw_wayland_surface_layer_anchor_t | */
 	sw_wayland_surface_layer_layer_t layer;
 	int32_t margins[4]; /* top right bottom left */
-	SU_PAD32;
+	sw_wayland_surface_layer_keyboard_interactivity_t keyboard_interactivity;
 	sw_wayland_output_t *output;
 } sw__wayland_surface_layer_t;
 
@@ -1412,7 +1546,7 @@ typedef struct sw__context {
 #endif /* SW_WITH_TEXT */
 } sw__context_t;
 
-
+/* ? TODO: option to remove tls */
 static SU_THREAD_LOCAL sw_context_t *sw__context;
 
 #if defined(__cplusplus)
@@ -1425,6 +1559,9 @@ SU_STATIC_ASSERT(sizeof(sw__context->sw__private) >= sizeof(sw__context_t));
 SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.outputs.head->sw__private) >= sizeof(sw__wayland_output_t));
 SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->sw__private) >= sizeof(sw__wayland_seat_t));
 SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->out.pointer->sw__private) >= sizeof(sw__wayland_pointer_t));
+#if SW_WITH_WAYLAND_KEYBOARD
+SU_STATIC_ASSERT(sizeof(sw__context->out.backend.wayland.seats.head->out.keyboard->sw__private) >= sizeof(sw__wayland_keyboard_t));
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 SU_STATIC_ASSERT(sizeof(sw__context->in.backend.wayland.layers.head->sw__private) >= sizeof(sw__wayland_surface_t));
 SU_STATIC_ASSERT(sizeof(sw__context->in.backend.wayland.layers.head->in.root->sw__private) >= sizeof(sw__layout_block_t));
 #endif /* SW_WITH_WAYLAND_BACKEND */
@@ -1457,6 +1594,7 @@ static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size)
 #endif /* SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM */
 
 static void sw__update_t(int64_t t) {
+	SU_ASSERT(t > 0);
 	if ((sw__context->out.t == -1) || (t < sw__context->out.t)) {
 		sw__context->out.t = t;
 	}
@@ -3678,6 +3816,12 @@ static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_waylan
 			return;
 		}
 
+		if (layer_priv->keyboard_interactivity != layer->keyboard_interactivity) {
+			zwlr_layer_surface_v1_set_keyboard_interactivity(
+				layer_priv->layer_surface, layer->keyboard_interactivity);
+			layer_priv->keyboard_interactivity = layer->keyboard_interactivity;
+		}
+
 		if (layer_priv->anchor != layer->anchor) {
 			zwlr_layer_surface_v1_set_anchor(layer_priv->layer_surface, layer->anchor);
 			layer_priv->anchor = layer->anchor;
@@ -3746,8 +3890,8 @@ static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_waylan
 	if (surface_priv->cursor_shape != cursor_shape) {
 		sw_wayland_seat_t *seat = sw__context->out.backend.wayland.seats.head;
 		for ( ; seat; seat = seat->next) {
-			sw__wayland_pointer_t *pointer_priv = (sw__wayland_pointer_t *)&seat->out.pointer->sw__private;
 			if (seat->out.pointer && (seat->out.pointer->out.focused_surface == surface)) {
+				sw__wayland_pointer_t *pointer_priv = (sw__wayland_pointer_t *)&seat->out.pointer->sw__private;
 				if (SU_LIKELY(pointer_priv->cursor_shape_device)) {
 					wp_cursor_shape_device_v1_set_shape(pointer_priv->cursor_shape_device,
 						pointer_priv->enter_serial, cursor_shape);
@@ -4040,11 +4184,13 @@ static void sw__wayland_pointer_handle_motion(void *data, struct wl_pointer *wl_
 	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
 	int32_t x, y;
 
-	SU_NOTUSED(wl_pointer); SU_NOTUSED(time);
+	SU_NOTUSED(wl_pointer);
 
 	if (SU_UNLIKELY(!pointer->out.focused_surface)) {
 		return;
 	}
+
+	pointer->out.time = time;
 
 	x = (int32_t)(wl_fixed_to_double(surface_x) * (double)pointer->out.focused_surface->out.scale);
 	y = (int32_t)(wl_fixed_to_double(surface_y) * (double)pointer->out.focused_surface->out.scale);
@@ -4061,7 +4207,7 @@ static void sw__wayland_pointer_handle_button(void *data, struct wl_pointer *wl_
 	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
 	sw__wayland_pointer_t *pointer_priv = (sw__wayland_pointer_t *)&pointer->sw__private;
 
-	SU_NOTUSED(wl_pointer); SU_NOTUSED(time);
+	SU_NOTUSED(wl_pointer);
 
 	if (SU_UNLIKELY(!pointer->out.focused_surface)) {
 		return;
@@ -4069,6 +4215,7 @@ static void sw__wayland_pointer_handle_button(void *data, struct wl_pointer *wl_
 
 	pointer_priv->button_serial = serial;
 
+	pointer->out.time = time;
 	pointer->out.btn_code = button;
 	pointer->out.btn_state = (sw_wayland_pointer_button_state_t)st;
 	pointer->out.focused_surface->in.notify((sw_wayland_event_source_t *)pointer,
@@ -4079,12 +4226,13 @@ static void sw__wayland_pointer_handle_axis(void *data, struct wl_pointer *wl_po
 		uint32_t time, uint32_t axis, wl_fixed_t value) {
 	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)data;
 
-	SU_NOTUSED(wl_pointer); SU_NOTUSED(data); SU_NOTUSED(time);
+	SU_NOTUSED(wl_pointer); SU_NOTUSED(data);
 
 	if (SU_UNLIKELY(!pointer->out.focused_surface)) {
 		return;
 	}
 
+	pointer->out.time = time;
 	pointer->out.scroll_axis = (sw_wayland_pointer_scroll_axis_t)axis;
 	pointer->out.scroll_vector_length = wl_fixed_to_double(value);
 	pointer->out.focused_surface->in.notify((sw_wayland_event_source_t *)pointer,
@@ -4137,6 +4285,221 @@ static void sw__wayland_pointer_destroy(sw_wayland_pointer_t *pointer) {
 	}
 }
 
+#if SW_WITH_WAYLAND_KEYBOARD
+static void sw__wayland_keyboard_handle_keymap(void *data, struct wl_keyboard *wl_keyboard,
+		uint32_t format, int32_t fd, uint32_t size) {
+	sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)data;
+	sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
+
+	SU_NOTUSED(wl_keyboard);
+
+	xkb_state_unref(keyboard_priv->xkb_state);
+	xkb_keymap_unref(keyboard_priv->xkb_keymap);
+	keyboard_priv->xkb_state = NULL;
+	keyboard_priv->xkb_keymap = NULL;
+	SU_MEMSET(&keyboard->out.key, 0, sizeof(keyboard->out.key));
+	SU_MEMSET(&keyboard->out.state, 0, sizeof(keyboard->out.state));
+	/* TODO: reset t */
+	keyboard_priv->repeat_cp = 0;
+	keyboard_priv->repeat_next = -1;
+
+	switch ((enum wl_keyboard_keymap_format)format) {
+	case WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1: {
+		/* ? TODO: warn on errors */
+		char *buffer = (char *)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+		if (SU_UNLIKELY(buffer == MAP_FAILED)) {
+			goto out;
+		}
+		keyboard_priv->xkb_keymap = xkb_keymap_new_from_buffer(
+			keyboard_priv->xkb_context, buffer, size,
+			XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+		munmap(buffer, size);
+		if (SU_UNLIKELY(!keyboard_priv->xkb_keymap)) {
+			goto out;
+		}
+		keyboard_priv->xkb_state = xkb_state_new(keyboard_priv->xkb_keymap); /* ? TODO: error check */
+		break;
+	}
+	case WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP:
+		/* TODO */
+	default:
+		break;
+	}
+
+out:
+	/* TODO: event */
+	close(fd);
+}
+
+static void sw__wayland_keyboard_handle_enter(void *data, struct wl_keyboard *wl_keyboard,
+		uint32_t serial, struct wl_surface *wl_surface, struct wl_array *keys) {
+	sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)data;
+
+	SU_NOTUSED(wl_keyboard); SU_NOTUSED(serial);
+
+	if (SU_UNLIKELY(!wl_surface)) {
+		return;
+	}
+
+	SU_NOTUSED(keys); /* TODO */
+
+	keyboard->out.focused_surface = (sw_wayland_surface_t *)wl_surface_get_user_data(wl_surface);
+	keyboard->out.focused_surface->in.notify( (sw_wayland_event_source_t *)keyboard,
+		sw__context, SW_WAYLAND_EVENT_KEYBOARD_ENTER);
+}
+
+static void sw__wayland_keyboard_handle_leave(void *data, struct wl_keyboard *wl_keyboard,
+		uint32_t serial, struct wl_surface *surface) {
+	sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)data;
+
+	SU_NOTUSED(wl_keyboard); SU_NOTUSED(serial); SU_NOTUSED(surface);
+
+	if (SU_LIKELY(keyboard->out.focused_surface)) {
+		keyboard->out.focused_surface->in.notify((sw_wayland_event_source_t *)keyboard,
+			sw__context, SW_WAYLAND_EVENT_KEYBOARD_LEAVE);
+		keyboard->out.focused_surface = NULL;
+	}
+}
+
+static void sw__wayland_keyboard_handle_key(void *data, struct wl_keyboard *wl_keyboard,
+		uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
+	sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)data;
+	sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
+	uint32_t code = (key + 8);
+
+	SU_NOTUSED(wl_keyboard); SU_NOTUSED(serial);
+
+	if (SU_UNLIKELY(!keyboard_priv->xkb_state || !keyboard->out.focused_surface)) {
+		return;
+	}
+
+	keyboard->out.key.time = time;
+	keyboard->out.key.state = (sw_wayland_keyboard_key_state_t)state;
+	keyboard->out.key.cp = xkb_state_key_get_utf32(keyboard_priv->xkb_state, code);
+
+	/* TODO: compose */
+
+	if (keyboard->out.key.cp == 0) {
+		return;
+	}
+
+	keyboard->out.focused_surface->in.notify((sw_wayland_event_source_t *)keyboard,
+		sw__context, SW_WAYLAND_EVENT_KEYBOARD_KEY);
+
+	if (state == SW_WAYLAND_KEYBOARD_KEY_STATE_RELEASED) {
+		/* ? TODO: handle multi-key repeat */
+		if (keyboard_priv->repeat_cp == keyboard->out.key.cp) {
+			/* TODO: reset t */
+			keyboard_priv->repeat_cp = 0;
+			keyboard_priv->repeat_next = -1;
+		}
+	} else if ((keyboard->out.repeat_rate > 0) &&	
+			xkb_keymap_key_repeats(keyboard_priv->xkb_keymap, code)) {
+		keyboard_priv->repeat_cp = keyboard->out.key.cp;
+		keyboard_priv->repeat_next =
+			(su_now_ms(CLOCK_MONOTONIC) + keyboard->out.repeat_delay);
+		sw__update_t(keyboard_priv->repeat_next);
+	}
+}
+
+static void sw__wayland_keyboard_handle_modifiers(void *data, struct wl_keyboard *wl_keyboard,
+		uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched,
+		uint32_t mods_locked, uint32_t group) {
+	sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)data;
+	sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
+
+	SU_NOTUSED(wl_keyboard); SU_NOTUSED(serial);
+
+	if (SU_LIKELY(keyboard_priv->xkb_state)) {
+		if (0 != xkb_state_update_mask( keyboard_priv->xkb_state,
+				mods_depressed, mods_latched, mods_locked, 0, 0, group)) {
+			static char *mods[] = {
+				XKB_MOD_NAME_SHIFT,
+				XKB_MOD_NAME_CAPS,
+				XKB_MOD_NAME_CTRL,
+				XKB_MOD_NAME_MOD1,
+				XKB_MOD_NAME_MOD2,
+				XKB_MOD_NAME_MOD3,
+				XKB_MOD_NAME_MOD4,
+				XKB_MOD_NAME_MOD5,
+				XKB_VMOD_NAME_ALT,
+				XKB_VMOD_NAME_HYPER,
+				XKB_VMOD_NAME_LEVEL3,
+				XKB_VMOD_NAME_LEVEL5,
+				XKB_VMOD_NAME_META,
+				XKB_VMOD_NAME_NUM,
+				XKB_VMOD_NAME_SCROLL,
+				XKB_VMOD_NAME_SUPER
+			};
+			size_t i;
+			SU_MEMSET(&keyboard->out.state, 0, sizeof(keyboard->out.state));
+			for ( i = 1; i < (SU_LENGTH(mods) + 1); ++i) {
+				if (xkb_state_mod_name_is_active( keyboard_priv->xkb_state,
+						mods[i - 1], XKB_STATE_MODS_EFFECTIVE) == 1) {
+					keyboard->out.state.mods |= (1 << i);
+				}
+			}
+			/* ? TODO: layouts, leds, consumed */
+
+			if (SU_LIKELY(keyboard->out.focused_surface)) {
+				keyboard->out.focused_surface->in.notify((sw_wayland_event_source_t *)keyboard,
+					sw__context, SW_WAYLAND_EVENT_KEYBOARD_STATE_UPDATED);
+			}
+		}
+	}
+}
+
+static void sw__wayland_keyboard_handle_repeat_info(void *data, struct wl_keyboard *wl_keyboard,
+		int32_t rate, int32_t delay) {
+	sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)data;
+
+	SU_NOTUSED(wl_keyboard);
+
+	keyboard->out.repeat_rate = rate;
+	keyboard->out.repeat_delay = delay;
+	/* ? TODO: SW_WAYLAND_EVENT_KEYBOARD_STATE_UPDATED event */
+}
+
+static sw_wayland_keyboard_t *sw__wayland_keyboard_create(sw_wayland_seat_t *seat) {
+	sw_wayland_keyboard_t *keyboard = NULL;
+	if (seat->in.keyboard_create && (keyboard = seat->in.keyboard_create(seat, sw__context))) {
+		sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
+		sw__wayland_seat_t *seat_priv = (sw__wayland_seat_t *)&seat->sw__private;
+
+		static const struct wl_keyboard_listener keyboard_listener = {
+			sw__wayland_keyboard_handle_keymap,
+			sw__wayland_keyboard_handle_enter,
+			sw__wayland_keyboard_handle_leave,
+			sw__wayland_keyboard_handle_key,
+			sw__wayland_keyboard_handle_modifiers,
+			sw__wayland_keyboard_handle_repeat_info
+		};
+
+		keyboard->out.seat = seat;
+		keyboard_priv->wl_keyboard = wl_seat_get_keyboard(seat_priv->wl_seat);
+		wl_keyboard_add_listener(keyboard_priv->wl_keyboard, &keyboard_listener, keyboard);
+
+		keyboard_priv->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS); /* ? TODO: error check */
+		/* ? TODO: xkb_context_set_log_level, xkb_context_set_log_verbosity, xkb_context_set_log_fn */
+	}
+
+	return keyboard;
+}
+
+static void sw__wayland_keyboard_destroy(sw_wayland_keyboard_t *keyboard) {
+	sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
+	if (keyboard_priv->wl_keyboard) {
+		wl_keyboard_destroy(keyboard_priv->wl_keyboard);
+	}
+	xkb_state_unref(keyboard_priv->xkb_state);
+	xkb_keymap_unref(keyboard_priv->xkb_keymap);
+	xkb_context_unref(keyboard_priv->xkb_context);
+	if (keyboard->in.destroy) {
+		keyboard->in.destroy(keyboard, sw__context);
+	}
+}
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
+
 static void sw__wayland_seat_destroy(sw_wayland_seat_t *seat) {
 	sw__wayland_seat_t *seat_priv = (sw__wayland_seat_t *)&seat->sw__private;
 	if (seat->out.pointer) {
@@ -4154,10 +4517,18 @@ static void sw__wayland_seat_destroy(sw_wayland_seat_t *seat) {
 static void sw__wayland_seat_handle_capabilities(void *data, struct wl_seat *wl_seat, uint32_t capabilities) {
 	sw_wayland_seat_t *seat = (sw_wayland_seat_t *)data;
 
+	/* TODO: touch */
 	su_bool32_t cap_pointer = (capabilities & WL_SEAT_CAPABILITY_POINTER);
-	/* TODO: touch, keyboard */
 
-	SU_NOTUSED(wl_seat);
+#if SW_WITH_WAYLAND_KEYBOARD
+	su_bool32_t cap_keyboard = (capabilities & WL_SEAT_CAPABILITY_KEYBOARD);
+	if (cap_keyboard && !seat->out.keyboard) {
+		seat->out.keyboard = sw__wayland_keyboard_create(seat);
+	} else if (!cap_keyboard && seat->out.keyboard) {
+		sw__wayland_keyboard_destroy(seat->out.keyboard);
+		seat->out.keyboard = NULL;
+	}
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 
 	if (cap_pointer && !seat->out.pointer) {
 		seat->out.pointer = sw__wayland_pointer_create(seat);
@@ -4165,6 +4536,8 @@ static void sw__wayland_seat_handle_capabilities(void *data, struct wl_seat *wl_
 		sw__wayland_pointer_destroy(seat->out.pointer);
 		seat->out.pointer = NULL;
 	}
+
+	SU_NOTUSED(wl_seat);
 }
 
 static void sw__wayland_seat_handle_name(void *data, struct wl_seat *wl_seat, const char *name) {
@@ -4217,7 +4590,7 @@ static sw_wayland_seat_t *sw__wayland_seat_create(uint32_t wl_name) {
 
 	seat->in.destroy = sw__wayland_seat_handle_destroy;
 	seat_priv->wl_seat = (struct wl_seat *)wl_registry_bind(
-		sw_priv->_.wayland.registry, wl_name, &wl_seat_interface, 2);
+		sw_priv->_.wayland.registry, wl_name, &wl_seat_interface, 4);
 	seat_priv->wl_name = wl_name;
 	wl_seat_add_listener(seat_priv->wl_seat, &seat_listener, seat);
 
@@ -4549,7 +4922,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
 #if SW_WITH_WAYLAND_BACKEND
 	case SW_BACKEND_TYPE_WAYLAND: {
 		sw__context_wayland_t *wayland_priv = &sw_priv->_.wayland;
-		sw_wayland_surface_t *s;
+		sw_wayland_surface_t *surface;
 
 		if (SU_UNLIKELY(!wayland_priv->display)) {
 			static const struct wl_registry_listener registry_listener = {
@@ -4578,15 +4951,44 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
 			sw->out.backend.wayland.pfd.events = POLLIN;
 		}
 
-		for ( s = sw->in.backend.wayland.toplevels.head; s; s = s->next) {
-			SU_ASSERT(s->in.type == SW_WAYLAND_SURFACE_TYPE_TOPLEVEL);
-			sw__wayland_surface_prepare(s, NULL);
+		for ( surface = sw->in.backend.wayland.toplevels.head; surface; surface = surface->next) {
+			SU_ASSERT(surface->in.type == SW_WAYLAND_SURFACE_TYPE_TOPLEVEL);
+			sw__wayland_surface_prepare(surface, NULL);
 		}
 
-		for ( s = sw->in.backend.wayland.layers.head; s; s = s->next) {
-			SU_ASSERT(s->in.type == SW_WAYLAND_SURFACE_TYPE_LAYER);
-			sw__wayland_surface_prepare(s, NULL);
+		for ( surface = sw->in.backend.wayland.layers.head; surface; surface = surface->next) {
+			SU_ASSERT(surface->in.type == SW_WAYLAND_SURFACE_TYPE_LAYER);
+			sw__wayland_surface_prepare(surface, NULL);
 		}
+
+#if SW_WITH_WAYLAND_KEYBOARD
+		{
+			int64_t ms_now = su_now_ms(CLOCK_MONOTONIC);
+			sw_wayland_seat_t *seat;
+			for (seat = sw->out.backend.wayland.seats.head; seat; seat = seat->next) {
+				sw_wayland_keyboard_t *keyboard = seat->out.keyboard;
+				if (keyboard) {
+					sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
+					if (ms_now >= keyboard_priv->repeat_next) {
+						if (keyboard->out.focused_surface && keyboard_priv->repeat_cp) {
+							keyboard->out.key.time = ms_now;
+							keyboard->out.key.state = SW_WAYLAND_KEYBOARD_KEY_STATE_REPEATED;
+							keyboard->out.key.cp = keyboard_priv->repeat_cp;
+							keyboard->out.focused_surface->in.notify((sw_wayland_event_source_t *)keyboard,
+								sw__context, SW_WAYLAND_EVENT_KEYBOARD_KEY_REPEAT);
+							keyboard_priv->repeat_next = (ms_now + keyboard->out.repeat_rate);
+						} else {
+							keyboard_priv->repeat_next = -1;
+							keyboard_priv->repeat_cp = 0;
+						}
+					}
+					if (keyboard_priv->repeat_next > 0) {
+						sw__update_t(keyboard_priv->repeat_next);
+					}
+				}
+			}
+		}
+#endif /* SW_WITH_WAYLAND_KEYBOARD */
 		break;
 	}
 #endif /* SW_WITH_WAYLAND_BACKEND */

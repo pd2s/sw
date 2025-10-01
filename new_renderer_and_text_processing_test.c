@@ -80,19 +80,19 @@ static sw_context_t sw;
 static arena_t scratch_arena;
 static bool32_t running = TRUE;
 
-static allocator_t gp_alloc = { libc_alloc, libc_free };
+static const allocator_t gp_alloc = { libc_alloc, libc_free };
 
-static void *scratch_alloc_alloc(allocator_t *alloc, size_t size, size_t alignment) {
+static void *scratch_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
 	void *ret = arena_alloc(&scratch_arena, &gp_alloc, size, alignment);
 	NOTUSED(alloc);
 	return ret;
 }
 
-static void scratch_alloc_free(allocator_t *alloc, void *ptr) {
+static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 
-static allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
+static const allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
 static void *scratch_alloc_alloc_ft(FT_Memory memory, long size) {
     void *ret;
@@ -802,9 +802,9 @@ static sw_pixmap_t *render(void) {
 }
 
 static bool32_t surface_handle_event(sw_wayland_event_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
+    sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)source;
+    
     NOTUSED(source); NOTUSED(ctx);
-
-    DEBUG_LOG("event: %u", event);
 
     switch (event) {
 	case SW_WAYLAND_EVENT_SURFACE_CLOSE:
@@ -821,6 +821,15 @@ static bool32_t surface_handle_event(sw_wayland_event_source_t *source, sw_conte
 	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
 	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
 	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+	case SW_WAYLAND_EVENT_KEYBOARD_ENTER:
+	case SW_WAYLAND_EVENT_KEYBOARD_LEAVE:
+        break;
+	case SW_WAYLAND_EVENT_KEYBOARD_KEY:
+	case SW_WAYLAND_EVENT_KEYBOARD_KEY_REPEAT:
+        SU_DEBUG_LOG("key: %u", keyboard->out.key.cp);
+        break;
+    case SW_WAYLAND_EVENT_KEYBOARD_STATE_UPDATED:
+        SU_DEBUG_LOG("mods: %u", keyboard->out.state.mods);
         break;
     default:
         ASSERT_UNREACHABLE;
@@ -833,6 +842,23 @@ static void handle_signal(int sig) {
     DEBUG_LOG("%d: %s", sig, strsignal(sig));
     NOTUSED(sig);
     running = FALSE;
+}
+
+static sw_wayland_keyboard_t *keyboard_handle_create(sw_wayland_seat_t *seat, sw_context_t *ctx) {
+	sw_wayland_keyboard_t *keyboard;
+
+	NOTUSED(seat); NOTUSED(ctx);
+
+	ALLOCCT(keyboard, &gp_alloc);
+	return keyboard;
+}
+
+static sw_wayland_seat_t *seat_handle_create(sw_wayland_seat_t *seat, sw_context_t *ctx) {
+	NOTUSED(ctx);
+
+	seat->in.keyboard_create = keyboard_handle_create;
+
+	return seat;
 }
 
 int main(void) {
@@ -850,6 +876,7 @@ int main(void) {
     sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
     sw.in.gp_alloc = &gp_alloc;
     sw.in.scratch_alloc = &scratch_alloc;
+    sw.in.backend.wayland.seat_create = seat_handle_create;
 
     /* hack for stbi allocator */
     sw__context = &sw;
@@ -866,11 +893,10 @@ int main(void) {
     root->in._.image.data.len = ((sizeof(*pm) - sizeof(pm->pixels)) + (pm->width * pm->height * 4));
 
     ALLOCCT(surface, &gp_alloc);
-    surface->in.type = SW_WAYLAND_SURFACE_TYPE_TOPLEVEL;
     surface->in.notify = surface_handle_event;
-    surface->in._.toplevel.decoration_mode = SW_WAYLAND_TOPLEVEL_DECORATION_MODE_SERVER_SIDE;
     surface->in.root = root;
-
+    surface->in.type = SW_WAYLAND_SURFACE_TYPE_TOPLEVEL;
+    surface->in._.toplevel.decoration_mode = SW_WAYLAND_TOPLEVEL_DECORATION_MODE_SERVER_SIDE;
     LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, surface);
 
     c = sw_set(&sw);
@@ -887,7 +913,10 @@ int main(void) {
 
         arena_reset(&scratch_arena, &gp_alloc);
 
-        poll(&sw.out.backend.wayland.pfd, 1, -1);
+        if (0 == poll(&sw.out.backend.wayland.pfd, 1, (int)(sw.out.t - now_ms(CLOCK_MONOTONIC)))) {
+            c = sw_set(&sw);
+            ASSERT(c == TRUE);
+        }
 
         c = sw_process(&sw);
         ASSERT(c == TRUE);

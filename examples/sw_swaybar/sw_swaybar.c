@@ -17,6 +17,7 @@
 
 #define SW_WITH_MEMORY_BACKEND 0
 #define SW_WITH_WAYLAND_BACKEND 1
+#define SW_WITH_WAYLAND_KEYBOARD 0
 #define SW_WITH_TEXT 1
 #if !defined(SW_WITH_SVG)
 #define SW_WITH_SVG 1
@@ -314,7 +315,7 @@ static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 
-static allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
+static const allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
 static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_context_t *sw, sw_layout_block_event_t event) {
 	layout_block_t *block = (layout_block_t *)sw_block;
@@ -3121,7 +3122,7 @@ static void run(void) {
 		}
 #endif /* WITH_TRAY */
 
-		sw_timeout = (state.sw.out.t > 0) ? (int)(state.sw.out.t - now_ms(CLOCK_MONOTONIC)) : (int)state.sw.out.t;
+		sw_timeout = (int)(state.sw.out.t - now_ms(CLOCK_MONOTONIC));
 
 		timeout = ((sw_timeout > 0) && (tray_timeout > 0))
 			? MIN(sw_timeout, tray_timeout) : MAX(sw_timeout, tray_timeout);

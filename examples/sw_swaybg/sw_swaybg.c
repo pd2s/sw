@@ -14,6 +14,7 @@
 
 #define SW_WITH_MEMORY_BACKEND 0
 #define SW_WITH_WAYLAND_BACKEND 1
+#define SW_WITH_WAYLAND_KEYBOARD 0
 #define SW_WITH_TEXT 0
 #if !defined(SW_WITH_SVG)
 #define SW_WITH_SVG 1
@@ -91,7 +92,7 @@ typedef struct state {
 
 static state_t state;
 
-static allocator_t gp_alloc = { libc_alloc, libc_free };
+static const allocator_t gp_alloc = { libc_alloc, libc_free };
 
 static void *scratch_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
 	void *ret = arena_alloc(&state.scratch_arena, &gp_alloc, size, alignment);
@@ -103,7 +104,7 @@ static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 	NOTUSED(alloc); NOTUSED(ptr);
 }
 
-static allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
+static const allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
 static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
 	char *p;
@@ -454,8 +455,17 @@ static void run(void) {
 
         arena_reset(&state.scratch_arena, &gp_alloc);
 
-        if ((poll(&state.sw.out.backend.wayland.pfd, 1, (int)state.sw.out.t) == -1) && (errno != EINTR)) {
-            su_abort(errno, "poll: %s", strerror(errno));
+        switch (poll(&state.sw.out.backend.wayland.pfd, 1, (int)(state.sw.out.t - now_ms(CLOCK_MONOTONIC)))) {
+		case -1:
+			if (errno != EINTR) {
+				su_abort(errno, "poll: %s", strerror(errno));
+			}
+			break;
+		case 0:
+			state.update = TRUE;
+			break;
+		default:
+			break;
         }
 
 		if (!sw_process(&state.sw)) {

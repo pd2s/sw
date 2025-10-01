@@ -11,7 +11,13 @@ CFLAGS="${CFLAGS:-}"
 
 case "$CFLAGS" in
   *-D*SW_WITH_WAYLAND_BACKEND=0*) ;;
-  *) DEPS="${DEPS} wayland-client" ;;
+  *)
+    DEPS="${DEPS} wayland-client"
+    case "$CFLAGS" in
+    *-D*SW_WITH_WAYLAND_KEYBOARD=0*) ;;
+    *) DEPS="${DEPS} xkbcommon" ;;
+    esac
+    ;;
 esac
 
 case "$CFLAGS" in
