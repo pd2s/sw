@@ -11,21 +11,21 @@
 #include <stdint.h>
 
 #if !defined(SU_IMPLEMENTATION)
-#define SU_IMPLEMENTATION
+	#define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
 #if !defined(SU_STRIP_PREFIXES)
-#define SU_STRIP_PREFIXES
+	#define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
 #include <sutil.h>
 
 #if HAS_INCLUDE(<basu/sd-bus.h>)
-#include <basu/sd-bus.h>
+	#include <basu/sd-bus.h>
 #elif HAS_INCLUDE(<elogind/sd-bus.h>)
-#include <elogind/sd-bus.h>
+	#include <elogind/sd-bus.h>
 #elif HAS_INCLUDE(<systemd/sd-bus.h>)
-#include <systemd/sd-bus.h>
+	#include <systemd/sd-bus.h>
 #else
-#include <sd-bus.h>
+	#include <sd-bus.h>
 #endif
 
 typedef enum sni_dbusmenu_menu_item_type {
@@ -64,10 +64,7 @@ typedef struct sni_dbusmenu_menu_item {
     int enabled; /* bool */
     int visible; /* bool */
     string_t icon_name;
-    struct { /* png data of the icon */
-        void *bytes; /* may be NULL */
-        size_t nbytes;
-    } icon_data;
+	fat_ptr_t icon_data; /* png data of the icon. may be NULL */
     sni_dbusmenu_menu_item_toggle_type_t toggle_type;
     int toggle_state; /* 0 - off, 1 - on, else - indeterminate */
     sni_dbusmenu_menu_item_disposition_t disposition;
@@ -176,15 +173,6 @@ struct sni__slot {
 	LLIST_NODE_FIELDS(sni__slot_t);
 };
 
-typedef void (*sni_item_func_t)(sni_item_t *);
-typedef sni_item_t *(*sni_item_create_func_t)(void);
-
-typedef struct sni_item_in {
-	sni_item_func_t destroy; /* may be NULL */
-	sni_item_func_t properties_updated; /* may be NULL */
-	sni_item_func_t dbusmenu_menu_updated; /* may be NULL */
-} sni_item_in_t;
-
 typedef struct sni_item_out {
 	sni_item_properties_t *properties; /* may be NULL */
 	sni_dbusmenu_t *dbusmenu; /* may be NULL */
@@ -202,7 +190,7 @@ typedef struct sni__item {
 } sni__item_t;
 
 struct sni_item {
-	sni_item_in_t in;
+	/*sni_item_in_t in;*/
 	sni_item_out_t out;
 	sni__item_t priv;
 	LLIST_NODE_FIELDS(sni_item_t);
@@ -210,15 +198,35 @@ struct sni_item {
 
 typedef struct sni_server_in {
 	const allocator_t *alloc;
-	sni_item_create_func_t item_create; /* may be NULL */
 } sni_server_in_t;
 
 typedef struct sni_items {
 	LLIST_FIELDS(sni_item_t);
 } sni_items_t;
 
+typedef enum sni_server_event_type {
+	SNI_SERVER_EVENT_TYPE_ITEM_CREATE,
+	SNI_SERVER_EVENT_TYPE_ITEM_DESTROY,
+	SNI_SERVER_EVENT_TYPE_ITEM_PROPERTIES_UPDATED,
+	SNI_SERVER_EVENT_TYPE_ITEM_DBUSMENU_MENU_UPDATED
+} sni_server_event_type_t;
+
+typedef union sni__server_event {
+	string_t id;
+	sni_dbusmenu_menu_t *menu;
+} sni__server_event_t;
+
+typedef struct sni_server_event {
+	sni_server_event_type_t type;
+	PAD32;
+	sni_item_t *item;
+	sni__server_event_t priv;
+} sni_server_event_t;
+
 typedef struct sni_server_out {
 	sni_items_t items;
+	sni_server_event_t *events; /* TODO: rework ownership */
+	size_t events_count;
 } sni_server_out_t;
 
 typedef struct sni__server {
@@ -228,6 +236,9 @@ typedef struct sni__server {
 	size_t watcher_items_count, watcher_items_capacity;
 	string_t *watcher_hosts;
 	size_t watcher_hosts_count, watcher_hosts_capacity;
+	size_t events_capacity;
+	bool32_t check_events;
+	PAD32;
 } sni__server_t;
 
 typedef struct sni_server {
@@ -288,9 +299,9 @@ static void sni__item_read_pixmap( sd_bus_message *msg,
 			pixmap->height = height;
 
 #if (BYTE_ORDER_IS_LITTLE_ENDIAN)
-			su_bswap32_argb_premultiply_alpha(pixmap->pixels, (uint32_t *)(uintptr_t)bytes, ((size_t)width * (size_t)height));
+			bswap32_argb_premultiply_alpha(pixmap->pixels, (uint32_t *)(uintptr_t)bytes, ((size_t)width * (size_t)height));
 #else
-			su_argb_premultiply_alpha(pixmap->pixels, (uint32_t *)(uintptr_t)bytes, ((size_t)width * (size_t)height));
+			argb_premultiply_alpha(pixmap->pixels, (uint32_t *)(uintptr_t)bytes, ((size_t)width * (size_t)height));
 #endif
 			
 			dest[(*dest_count)++] = pixmap;
@@ -362,7 +373,7 @@ static void sni__dbusmenu_menu_destroy(sni_dbusmenu_menu_t *menu) {
 		sni__dbusmenu_menu_destroy(menu_item->submenu);
 		string_fini(&menu_item->label, alloc);
 		string_fini(&menu_item->icon_name, alloc);
-		FREE(alloc, menu_item->icon_data.bytes);
+		FREE(alloc, menu_item->icon_data.ptr);
 	}
 
 	FREE(alloc, menu);
@@ -468,9 +479,9 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
 				}
 			} else if (string_equal(s, string("icon-data"))) {
 				const void *bytes;
-				sd_bus_message_read_array(msg, 'y', &bytes, &menu_item->icon_data.nbytes);
-				ALLOCTSA(menu_item->icon_data.bytes, alloc, menu_item->icon_data.nbytes, 32);
-				MEMCPY(menu_item->icon_data.bytes, bytes, menu_item->icon_data.nbytes);
+				sd_bus_message_read_array(msg, 'y', &bytes, &menu_item->icon_data.len);
+				ALLOCTSA(menu_item->icon_data.ptr, alloc, menu_item->icon_data.len, 32);
+				MEMCPY(menu_item->icon_data.ptr, bytes, menu_item->icon_data.len);
 			/*} else if (string_equal(key_str, string("shortcut"))) { */
 			} else if (string_equal(s, string("toggle-type"))) {
 				sd_bus_message_read_basic(msg, 's', &s.s);
@@ -525,17 +536,42 @@ exit_con:
 	return menu;
 }
 
+static sni_server_event_t *sni__server_event(sni_server_event_type_t type, sni_item_t *item) {
+	sni_server_event_t *event;
+
+	const allocator_t *alloc = sni_server.in.alloc;
+
+	if (SU_UNLIKELY(sni_server.priv.events_capacity == sni_server.out.events_count)) {
+		sni_server_event_t *new_events;
+		sni_server.priv.events_capacity *= 2;
+		SU_ARRAY_ALLOC(new_events, alloc, sni_server.priv.events_capacity);
+		SU_MEMCPY(new_events, sni_server.out.events, sni_server.out.events_count * sizeof(sni_server.out.events[0]));
+		SU_FREE(alloc, sni_server.out.events);
+		sni_server.out.events = new_events;
+	}
+
+	event = &sni_server.out.events[sni_server.out.events_count++];
+	/*SU_MEMSET(event, 0, sizeof(*event));*/
+	event->type = type;
+	event->item = item;
+
+	return event;
+}
+
 static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
         sd_bus_error *ret_error) {
 	sni__slot_t *slot = (sni__slot_t *)data;
 	sni_item_t *item = slot->item;
 	sni_dbusmenu_t *dbusmenu = item->out.dbusmenu;
-	struct sni_dbusmenu_menu *old_menu = dbusmenu->menu;
+	sni_server_event_t *event;
 	int ret;
 
 	NOTUSED(ret_error);
 
 	sni__slot_free(slot);
+	event = sni__server_event(SNI_SERVER_EVENT_TYPE_ITEM_DBUSMENU_MENU_UPDATED, item);
+	event->priv.menu = dbusmenu->menu;
+	sni_server.priv.check_events = TRUE;
 
 	ret = sd_bus_message_skip(msg, "u");
 	if (ret < 0) {
@@ -544,12 +580,6 @@ static int sni__dbusmenu_handle_get_layout(sd_bus_message *msg, void *data,
 		dbusmenu->menu = sni__dbusmenu_menu_create(msg, dbusmenu, NULL);
 		ret = 1;
 	}
-
-	if (item->in.dbusmenu_menu_updated) {
-		item->in.dbusmenu_menu_updated(item);
-	}
-
-	sni__dbusmenu_menu_destroy(old_menu);
 
 	return ret;
 }
@@ -857,9 +887,7 @@ exit_con:
 	}
 
 out:
-	if (item->in.properties_updated) {
-		item->in.properties_updated(item);
-	}
+	sni__server_event(SNI_SERVER_EVENT_TYPE_ITEM_PROPERTIES_UPDATED, item);
 
 	return ret;
 }
@@ -889,7 +917,7 @@ static int sni__item_handle_signal(sd_bus_message *msg, void *data,
 	return 1;
 }
 
-static void sni__item_destroy(sni_item_t *item) {
+static void sni__item_fini(sni_item_t *item) {
 	const allocator_t *alloc = sni_server.in.alloc;
 	sni_dbusmenu_t *dbusmenu = item->out.dbusmenu;
 	sni_item_properties_t *properties = item->out.properties;
@@ -906,40 +934,38 @@ static void sni__item_destroy(sni_item_t *item) {
 	string_fini(&item->priv.service, alloc);
 	string_fini(&item->priv.path, alloc);
 
-	if (item->in.destroy) {
-		item->in.destroy(item);
-	}
-
 	sni__dbusmenu_destroy(dbusmenu);
 
 	sni__item_properties_destroy(properties);
+
+	/*MEMSET(item, 0, sizeof(*item));*/
+
+	sni__server_event(SNI_SERVER_EVENT_TYPE_ITEM_DESTROY, item);
 }
 
-static sni_item_t *sni__item_create(string_t id) {
-	sni_item_t *item;
+static bool32_t sni__item_init(sni_item_t *item, string_t id) {
 	sni__slot_t *slot;
 	sd_bus_slot *slot_;
 	string_t path;
-	const allocator_t *alloc;
+	const allocator_t *alloc = sni_server.in.alloc;
 	int ret;
 
+	ASSERT(id.len > 0);
+
 	if (!string_find_char(id, '/', &path)) {
-		return NULL;
+		return FALSE;
 	}
 
-	if (!sni_server.in.item_create || !(item = sni_server.in.item_create())) {
-		return NULL;
-	}
+	MEMSET(item, 0, sizeof(*item));
 
-	alloc = sni_server.in.alloc;
 	string_init_len(&item->priv.service, alloc, id.s, (id.len - path.len), TRUE);
 
 	ret = sd_bus_match_signal_async(sni_server.priv.bus, &slot_, item->priv.service.s,
 			path.s, sni__item_interface, NULL,
 			sni__item_handle_signal, sni__item_handle_signal, item);
 	if (ret < 0) {
-		sni__item_destroy(item);
-		return NULL;
+		sni__item_fini(item);
+		return FALSE;
 	}
 
 	ALLOCT(slot, alloc);
@@ -947,15 +973,10 @@ static sni_item_t *sni__item_create(string_t id) {
 	slot->slot = slot_;
 	LLIST_APPEND_HEAD(&item->priv.slots, slot);
 
-	if (id.free_contents) {
-		item->priv.watcher_id = id;
-		item->priv.path = path;
-	} else {
-		string_init_string(&item->priv.watcher_id, alloc, id);
-		string_init_string(&item->priv.path, alloc, path);
-	}
+	item->priv.watcher_id = id;
+	item->priv.path = path;
 
-	return item;
+	return TRUE;
 }
 
 static int sni__watcher_handle_register_item(sd_bus_message *msg, void *data,
@@ -1191,6 +1212,8 @@ static int sni__watcher_handle_lost_service(sd_bus_message *msg, void *data,
 }
 
 static int sni__host_add_item(string_t id) {
+	sni_server_event_t *event;
+
 	sni_item_t *item = sni_server.out.items.head;
 	for ( ; item; item = item->next) {
 		if (string_equal(id, item->priv.watcher_id)) {
@@ -1198,12 +1221,12 @@ static int sni__host_add_item(string_t id) {
 		}
 	}
 
-	if ((item = sni__item_create(id))) {
-		LLIST_APPEND_TAIL(&sni_server.out.items, item);
-		return 1;
-	} else {
-		return -EINVAL;
-	}
+	event = sni__server_event(SNI_SERVER_EVENT_TYPE_ITEM_CREATE, NULL);
+	string_init_string(&event->priv.id, sni_server.in.alloc, id);
+
+	sni_server.priv.check_events = TRUE;
+
+	return 1;
 }
 
 static int sni__host_handle_get_registered_items(sd_bus_message *msg, void *data,
@@ -1232,9 +1255,8 @@ static int sni__host_handle_get_registered_items(sd_bus_message *msg, void *data
 			str.len = STRLEN(str.s);
 			str.free_contents = TRUE;
 			str.nul_terminated = TRUE;
-			if ((str.len == 0) || (0 > sni__host_add_item(str))) {
-				free(id);
-			}
+			sni__host_add_item(str);
+			free(id);
 		}
 		free(ids);
 	}
@@ -1302,7 +1324,7 @@ static int sni__host_handle_item_unregistered(sd_bus_message *msg, void *data,
 		for ( ; item; item = item->next) {
 			if (string_equal(item->priv.watcher_id, s)) {
 				LLIST_POP(&sni_server.out.items, item);
-				sni__item_destroy(item);
+				sni__item_fini(item);
 				break;
 			}
 		}
@@ -1323,31 +1345,62 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
 	}
 
 	if (STRCMP(service, sni__watcher_interface) == 0) {
-		sni_item_t *item = sni_server.out.items.tail;
+		sni_item_t *item;
         ret = sni__host_register_to_watcher();
 		if (ret < 0) {
 			return ret;
 		}
-		for ( ; item; ) {
-			sni_item_t *prev = item->prev;
+		for ( item = sni_server.out.items.tail; item; item = item->prev) {
 			LLIST_POP(&sni_server.out.items, item);
-			sni__item_destroy(item);
-			item = prev;
+			sni__item_fini(item);
 		}
 	}
 
 	return 0;
 }
 
+static void sni__server_process_events(void) {
+	if (sni_server.priv.check_events) {
+		size_t i = 0;
+		for ( ; i < sni_server.out.events_count; ++i) {
+			sni_server_event_t event = sni_server.out.events[i];
+			switch (event.type) {
+			case SNI_SERVER_EVENT_TYPE_ITEM_CREATE: {
+				if (event.item) {
+					if (sni__item_init(event.item, event.priv.id)) {
+						LLIST_APPEND_TAIL(&sni_server.out.items, event.item);
+					} else {
+						string_fini(&event.priv.id, sni_server.in.alloc);
+					}
+				}
+				break;
+			}
+			case SNI_SERVER_EVENT_TYPE_ITEM_DBUSMENU_MENU_UPDATED:
+				sni__dbusmenu_menu_destroy(event.priv.menu);
+				break;
+			case SNI_SERVER_EVENT_TYPE_ITEM_DESTROY:
+			case SNI_SERVER_EVENT_TYPE_ITEM_PROPERTIES_UPDATED:
+				break;
+			default:
+				ASSERT_UNREACHABLE;
+			}
+		}
+		sni_server.priv.check_events = FALSE;
+	}
+	sni_server.out.events_count = 0;
+}
+
 static void sni_server_fini(void) {
 	const allocator_t *alloc = sni_server.in.alloc;
 	size_t i;
-	sni_item_t *item = sni_server.out.items.tail;
-	for ( ; item; ) {
-		sni_item_t *prev = item->prev;
-		LLIST_POP(&sni_server.out.items, item);
-		sni__item_destroy(item);
-		item = prev;
+	sni_server_event_t *events;
+	size_t events_count;
+	sni_item_t *item;
+
+	sni__server_process_events();
+
+	for ( item = sni_server.out.items.head; item; item = item->next) {
+		sni__item_fini(item);
 	}
 
 	sd_bus_flush_close_unref(sni_server.priv.bus);
@@ -1362,8 +1415,14 @@ static void sni_server_fini(void) {
 	FREE(alloc, sni_server.priv.watcher_items);
 	FREE(alloc, sni_server.priv.watcher_hosts);
 
+	events = sni_server.out.events;
+	events_count = sni_server.out.events_count;
+
 	MEMSET(&sni_server.out, 0, sizeof(sni_server.out));
 	MEMSET(&sni_server.priv, 0, sizeof(sni_server.priv));
+
+	sni_server.out.events = events;
+	sni_server.out.events_count = events_count;
 }
 
 static int sni_server_init(void) {
@@ -1380,6 +1439,9 @@ static int sni_server_init(void) {
     if (ret < 0) {
 		return ret;
     }
+
+	sni_server.priv.events_capacity = 32;
+	ARRAY_ALLOC(sni_server.out.events, alloc, sni_server.priv.events_capacity);
 
 	ret = sd_bus_request_name(sni_server.priv.bus, sni__watcher_interface, SD_BUS_NAME_QUEUE);
 	if (ret < 0) {
@@ -1537,6 +1599,9 @@ static int sni_server_get_poll_info(struct pollfd *pollfd_out, int64_t *absolute
 
 static int sni_server_process(void) {
 	int ret;
+
+	sni__server_process_events();
+
     while ((ret = sd_bus_process(sni_server.priv.bus, NULL)) > 0)
 	{
 	}

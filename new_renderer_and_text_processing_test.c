@@ -16,7 +16,7 @@
 
 #define RSVG_TEST 0
 #if RSVG_TEST
-#include "new_renderer_and_text_processing_rsvg_test.h"
+    #include "new_renderer_and_text_processing_rsvg_test.h"
 #endif
 
 typedef struct font {
@@ -801,41 +801,62 @@ static sw_pixmap_t *render(void) {
     return ret;
 }
 
-static bool32_t surface_handle_event(sw_wayland_event_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
-    sw_wayland_keyboard_t *keyboard = (sw_wayland_keyboard_t *)source;
-    
-    NOTUSED(source); NOTUSED(ctx);
+static bool32_t process_sw_events(void) {
+	size_t i;
+	for ( i = 0; i < sw.out.events_count; ++i) {
+		sw_event_t *event = &sw.out.events[i];
+		switch (event->out.type) {
+		case SW_EVENT_WAYLAND_OUTPUT_CREATE:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_MISSING_PROTOCOL:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+		case SW_EVENT_WAYLAND_SURFACE_DESTROY:
+		case SW_EVENT_LAYOUT_BLOCK_DESTROY:
+		case SW_EVENT_LAYOUT_BLOCK_ERROR_INVALID_IMAGE:
+		case SW_EVENT_WAYLAND_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
+		case SW_EVENT_WAYLAND_OUTPUT_DESTROY:
+		case SW_EVENT_WAYLAND_POINTER_ENTER:
+		case SW_EVENT_WAYLAND_POINTER_LEAVE:
+		case SW_EVENT_WAYLAND_POINTER_MOTION:
+		case SW_EVENT_WAYLAND_POINTER_BUTTON:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_COPY_DND_CANCELLED:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_COPY_DND_FINISHED:
+		case SW_EVENT_WAYLAND_POINTER_SCROLL:
+		case SW_EVENT_WAYLAND_POINTER_CREATE:
+		case SW_EVENT_WAYLAND_SEAT_DESTROY:
+		case SW_EVENT_WAYLAND_POINTER_DESTROY:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_LAYOUT_FAILED:
+		case SW_EVENT_WAYLAND_SURFACE_TOPLEVEL_FAILED_TO_SET_DECORATIONS:
+        case SW_EVENT_WAYLAND_KEYBOARD_DESTROY:
+        case SW_EVENT_WAYLAND_KEYBOARD_ENTER:
+        case SW_EVENT_WAYLAND_KEYBOARD_LEAVE:
+        case SW_EVENT_WAYLAND_SEAT_CREATE:
+        case SW_EVENT_WAYLAND_KEYBOARD_CREATE:
+        case SW_EVENT_WAYLAND_KEYBOARD_KEY:
+        case SW_EVENT_WAYLAND_KEYBOARD_KEY_REPEAT:
+        case SW_EVENT_WAYLAND_KEYBOARD_MOD:
+		case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_DND_ACTION:
+		case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_DND_SOURCE_ACTIONS:
+		case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_DND_ENTER:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_DND_LEAVE:
+		case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_DND_MOTION:
+		case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_DND_DROP:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_DESTROY:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_NEW_MIME_OFFERS:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_COPY_DND_ACTION:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_COPY_DND_DROP_PERFORMED:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_NEW_DATA:
+        case SW_EVENT_WAYLAND_DATA_DEVICE_CREATE:
+            break;
+        case SW_EVENT_WAYLAND_SURFACE_TOPLEVEL_CLOSE:
+            running = FALSE;
+            return FALSE;
+		default:
+			ASSERT_UNREACHABLE;
+		}
+	}
 
-    switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSE:
-        running = FALSE;
-        break;
-    case SW_WAYLAND_EVENT_POINTER_BUTTON:
-	case SW_WAYLAND_EVENT_POINTER_ENTER:
-	case SW_WAYLAND_EVENT_POINTER_LEAVE:
-	case SW_WAYLAND_EVENT_POINTER_MOTION:
-	case SW_WAYLAND_EVENT_POINTER_SCROLL:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
-	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
-	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
-	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
-	case SW_WAYLAND_EVENT_KEYBOARD_ENTER:
-	case SW_WAYLAND_EVENT_KEYBOARD_LEAVE:
-        break;
-	case SW_WAYLAND_EVENT_KEYBOARD_KEY:
-	case SW_WAYLAND_EVENT_KEYBOARD_KEY_REPEAT:
-        SU_DEBUG_LOG("key: %u", keyboard->out.key.cp);
-        break;
-    case SW_WAYLAND_EVENT_KEYBOARD_STATE_UPDATED:
-        SU_DEBUG_LOG("mods: %u", keyboard->out.state.mods);
-        break;
-    default:
-        ASSERT_UNREACHABLE;
-    }
-
-    return TRUE;
+    return sw.in.update_and_render;
 }
 
 static void handle_signal(int sig) {
@@ -844,27 +865,10 @@ static void handle_signal(int sig) {
     running = FALSE;
 }
 
-static sw_wayland_keyboard_t *keyboard_handle_create(sw_wayland_seat_t *seat, sw_context_t *ctx) {
-	sw_wayland_keyboard_t *keyboard;
-
-	NOTUSED(seat); NOTUSED(ctx);
-
-	ALLOCCT(keyboard, &gp_alloc);
-	return keyboard;
-}
-
-static sw_wayland_seat_t *seat_handle_create(sw_wayland_seat_t *seat, sw_context_t *ctx) {
-	NOTUSED(ctx);
-
-	seat->in.keyboard_create = keyboard_handle_create;
-
-	return seat;
-}
-
 int main(void) {
+    bool32_t c;
     sw_pixmap_t *pm;
     static struct sigaction sigact;
-    bool32_t c;
     sw_wayland_surface_t *surface;
     sw_layout_block_t *root;
 
@@ -876,7 +880,7 @@ int main(void) {
     sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
     sw.in.gp_alloc = &gp_alloc;
     sw.in.scratch_alloc = &scratch_alloc;
-    sw.in.backend.wayland.seat_create = seat_handle_create;
+    sw.in.update_and_render = TRUE;
 
     /* hack for stbi allocator */
     sw__context = &sw;
@@ -890,37 +894,42 @@ int main(void) {
     root->in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
     root->in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SW_PIXMAP;
     root->in._.image.data.ptr = pm;
-    root->in._.image.data.len = ((sizeof(*pm) - sizeof(pm->pixels)) + (pm->width * pm->height * 4));
+    root->in._.image.data.len = (sizeof(pm->width) + sizeof(pm->height) + (pm->width * pm->height * 4));
 
     ALLOCCT(surface, &gp_alloc);
-    surface->in.notify = surface_handle_event;
     surface->in.root = root;
     surface->in.type = SW_WAYLAND_SURFACE_TYPE_TOPLEVEL;
     surface->in._.toplevel.decoration_mode = SW_WAYLAND_TOPLEVEL_DECORATION_MODE_SERVER_SIDE;
-    LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, surface);
 
-    c = sw_set(&sw);
-    ASSERT(c == TRUE);
+    LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, surface);
 
 	sigact.sa_handler = handle_signal;
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
 	sigaction(SIGPIPE, &sigact, NULL);
 
-    while (running) {
-        c = sw_flush(&sw);
+loop:
+    do {
+        c = sw_set(&sw);
         ASSERT(c == TRUE);
+        sw.in.update_and_render = FALSE;
+    } while (process_sw_events());
 
-        arena_reset(&scratch_arena, &gp_alloc);
-
-        if (0 == poll(&sw.out.backend.wayland.pfd, 1, (int)(sw.out.t - now_ms(CLOCK_MONOTONIC)))) {
-            c = sw_set(&sw);
-            ASSERT(c == TRUE);
-        }
-
-        c = sw_process(&sw);
-        ASSERT(c == TRUE);
+    if (!running) {
+        goto cleanup;
     }
 
+    arena_reset(&scratch_arena, &gp_alloc);
+
+    poll(sw.out.backend.wayland.fds, sw.out.backend.wayland.fds_count, (int)(sw.out.t - now_ms(CLOCK_MONOTONIC)));
+    
+    goto loop;
+
+cleanup:
+    sw.in.backend_type = SW_BACKEND_TYPE_NONE;
+    c = sw_set(&sw);
+    ASSERT(c == TRUE);
+
+    NOTUSED(c);
     return 0;
 }

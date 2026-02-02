@@ -14,10 +14,10 @@
 #include <limits.h>
 
 #if !defined(SU_IMPLEMENTATION)
-#define SU_IMPLEMENTATION
+	#define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
 #if !defined(SU_STRIP_PREFIXES)
-#define SU_STRIP_PREFIXES
+	#define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
 #include <sutil.h>
 
@@ -128,7 +128,7 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
 
 	while (total < sizeof(header)) {
 		ssize_t written_bytes = write(fd, &header[total], sizeof(header) - total);
-		if (written_bytes == -1) {
+		if (written_bytes <= 0) {
 			return -1;
 		}
 		total += (size_t)written_bytes;
@@ -137,7 +137,7 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
 	total = 0;
 	while (total < len) {
 		ssize_t written_bytes = write(fd, &payload->s[total], len - total);
-		if (written_bytes == -1) {
+		if (written_bytes <= 0) {
 			return -1;
 		}
 		total += (size_t)written_bytes;

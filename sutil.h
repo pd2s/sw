@@ -2,16 +2,16 @@
 #define SU_HEADER
 
 #if !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE) && !(defined(_XOPEN_SOURCE) && (_XOPEN_SOURCE >= 700))
-#error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
+	#error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
 #endif
 
-/*#define SU_IMPLEMENTATION*/
+#define SU_IMPLEMENTATION
 
 #if !defined(SU_WITH_SIMD)
-#define SU_WITH_SIMD 1
+	#define SU_WITH_SIMD 1
 #endif /* !defined(SU_WITH_SIMD) */
 #if !defined(SU_WITH_DEBUG)
-#define SU_WITH_DEBUG 1
+	#define SU_WITH_DEBUG 1
 #endif /* !defined(SU_WITH_DEBUG) */
 
 #include <time.h>
@@ -41,51 +41,52 @@
 #define SU_THREAD_LOCAL __thread
 
 #if defined(_Static_assert)
-#undef _Static_assert
+	#undef _Static_assert
 #endif
 /* ? TODO: with message */
 #define SU_STATIC_ASSERT(x) __extension__ _Static_assert(x, "")
 
 #if !defined(SU_MEMCPY)
-#define SU_MEMCPY __builtin_memcpy
+	#define SU_MEMCPY __builtin_memcpy
 #endif /* SU_MEMCPY */
 #if !defined(SU_MEMMOVE)
-#define SU_MEMMOVE __builtin_memmove
+	#define SU_MEMMOVE __builtin_memmove
 #endif /* SU_MEMMOVE */
 #if !defined(SU_MEMSET)
-#define SU_MEMSET __builtin_memset
+	#define SU_MEMSET __builtin_memset
 #endif /* SU_MEMSET */
 #if !defined(SU_MEMCMP)
-#define SU_MEMCMP __builtin_memcmp
+	#define SU_MEMCMP __builtin_memcmp
 #endif /* SU_MEMCMP */
 #if !defined(SU_MEMCHR)
-#define SU_MEMCHR __builtin_memchr
+	#define SU_MEMCHR __builtin_memchr
 #endif /* SU_MEMCHR */
 #if !defined(SU_STRCPY)
-#define SU_STRCPY __builtin_strcpy
+	#define SU_STRCPY __builtin_strcpy
 #endif /* SU_STRCPY */
 #if !defined(SU_STRNCPY)
-#define SU_STRNCPY __builtin_strncpy
+	#define SU_STRNCPY __builtin_strncpy
 #endif /* SU_STRNCPY */
 #if !defined(SU_STRCMP)
-#define SU_STRCMP __builtin_strcmp
+	#define SU_STRCMP __builtin_strcmp
 #endif /* SU_STRCMP */
 #if !defined(SU_STRNCMP)
-#define SU_STRNCMP __builtin_strncmp
+	#define SU_STRNCMP __builtin_strncmp
 #endif /* SU_STRNCMP */
 #if !defined(SU_STRLEN)
-#define SU_STRLEN __builtin_strlen
+	#define SU_STRLEN __builtin_strlen
 #endif /* SU_STRLEN */
 
 #else
+
 #define SU_IGNORE_WARNING(w)
 #define SU_IGNORE_WARNINGS_START
 #define SU_IGNORE_WARNINGS_END
 
 #if defined(__TINYC__)
-#define SU_ALIGNOF __alignof__
+	#define SU_ALIGNOF __alignof__
 #else
-#define SU_ALIGNOF alignof
+	#define SU_ALIGNOF alignof
 #endif
 #define SU_THREAD_LOCAL thread_local
 #define SU_TYPEOF typeof
@@ -93,141 +94,141 @@
 
 /* ? TODO: default simd impls instead of libc ones */
 #if !defined(SU_MEMCPY)
-#define SU_MEMCPY memcpy
+	#define SU_MEMCPY memcpy
 #endif /* SU_MEMCPY */
 #if !defined(SU_MEMMOVE)
-#define SU_MEMMOVE memmove
+	#define SU_MEMMOVE memmove
 #endif /* SU_MEMMOVE */
 #if !defined(SU_MEMSET)
-#define SU_MEMSET memset
+	#define SU_MEMSET memset
 #endif /* SU_MEMSET */
 #if !defined(SU_MEMCMP)
-#define SU_MEMCMP memcmp
+	#define SU_MEMCMP memcmp
 #endif /* SU_MEMCMP */
 #if !defined(SU_MEMCHR)
-#define SU_MEMCHR memchr
+	#define SU_MEMCHR memchr
 #endif /* SU_MEMCHR */
 #if !defined(SU_STRCPY)
-#define SU_STRCPY strcpy
+	#define SU_STRCPY strcpy
 #endif /* SU_STRCPY */
 #if !defined(SU_STRNCPY)
-#define SU_STRNCPY strncpy
+	#define SU_STRNCPY strncpy
 #endif /* SU_STRNCPY */
 #if !defined(SU_STRCMP)
-#define SU_STRCMP strcmp
+	#define SU_STRCMP strcmp
 #endif /* SU_STRCMP */
 #if !defined(SU_STRNCMP)
-#define SU_STRNCMP strncmp
+	#define SU_STRNCMP strncmp
 #endif /* SU_STRNCMP */
 #if !defined(SU_STRLEN)
-#define SU_STRLEN strlen
+	#define SU_STRLEN strlen
 #endif /* SU_STRLEN */
 #endif
 
 #define SU_UNREACHABLE 0
 
 #if defined(__has_feature)
-#define SU_HAS_FEATURE(x) __has_feature(x)
+	#define SU_HAS_FEATURE(x) __has_feature(x)
 #else
-#define SU_HAS_FEATURE(x) 0
+	#define SU_HAS_FEATURE(x) 0
 #endif
 
 #if defined(__has_include)
-#define SU_HAS_INCLUDE(x) __has_include(x)
+	#define SU_HAS_INCLUDE(x) __has_include(x)
 #else
-#define SU_HAS_INCLUDE(x) 0
+	#define SU_HAS_INCLUDE(x) 0
 #endif
 
 #if defined(__has_attribute)
-#define SU_HAS_ATTRIBUTE(x) __has_attribute(x)
+	#define SU_HAS_ATTRIBUTE(x) __has_attribute(x)
 #else
-#define SU_HAS_ATTRIBUTE(x) 0
+	#define SU_HAS_ATTRIBUTE(x) 0
 #endif
 
 #if SU_HAS_ATTRIBUTE(always_inline)
-#define SU_ATTRIBUTE_ALWAYS_INLINE __attribute__((__always_inline__))
+	#define SU_ATTRIBUTE_ALWAYS_INLINE __attribute__((__always_inline__))
 #else
-#define SU_ATTRIBUTE_ALWAYS_INLINE
+	#define SU_ATTRIBUTE_ALWAYS_INLINE
 #endif
 
 #if SU_HAS_ATTRIBUTE(format)
-#define SU_ATTRIBUTE_FORMAT_PRINTF(start, end) __attribute__((__format__(__printf__, (start), (end))))
+	#define SU_ATTRIBUTE_FORMAT_PRINTF(start, end) __attribute__((__format__(__printf__, (start), (end))))
 #else
-#define SU_ATTRIBUTE_FORMAT_PRINTF(start, end)
+	#define SU_ATTRIBUTE_FORMAT_PRINTF(start, end)
 #endif
 
 #if SU_HAS_ATTRIBUTE(const)
-#define SU_ATTRIBUTE_CONST __attribute__((__const__))
+	#define SU_ATTRIBUTE_CONST __attribute__((__const__))
 #else
-#define SU_ATTRIBUTE_CONST
+	#define SU_ATTRIBUTE_CONST
 #endif
 
 #if SU_HAS_ATTRIBUTE(fallthrough)
-#define SU_ATTRIBUTE_FALLTHROUGH __attribute__((__fallthrough__))
+	#define SU_ATTRIBUTE_FALLTHROUGH __attribute__((__fallthrough__))
 #else
-#define SU_ATTRIBUTE_FALLTHROUGH
+	#define SU_ATTRIBUTE_FALLTHROUGH
 #endif
 
 #if SU_HAS_ATTRIBUTE(pure)
-#define SU_ATTRIBUTE_PURE __attribute__((__pure__))
+	#define SU_ATTRIBUTE_PURE __attribute__((__pure__))
 #else
-#define SU_ATTRIBUTE_PURE
+	#define SU_ATTRIBUTE_PURE
 #endif
 
 #if SU_HAS_ATTRIBUTE(noreturn)
-#define SU_ATTRIBUTE_NORETURN __attribute__((__noreturn__))
+	#define SU_ATTRIBUTE_NORETURN __attribute__((__noreturn__))
 #else
-#define SU_ATTRIBUTE_NORETURN
+	#define SU_ATTRIBUTE_NORETURN
 #endif
 
 #if defined(__has_builtin)
-#define SU_HAS_BUILTIN(x) __has_builtin(x)
+	#define SU_HAS_BUILTIN(x) __has_builtin(x)
 #else
-#define SU_HAS_BUILTIN(x) 0
+	#define SU_HAS_BUILTIN(x) 0
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_ctzg)
-#define SU_COUNT_TRAILING_ZEROS(x, fallback) __builtin_ctzg(x, fallback)
+	#define SU_COUNT_TRAILING_ZEROS(x, fallback) __builtin_ctzg(x, fallback)
 #else
-#error "TODO: implement __builtin_ctzg"
+	#error "TODO: implement __builtin_ctzg"
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_clzg)
-#define SU_COUNT_LEADING_ZEROS(x, fallback) __builtin_clzg(x, fallback)
+	#define SU_COUNT_LEADING_ZEROS(x, fallback) __builtin_clzg(x, fallback)
 #else
-#error "TODO: implement __builtin_clzg"
+	#error "TODO: implement __builtin_clzg"
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_bswap16)
-#define SU_BSWAP16(x) __builtin_bswap16(x)
+	#define SU_BSWAP16(x) __builtin_bswap16(x)
 #else
-#error "TODO: implement __builtin_bswap16"
+	#error "TODO: implement __builtin_bswap16"
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_bswap32)
-#define SU_BSWAP32(x) __builtin_bswap32(x)
+	#define SU_BSWAP32(x) __builtin_bswap32(x)
 #else
-#error "TODO: implement __builtin_bswap32"
+	#error "TODO: implement __builtin_bswap32"
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_bswap64)
-#define SU_BSWAP64(x) __builtin_bswap64(x)
+	#define SU_BSWAP64(x) __builtin_bswap64(x)
 #else
-#error "TODO: implement __builtin_bswap64"
+	#error "TODO: implement __builtin_bswap64"
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_unreachable)
-#define SU_ASSERT_UNREACHABLE do { SU_ASSERT(SU_UNREACHABLE); __builtin_unreachable(); } while(0)
+	#define SU_ASSERT_UNREACHABLE do { SU_ASSERT(SU_UNREACHABLE); __builtin_unreachable(); } while(0)
 #else
-#define SU_ASSERT_UNREACHABLE SU_ASSERT(SU_UNREACHABLE)
+	#define SU_ASSERT_UNREACHABLE SU_ASSERT(SU_UNREACHABLE)
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_expect)
-#define SU_LIKELY(expr) __builtin_expect(!!(expr), 1)
-#define SU_UNLIKELY(expr) __builtin_expect(!!(expr), 0)
+	#define SU_LIKELY(expr) __builtin_expect(!!(expr), 1)
+	#define SU_UNLIKELY(expr) __builtin_expect(!!(expr), 0)
 #else
-#define SU_LIKELY(expr) (expr)
-#define SU_UNLIKELY(expr) (expr)
+	#define SU_LIKELY(expr) (expr)
+	#define SU_UNLIKELY(expr) (expr)
 #endif
 
 #define SU_LENGTH(x) (sizeof((x)) / sizeof((x)[0]))
@@ -242,16 +243,15 @@
 #define SU_NOTUSED(x) (void)x
 
 #if SU_WITH_DEBUG
-#define SU_ASSERT(expr) \
-	do { \
-		if (SU_UNLIKELY(!(expr))) { \
-			size_t *su__n = NULL; \
-			su_log_stderr("%s:%d: assertion '%s' failed", __FILE__, __LINE__, #expr); \
-			*su__n = 0; \
-		} \
-	} while(0)
+	#define SU_ASSERT(expr) \
+		do { \
+			if (SU_UNLIKELY(!(expr))) { \
+				su_log_stderr("%s:%d: assertion '%s' failed", __FILE__, __LINE__, #expr); \
+				abort(); \
+			} \
+		} while(0)
 #else
-#define SU_ASSERT(expr)
+	#define SU_ASSERT(expr)
 #endif
 
 #define SU_PAD8 uint8_t su__pad8
@@ -262,9 +262,9 @@
 #define SU_FALSE 0
 
 #if SU_WITH_DEBUG
-#define SU_DEBUG_LOG su_log_stderr
+	#define SU_DEBUG_LOG su_log_stderr
 #else
-#define SU_DEBUG_LOG su_nop
+	#define SU_DEBUG_LOG su_nop
 #endif /* SU_WITH_DEBUG */
 
 #define SU_LLIST_FIELDS(type) type *head; type *tail; size_t count
@@ -314,7 +314,7 @@ do { \
 /* TODO: llist_insert/append_list/after/before */
 
 /* TODO: rework */
-#define SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
+#define SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize) \
 \
 typedef struct su_hash_table__##type { \
 	type *items; \
@@ -334,7 +334,7 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *, ke
 	su_bool32_t tombstone
 
 /* ? TODO: argc, argv as params */
-#define SU_ARGPARSE_BEGIN \
+#define SU_ARGPARSE_LOOP_BEGIN \
     for (argv++, argc--; \
             argv[0] && (argv[0][0] == '-') && argv[0][1]; \
             argc--, argv++) { \
@@ -353,7 +353,7 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *, ke
                 break; \
             } \
 			argc_ = argv[0][0];
-#define SU_ARGPARSE_END \
+#define SU_ARGPARSE_LOOP_END \
         } \
     }
 
@@ -372,18 +372,18 @@ extern "C" {
 
 /* TODO: remove */
 #if defined(__cplusplus) && (__cplusplus > 199711L)
-#undef SU_STATIC_ASSERT
-#define SU_STATIC_ASSERT(x) static_assert(x, "")
-typedef char32_t su_c32_t;
+	#undef SU_STATIC_ASSERT
+	#define SU_STATIC_ASSERT(x) static_assert(x, "")
+	typedef char32_t su_c32_t;
 #else
-typedef uint32_t su_c32_t;
+	typedef uint32_t su_c32_t;
 #endif
 
 #if defined(__BYTE_ORDER__)
-#define SU_BYTE_ORDER_IS_LITTLE_ENDIAN (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+	#define SU_BYTE_ORDER_IS_LITTLE_ENDIAN (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #else
-/* TODO */
-#define SU_BYTE_ORDER_IS_LITTLE_ENDIAN 1
+	/* TODO */
+	#define SU_BYTE_ORDER_IS_LITTLE_ENDIAN 1
 #endif
 
 SU_STATIC_ASSERT(SU_BYTE_ORDER_IS_LITTLE_ENDIAN); /* TODO: support SU_BYTE_ORDER_BIG_ENDIAN */
@@ -451,7 +451,7 @@ typedef struct su_file_cache {
 } su_file_cache_t;
 
 /* TODO: better hash function */
-SU_HASH_TABLE_DECLARE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, 16);
+SU_HASH_TABLE_DECLARE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, SU_MEMCPY, 16);
 
 typedef struct su_json_buffer {
 	char *data;
@@ -787,8 +787,8 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 #define HASH_TABLE_DECLARE_DEFINE SU_HASH_TABLE_DECLARE_DEFINE
 #define HASH_TABLE_FIELDS SU_HASH_TABLE_FIELDS
 
-#define ARGPARSE_BEGIN SU_ARGPARSE_BEGIN
-#define ARGPARSE_END SU_ARGPARSE_END
+#define ARGPARSE_LOOP_BEGIN SU_ARGPARSE_LOOP_BEGIN
+#define ARGPARSE_LOOP_END SU_ARGPARSE_LOOP_END
 #define ARGPARSE_KEY SU_ARGPARSE_KEY
 #define ARGPARSE_VALUE SU_ARGPARSE_VALUE
 
@@ -935,6 +935,7 @@ typedef su_json_ast_t json_ast_t;
 #define stbds_hash su_stbds_hash
 
 #define argb_premultiply_alpha su_argb_premultiply_alpha
+#define bswap32_argb_premultiply_alpha su_bswap32_argb_premultiply_alpha
 #define abgr_to_argb_premultiply_alpha su_abgr_to_argb_premultiply_alpha
 #define abgr_to_argb su_abgr_to_argb
 
@@ -978,11 +979,11 @@ typedef su_json_ast_t json_ast_t;
 #include <float.h>
 
 #if SU_HAS_FEATURE(address_sanitizer)
-#include <sanitizer/asan_interface.h>
+	#include <sanitizer/asan_interface.h>
 #endif
 
 #if SU_WITH_SIMD && defined(__x86_64__)
-#include <immintrin.h>
+	#include <immintrin.h>
 #endif /* SU_WITH_SIMD && defined(__x86_64__) */
 
 #define STB_SPRINTF_MIN 128
@@ -993,7 +994,7 @@ typedef su_json_ast_t json_ast_t;
 #include <stb_sprintf.h>
 
 /* TODO: rework */
-#define SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
+#define SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize) \
 \
 static void su_hash_table__##type##__init(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, size_t initial_size) { \
 	SU_ASSERT(initial_size > 0); \
@@ -1012,7 +1013,9 @@ static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, cons
 	for ( i = 0; i < ht->capacity; ++i) { \
 		type *it = &ht->items[i]; \
 		if (it->occupied && !it->tombstone) { \
-			su_hash_table__##type##__add(&new_ht, alloc, it->key, NULL); \
+			type *new_it; \
+			su_hash_table__##type##__add(&new_ht, alloc, it->key, &new_it); \
+			move_item_func(new_it, it, sizeof(type)); \
 		} \
 	} \
 	su_hash_table__##type##__fini(ht, alloc); \
@@ -1030,7 +1033,7 @@ static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, 
 	} \
 	if (c >= collisions_to_resize) { \
 		su_hash_table__##type##__resize(ht, alloc, ht->capacity * 2); \
-		su_hash_table__##type##__add(ht, alloc, key, out); \
+		return su_hash_table__##type##__add(ht, alloc, key, out); \
 	} else if (it->occupied) { \
 		if (keys_equal_func(it->key, key)) { \
 			if (out) { \
@@ -1039,15 +1042,16 @@ static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, 
 			return SU_FALSE; \
 		} \
 		su_hash_table__##type##__resize(ht, alloc, ht->capacity * 2); \
-		su_hash_table__##type##__add(ht, alloc, key, out); \
+		return su_hash_table__##type##__add(ht, alloc, key, out); \
 	} else { \
 		it->key = key; \
 		it->occupied = SU_TRUE; \
+		/*it->tombstone = SU_FALSE;*/ \
 		if (out) { \
 			*out = it; \
 		} \
+		return SU_TRUE; \
 	} \
-	return SU_TRUE; \
 } \
 \
 static su_bool32_t su_hash_table__##type##__get(su_hash_table__##type##__t *ht, key_type key, type **out) { \
@@ -1087,10 +1091,11 @@ static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, 
 		return SU_FALSE; \
 	} \
 }
+
 /* TODO: tombstone threshold, shrink */
-#define SU_HASH_TABLE_DECLARE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize) \
-	SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize); \
-	SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, collisions_to_resize)
+#define SU_HASH_TABLE_DECLARE_DEFINE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize) \
+	SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize); \
+	SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize)
 
 
 static void *su_libc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
@@ -1165,7 +1170,7 @@ static char *su__log_va_stbsp_vsprintfcb(const char *buf, void *data, int len) {
 	ssize_t total = 0;
 	while (total < len) {
 		ssize_t written_bytes = write(fd, &buf[total], (size_t)(len - total));
-		if (written_bytes == -1) {
+		if (written_bytes <= 0) {
 			return NULL;
 		}
 		total += written_bytes;
@@ -2105,7 +2110,7 @@ error:
 }
 
 /* TODO: better hash function */
-SU_HASH_TABLE_DEFINE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, 16)
+SU_HASH_TABLE_DEFINE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, SU_MEMCPY, 16)
 
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
 		const su_allocator_t *alloc, su_hash_table__su_file_cache_t__t *cache) {

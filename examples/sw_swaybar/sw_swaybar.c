@@ -1,14 +1,14 @@
 #define _DEFAULT_SOURCE
 
 #if !defined(DEBUG)
-#define DEBUG 1
+	#define DEBUG 1
 #endif
 #if !defined(WITH_TRAY)
-#define WITH_TRAY 1
+	#define WITH_TRAY 1
 #endif /* !defined(WITH_TRAY) */
 
 #if !defined(SU_WITH_DEBUG)
-#define SU_WITH_DEBUG DEBUG
+	#define SU_WITH_DEBUG DEBUG
 #endif /* !defined(SU_WITH_DEBUG) */
 #define SU_LOG_PREFIX "sw_swaybar: "
 #define SU_IMPLEMENTATION
@@ -18,12 +18,13 @@
 #define SW_WITH_MEMORY_BACKEND 0
 #define SW_WITH_WAYLAND_BACKEND 1
 #define SW_WITH_WAYLAND_KEYBOARD 0
+#define SW_WITH_WAYLAND_CLIPBOARD 0
 #define SW_WITH_TEXT 1
 #if !defined(SW_WITH_SVG)
-#define SW_WITH_SVG 1
+	#define SW_WITH_SVG 1
 #endif /* !defined(SW_WITH_SVG) */
 #if !defined(SW_WITH_PNG)
-#define SW_WITH_PNG 1
+	#define SW_WITH_PNG 1
 #endif /* !defined(SW_WITH_PNG) */
 #define SW_WITH_JPG 0
 #define SW_WITH_TGA 0
@@ -35,7 +36,7 @@
 #define SW_WITH_PNM 0
 
 #if !defined(SW_WITH_DEBUG)
-#define SW_WITH_DEBUG DEBUG
+	#define SW_WITH_DEBUG DEBUG
 #endif /* !defined(SW_WITH_DEBUG) */
 #define SW_IMPLEMENTATION
 #include "../../swidgets.h"
@@ -48,12 +49,12 @@
 #include "sway_ipc.h"
 
 #if WITH_TRAY
-#if SW_WITH_SVG || SW_WITH_PNG
-#define WITH_SVG SW_WITH_SVG
-#define WITH_PNG SW_WITH_PNG
-#include "xdg_icon_theme.h"
-#endif /* SW_WITH_SVG || SW_WITH_PNG */
-#include "sni_server.h"
+	#if SW_WITH_SVG || SW_WITH_PNG
+		#define WITH_SVG SW_WITH_SVG
+		#define WITH_PNG SW_WITH_PNG
+		#include "xdg_icon_theme.h"
+	#endif /* SW_WITH_SVG || SW_WITH_PNG */
+	#include "sni_server.h"
 #endif /* WITH_TRAY */
 
 #define KEY_SCROLL_UP KEY_MAX + 1
@@ -77,16 +78,11 @@ typedef struct output {
 	PAD32;
 } output_t;
 
-typedef struct layout_block_allocator {
-	allocator_t alloc;
-	arena_t arena;
-} layout_block_allocator_t;
-
 typedef struct bar {
 	sw_wayland_surface_t _; /* must be first */
+	sw_wayland_surfaces_t *list;
 	bool32_t dirty;
 	PAD32;
-	layout_block_allocator_t block_allocator;
 } bar_t;
 
 typedef enum layout_block_type {
@@ -102,11 +98,17 @@ typedef enum layout_block_type {
 
 typedef struct layout_block layout_block_t;
 
+typedef enum layout_block_destroy {
+	LAYOUT_BLOCK_DESTROY_NOTHING,
+	LAYOUT_BLOCK_DESTROY_TEXT,
+	LAYOUT_BLOCK_DESTROY_IMAGE
+} layout_block_destroy_t;
+
 struct layout_block {
 	sw_layout_block_t _; /* must be first */
-	PAD32;
+	layout_block_destroy_t destroy;
 	layout_block_type_t type;
-	void *data;
+	void *data; /* ? TODO: union */
 	layout_block_t *sample_block;
 };
 
@@ -125,11 +127,11 @@ typedef struct box_colors {
 #if WITH_TRAY
 typedef struct tray_dbusmenu_menu_popup {
 	sw_wayland_surface_t _; /* must be first */
-	sni_dbusmenu_menu_t *menu;
-	sw_wayland_surface_t *parent; /* ? TODO: use internal field */
+	sw_wayland_surfaces_t *list;
+	sni_item_t *item;
+	sni_dbusmenu_menu_item_t *parent_menu_item;
 	sw_wayland_seat_t *seat;
 	layout_block_t *focused_block;
-	layout_block_allocator_t block_allocator;
 } tray_dbusmenu_menu_popup_t;
 
 typedef struct tray {
@@ -223,13 +225,13 @@ typedef enum bar_mode {
 	BAR_MODE_OVERLAY
 } bar_mode_t;
 
-enum {
+typedef enum poll_fd {
 	POLL_FD_SW,
 	POLL_FD_SWAY_IPC,
 	POLL_FD_STATUS,
 	POLL_FD_SNI_SERVER,
 	POLL_FD_LAST
-};
+} poll_fd_t;
 
 typedef struct config_colors {
 	sw_color_argb32_t background;
@@ -262,7 +264,7 @@ typedef struct config {
 	int32_t workspace_min_width;
 	bool32_t binding_mode_indicator;
 	bool32_t pango_markup;
-	uint32_t position; /* sw_wayland_surface_layer_anchor_t | */
+	sw_wayland_surface_layer_anchor_mask_t position;
 	config_colors_t colors;
 #if WITH_TRAY
 	int32_t tray_padding;
@@ -293,9 +295,7 @@ typedef struct state {
 	bool32_t visible_by_urgency;
 	bool32_t visible_by_modifier;
 	bool32_t visible_by_mode;
-	bool32_t update;
 	bool32_t running;
-	PAD32;
 	su_hash_table__su_file_cache_t__t icon_cache;
 } state_t;
 
@@ -317,45 +317,30 @@ static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 
 static const allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
-static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_context_t *sw, sw_layout_block_event_t event) {
-	layout_block_t *block = (layout_block_t *)sw_block;
+static bool32_t layout_block_handle_prepare(sw_layout_block_t *block_, sw_context_t *ctx) {
+	layout_block_t *block = (layout_block_t *)block_;
+	NOTUSED(ctx);
 
-	NOTUSED(sw);
-
-	switch (event) {
-	case SW_LAYOUT_BLOCK_EVENT_PREPARE:
-		switch (block->type) {
-		case LAYOUT_BLOCK_TYPE_NONE:
-		case LAYOUT_BLOCK_TYPE_WORKSPACE:
-			break;
-		case LAYOUT_BLOCK_TYPE_STATUS_LINE_I3BAR:
-			if (block->sample_block) {
-				block->_.in.min_width = block->sample_block->_.out.dim.content_width;	
-			}
-			break;
+switch (block->type) {
+	case LAYOUT_BLOCK_TYPE_NONE:
+	case LAYOUT_BLOCK_TYPE_WORKSPACE:
+		break;
+	case LAYOUT_BLOCK_TYPE_STATUS_LINE_I3BAR:
+		block->_.in.min_width = block->sample_block->_.out.dim.content_width;  
+		break;
 #if WITH_TRAY
-		case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM:
-			block->_.in.min_width = block->_.in.min_height = block->sample_block->_.out.dim.content_height;
-			break;
-		case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE:
-			block->_.in.content_width = block->_.in.content_height =
-				(block->sample_block->_.out.dim.content_height - (state.config.tray_padding * 2));
-			break;
-		case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR:
-			block->_.in.content_width = block->_.in.content_height =
-				block->sample_block->_.out.dim.content_height;
-			break;
+	case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM:
+		block->_.in.min_width = block->_.in.min_height = block->sample_block->_.out.dim.content_height;
+		break;
+	case LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE:
+		block->_.in.content_width = block->_.in.content_height =
+			(block->sample_block->_.out.dim.content_height - (state.config.tray_padding * 2));
+		break;
+	case LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR:
+		block->_.in.content_width = block->_.in.content_height =
+			block->sample_block->_.out.dim.content_height;
+		break;
 #endif /* WITH_TRAY */
-		default:
-			ASSERT_UNREACHABLE;
-		}
-		break;
-	case SW_LAYOUT_BLOCK_EVENT_DESTROY:
-	case SW_LAYOUT_BLOCK_EVENT_PREPARED:
-	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_IMAGE:
-	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_FONT:
-	case SW_LAYOUT_BLOCK_EVENT_ERROR_INVALID_TEXT:
-		break;
 	default:
 		ASSERT_UNREACHABLE;
 	}
@@ -363,25 +348,8 @@ static bool32_t layout_block_handle_event(sw_layout_block_t *sw_block, sw_contex
 	return TRUE;
 }
 
-static void *layout_block_alloc_alloc(const allocator_t *data, size_t size, size_t alignment) {
-	layout_block_allocator_t *alloc = (layout_block_allocator_t *)(uintptr_t)data;
-	void *ret = arena_alloc(&alloc->arena, &page_allocator, size, alignment);
-	return ret;
-}
-
-static void layout_block_alloc_free(const allocator_t *alloc, void *ptr) {
-	NOTUSED(alloc); NOTUSED(ptr);
-}
-
-static layout_block_t *layout_block_create(layout_block_allocator_t *alloc) {
-	layout_block_t *block;
-	ALLOCCT(block, &alloc->alloc);
-	block->_.in.notify = layout_block_handle_event;
-
-	return block;
-}
-
-static void layout_block_init_text(sw_layout_block_t *block, string_t *text) {
+static void layout_block_init_text(layout_block_t *block_, string_t *text) {
+	sw_layout_block_t *block = &block_->_;
 	block->in.type = SW_LAYOUT_BLOCK_TYPE_TEXT;
 	block->in._.text.font_names = &state.config.font;
 	block->in._.text.font_names_count = 1;
@@ -539,8 +507,10 @@ static void tray_describe_sni_items(bar_t *bar) {
 			sw_layout_block_image_t icon;
 			string_t icon_name;
 
-			layout_block_t *block = layout_block_create(&bar->block_allocator);
+			layout_block_t *block;
+			ALLOCCT(block, &gp_alloc);
 			block->type = LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM;
+			block->_.in.prepare = layout_block_handle_prepare;
 			block->data = item;
 			block->sample_block = (layout_block_t *)bar->_.in.root->in._.composite.children.head;
 			block->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
@@ -593,8 +563,10 @@ static void tray_describe_sni_items(bar_t *bar) {
 			}
 
 			if (icon.type) {
-				layout_block_t *image = layout_block_create(&bar->block_allocator);
+				layout_block_t *image;
+				ALLOCCT(image, &gp_alloc);
 				image->type = LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE;
+				image->_.in.prepare = layout_block_handle_prepare;
 				image->sample_block = (layout_block_t *)bar->_.in.root->in._.composite.children.head;
 				image->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				image->_.in._.image = icon;
@@ -610,25 +582,18 @@ static void tray_describe_sni_items(bar_t *bar) {
 }
 
 static void tray_dbusmenu_menu_popup_destroy(tray_dbusmenu_menu_popup_t *popup) {
-	sni_dbusmenu_menu_item_event(popup->menu->parent_menu_item,
-		SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLOSED, TRUE);
-
-	if (popup->_.out.fini) {
-		popup->_.out.fini(&popup->_, &state.sw);
+	if (popup->parent_menu_item) {
+		sni_dbusmenu_menu_item_event(popup->parent_menu_item,
+			SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLOSED, TRUE);
 	}
-	arena_fini(&popup->block_allocator.arena, &page_allocator);
-
 	if (popup == state.tray.popup) {
 		state.tray.popup = NULL;
 	}
-
 	FREE(&gp_alloc, popup);
-
-	state.update = TRUE;
 }
 
-static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_menu_t *menu,
-	int32_t x, int32_t y, sw_wayland_surface_t *parent, sw_wayland_seat_t *seat);
+static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(
+	sni_dbusmenu_menu_t *, int32_t x, int32_t y, sw_wayland_seat_t *);
 
 static void tray_dbusmenu_menu_item_pointer_enter(sni_dbusmenu_menu_item_t *menu_item,
 		layout_block_t *block, tray_dbusmenu_menu_popup_t *popup) {
@@ -638,21 +603,24 @@ static void tray_dbusmenu_menu_item_pointer_enter(sni_dbusmenu_menu_item_t *menu
 		SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_HOVERED, TRUE);
 
 	if (children->count > 0) {
-		tray_dbusmenu_menu_popup_destroy((tray_dbusmenu_menu_popup_t *)children->head);
+		tray_dbusmenu_menu_popup_t *c = (tray_dbusmenu_menu_popup_t *)children->head;
 		MEMSET(children, 0, sizeof(*children));
+		c->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+		LLIST_APPEND_TAIL(c->list, &c->_);
 	}
 
 	if (menu_item->enabled && (menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR)) {
 		if (menu_item->submenu && (menu_item->submenu->menu_items_count > 0)) {
 			tray_dbusmenu_menu_popup_t *new_popup = tray_dbusmenu_menu_popup_create(
 				menu_item->submenu, block->_.out.dim.x, block->_.out.dim.y + block->_.out.dim.height,
-				&popup->_, popup->seat);
+				popup->seat);
+			new_popup->list = children;
 			LLIST_APPEND_TAIL(children, &new_popup->_);
 		}
 
 		block->_.in.color._.argb32 = state.config.colors.focused_separator;
 
-		state.update = TRUE;
+		state.sw.in.update_and_render = TRUE;
 	}
 }
 
@@ -663,23 +631,22 @@ static void tray_dbusmenu_menu_item_pointer_button(sni_dbusmenu_menu_item_t *men
 	}
 
 	if ((menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) && menu_item->enabled) {
+#if 1
 		tray_dbusmenu_menu_popup_t *root_popup = state.tray.popup;
-		sw_wayland_surface_t *root_popup_parent = root_popup->parent;
-
+		MEMSET(root_popup->list, 0, sizeof(*root_popup->list));
+		root_popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+		LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
+#endif
 		sni_dbusmenu_menu_item_event(menu_item,
 			SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLICKED, TRUE);
-#if 1
-		MEMSET(&root_popup_parent->in.popups, 0, sizeof(root_popup_parent->in.popups));
-		tray_dbusmenu_menu_popup_destroy(root_popup);
-#endif
 	}
 }
 
-static void tray_dbusmenu_menu_item_pointer_leave(sni_dbusmenu_menu_item_t *menu_item,
-		sw_layout_block_t *block) {
+static void tray_dbusmenu_menu_item_pointer_leave(
+		sni_dbusmenu_menu_item_t *menu_item, layout_block_t *block) {
 	if ((menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) && menu_item->enabled) {
-		block->in.color._.argb32 = state.config.colors.focused_background;
-		state.update = TRUE;
+		block->_.in.color._.argb32 = state.config.colors.focused_background;
+		state.sw.in.update_and_render = TRUE;
 	}
 }
 
@@ -706,7 +673,7 @@ static void tray_dbusmenu_menu_popup_pointer_move(tray_dbusmenu_menu_popup_t *po
 			if (popup->focused_block != block) {
 				if (popup->focused_block) {
 					menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
-					tray_dbusmenu_menu_item_pointer_leave(menu_item, &popup->focused_block->_);
+					tray_dbusmenu_menu_item_pointer_leave(menu_item, popup->focused_block);
 				}
 				menu_item = (sni_dbusmenu_menu_item_t *)block->data;
 				tray_dbusmenu_menu_item_pointer_enter(menu_item, block, popup);
@@ -718,7 +685,7 @@ static void tray_dbusmenu_menu_popup_pointer_move(tray_dbusmenu_menu_popup_t *po
 
 	if (popup->focused_block) {
 		menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
-		tray_dbusmenu_menu_item_pointer_leave(menu_item, &popup->focused_block->_);
+		tray_dbusmenu_menu_item_pointer_leave(menu_item, popup->focused_block);
 		popup->focused_block = NULL;
 	}
 }
@@ -730,26 +697,26 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 	bool32_t needs_spacer = FALSE;
 	size_t i;
 	sw_wayland_surfaces_t *children = &popup->_.in.popups;
-	sw_layout_block_t *root;
+	layout_block_t *root;
 
 	if (children->count > 0) {
-		tray_dbusmenu_menu_popup_destroy((tray_dbusmenu_menu_popup_t *)children->head);
+		tray_dbusmenu_menu_popup_t *c = (tray_dbusmenu_menu_popup_t *)children->head;
 		MEMSET(children, 0, sizeof(*children));
+		c->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+		LLIST_APPEND_TAIL(c->list, &c->_);
 	}
 
-	if (popup->_.in.root && popup->_.in.root->out.fini) {
-		popup->_.in.root->out.fini(popup->_.in.root, &state.sw);
+	if (LIKELY(popup->_.in.root)) { /* TODO: remove */
+		LLIST_APPEND_TAIL(&state.sw.in.blocks_to_destroy, popup->_.in.root);
 	}
-	arena_reset(&popup->block_allocator.arena, &page_allocator);
 
-	root = (sw_layout_block_t *)layout_block_create(&popup->block_allocator);
-	root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-	root->in._.composite.layout = SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL;
-	root->in.color._.argb32 = state.config.colors.focused_background;
-	popup->_.in.root = root;
+	ALLOCCT(root, &gp_alloc);
+	root->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
+	root->_.in._.composite.layout = SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL;
+	root->_.in.color._.argb32 = state.config.colors.focused_background;
 
 	popup->focused_block = NULL;
-	popup->menu = menu;
+	popup->parent_menu_item = menu->parent_menu_item;
 
 	for ( i = 0; i < menu->menu_items_count; ++i) {
 		layout_block_t *block;
@@ -758,7 +725,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 			continue;
 		}
 
-		block = layout_block_create(&popup->block_allocator);
+		ALLOCCT(block, &gp_alloc);
 		block->data = menu_item;
 		block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_LEFT | SW_LAYOUT_BLOCK_FILL_RIGHT);
 		if (menu_item->type == SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) {
@@ -772,8 +739,8 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 			block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 
 			if (menu_item->label.len > 0) {
-				label = layout_block_create(&popup->block_allocator);
-				layout_block_init_text(&label->_, &menu_item->label);
+				ALLOCCT(label, &gp_alloc);
+				layout_block_init_text(label, &menu_item->label);
 				label->_.in._.text.color._.argb32 = color;
 				label->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				label->_.in.borders[0].width = label->_.in.borders[1].width =
@@ -799,7 +766,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 							&page_allocator, dbusmenu->properties->icon_theme_path[j]);
 					}
 				}
-				icon = layout_block_create(&popup->block_allocator);
+				ALLOCCT(icon, &gp_alloc);
 				icon->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				icon->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				tray_find_icon(menu_item->icon_name, &icon->_.in._.image);
@@ -808,6 +775,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 					config->tray_padding;
 				if (label) {
 					icon->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
+					icon->_.in.prepare = layout_block_handle_prepare;
 					icon->sample_block = label;
 				}
 
@@ -816,18 +784,19 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
 #if SW_WITH_PNG
-			if (menu_item->icon_data.nbytes > 0) {
-				layout_block_t *icon = layout_block_create(&popup->block_allocator);
+			if (menu_item->icon_data.len > 0) {
+				layout_block_t *icon;
+				ALLOCCT(icon, &gp_alloc);
 				icon->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				icon->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG;
-				icon->_.in._.image.data.ptr = menu_item->icon_data.bytes;
-				icon->_.in._.image.data.len = menu_item->icon_data.nbytes;
+				icon->_.in._.image.data = menu_item->icon_data;
 				icon->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				icon->_.in.borders[0].width = icon->_.in.borders[1].width =
 					icon->_.in.borders[2].width = icon->_.in.borders[3].width =
 					config->tray_padding;
 				if (label) {
 					icon->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
+					icon->_.in.prepare = layout_block_handle_prepare;
 					icon->sample_block = label;
 				}
 	
@@ -841,17 +810,18 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 			case SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_CHECKMARK:
 			case SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO: {
 				string_t svg;
-				layout_block_t *toggle = layout_block_create(&popup->block_allocator);
+				layout_block_t *toggle;
+				ALLOCCT(toggle, &gp_alloc);
 				toggle->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				toggle->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
 				if (menu_item->toggle_state == 1) {
-					string_init_format( &svg, &popup->block_allocator.alloc,
+					string_init_format( &svg, &gp_alloc,
 						(menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
 						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02x%02x%02x%02x\" stroke-width=\"1.92\"/><circle cx=\"16\" cy=\"16\" r=\"6.4\" fill=\"#%02x%02x%02x%02x\"/></svg>"
 						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><mask id=\"a\"><rect width=\"32\" height=\"32\" fill=\"#fff\"/><polyline points=\"8,17 13,22 24,10\" fill=\"none\" stroke=\"#000\" stroke-width=\"3\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"/></mask><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02x%02x%02x%02x\" mask=\"url(#a)\"/></svg>",
 						color.c.r, color.c.g, color.c.b, color.c.a, color.c.r, color.c.g, color.c.b, color.c.a);
 				} else {
-					string_init_format( &svg, &popup->block_allocator.alloc,
+					string_init_format( &svg, &gp_alloc,
 						(menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
 						? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02x%02x%02x%02x\" stroke-width=\"1.92\"/></svg>"
 						: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02x%02x%02x%02x\"/></svg>",
@@ -859,12 +829,14 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 				}
 				toggle->_.in._.image.data.ptr = svg.s;
 				toggle->_.in._.image.data.len = svg.len;
+				toggle->destroy = LAYOUT_BLOCK_DESTROY_IMAGE;
 				toggle->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				toggle->_.in.borders[0].width = toggle->_.in.borders[1].width =
 					toggle->_.in.borders[2].width = toggle->_.in.borders[3].width =
-					config->tray_padding;
+						config->tray_padding;
 				if (label) {
 					toggle->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
+					toggle->_.in.prepare = layout_block_handle_prepare;
 					toggle->sample_block = label;
 					toggle->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
 				}
@@ -881,20 +853,23 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 
 			if (menu_item->submenu) {
 				string_t svg;
-				layout_block_t *submenu = layout_block_create(&popup->block_allocator);
+				layout_block_t *submenu;
+				ALLOCCT(submenu, &gp_alloc);
 				submenu->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
 				submenu->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
-				string_init_format( &svg, &popup->block_allocator.alloc,
+				string_init_format( &svg, &gp_alloc,
 					"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><polygon points=\"25.6,3.2 25.6,28.8 6.4,16\" fill=\"#%02x%02x%02x%02x\"/></svg>",
 					color.c.r, color.c.g, color.c.b, color.c.a);
 				submenu->_.in._.image.data.ptr = svg.s;
 				submenu->_.in._.image.data.len = svg.len;
+				submenu->destroy = LAYOUT_BLOCK_DESTROY_IMAGE;
 				submenu->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				submenu->_.in.borders[0].width = submenu->_.in.borders[1].width =
 					submenu->_.in.borders[2].width = submenu->_.in.borders[3].width =
 					config->tray_padding;
 				if (label) {
 					submenu->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
+					submenu->_.in.prepare = layout_block_handle_prepare;
 					submenu->sample_block = label;
 					submenu->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
 				}
@@ -905,18 +880,20 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 			}
 #endif /* SW_WITH_SVG */
 		}
-		LLIST_APPEND_TAIL(&root->in._.composite.children, &block->_);
+		LLIST_APPEND_TAIL(&root->_.in._.composite.children, &block->_);
 	}
 
 	if (needs_spacer) {
-		sw_layout_block_t *block = root->in._.composite.children.head;
+		sw_layout_block_t *block = root->_.in._.composite.children.head;
 		for ( ; block; block = block->next) {
 			sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)((layout_block_t *)block)->data;
 			if ((block->in.type == SW_LAYOUT_BLOCK_TYPE_COMPOSITE) && !menu_item->submenu
 					&& (menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_NONE)) {
 				if (block->in._.composite.children.head) {
-					layout_block_t *spacer = layout_block_create(&popup->block_allocator);
+					layout_block_t *spacer;
+					ALLOCCT(spacer, &gp_alloc);
 					spacer->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
+					spacer->_.in.prepare = layout_block_handle_prepare;
 					spacer->sample_block = (layout_block_t *)block->in._.composite.children.head;
 					/*spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER; */
 					spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
@@ -926,65 +903,13 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 		}
 	}
 
-	state.update = TRUE;
-}
+	popup->_.in.root = &root->_;
 
-static bool32_t tray_dbusmenu_menu_popup_handle_event(sw_wayland_event_source_t *source,
-		sw_context_t *ctx, sw_wayland_event_t event) {
-	sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
-	tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer->out.focused_surface;
-
-	NOTUSED(ctx);
-
-	switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSE: {
-		popup = (tray_dbusmenu_menu_popup_t *)source;
-		MEMSET(&popup->parent->in.popups, 0, sizeof(popup->parent->in.popups));
-		tray_dbusmenu_menu_popup_destroy(popup);
-		break;
-	}
-	case SW_WAYLAND_EVENT_POINTER_ENTER:
-		if (popup->seat == pointer->out.seat) {
-			popup->focused_block = NULL;
-			tray_dbusmenu_menu_popup_pointer_move(popup, pointer->out.pos_x, pointer->out.pos_y);
-		}
-		break;
-	case SW_WAYLAND_EVENT_POINTER_MOTION:
-		if (popup->seat == pointer->out.seat) {
-			tray_dbusmenu_menu_popup_pointer_move(popup, pointer->out.pos_x, pointer->out.pos_y);
-		}
-		break;
-	case SW_WAYLAND_EVENT_POINTER_LEAVE:
-		if ((popup->seat == pointer->out.seat) && popup->focused_block) {
-			sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
-			tray_dbusmenu_menu_item_pointer_leave(menu_item, &popup->focused_block->_);
-			popup->focused_block = NULL;
-		}
-		break;
-	case SW_WAYLAND_EVENT_POINTER_BUTTON:
-		if ((popup->seat == pointer->out.seat) && popup->focused_block) {
-			sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
-			tray_dbusmenu_menu_item_pointer_button(menu_item, pointer->out.btn_code, pointer->out.btn_state);
-		}
-		break;
-	case SW_WAYLAND_EVENT_POINTER_SCROLL:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:	
-	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
-		break;
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
-	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
-	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
-		su_abort((int)event, "Failed to create popup surface: (%u)", event); /* TODO: string */
-	default:
-		ASSERT_UNREACHABLE;
-	}
-	
-	return TRUE;
+	state.sw.in.update_and_render = TRUE;
 }
 
 static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_menu_t *menu,
-		int32_t x, int32_t y, sw_wayland_surface_t *parent, sw_wayland_seat_t *seat) {
+		int32_t x, int32_t y, sw_wayland_seat_t *seat) {
 	tray_dbusmenu_menu_popup_t *surface;
 	sw_wayland_surface_popup_t *popup;
 
@@ -993,13 +918,9 @@ static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_
 	sni_dbusmenu_menu_about_to_show(menu, TRUE);
 
 	ALLOCCT(surface, &gp_alloc);
-	arena_init(&surface->block_allocator.arena, &page_allocator, 8192);
-	surface->block_allocator.alloc.alloc = layout_block_alloc_alloc;
-	surface->block_allocator.alloc.free = layout_block_alloc_free;
-	surface->parent = parent;
+	surface->item = menu->dbusmenu->item;
 	surface->seat = seat;
 	surface->_.in.type = SW_WAYLAND_SURFACE_TYPE_POPUP;
-	surface->_.in.notify = tray_dbusmenu_menu_popup_handle_event;
 
 	popup = &surface->_.in._.popup;
 	popup->x = x;
@@ -1077,8 +998,9 @@ static void tray_sni_item_block_pointer_button(layout_block_t *block,
 				&& dbusmenu->menu->menu_items[0].submenu
 				&& (dbusmenu->menu->menu_items[0].submenu->menu_items_count > 0)) {
 			state.tray.popup = tray_dbusmenu_menu_popup_create(
-				dbusmenu->menu->menu_items[0].submenu, x, y, &bar->_, seat);
-			LLIST_APPEND_TAIL( &bar->_.in.popups, &state.tray.popup->_);
+				dbusmenu->menu->menu_items[0].submenu, x, y, seat);
+			state.tray.popup->list = &bar->_.in.popups;
+			LLIST_APPEND_TAIL(state.tray.popup->list, &state.tray.popup->_);
 		} else {
 			sni_item_context_menu_async(item, 0, 0);
 		}
@@ -1109,40 +1031,13 @@ static void tray_sni_item_block_pointer_button(layout_block_t *block,
 	}
 }
 
-static void tray_sni_item_handle_properties_updated(sni_item_t *item) {
-	bar_t *bar;
-	NOTUSED(item);
-	for ( bar = (bar_t *)state.sw.in.backend.wayland.layers.head; bar; bar = (bar_t *)bar->_.next) {
-		if (tray_visible_on_bar(bar)) {
-			bar->dirty = TRUE;
-		}
-	}
-}
-
-static void tray_sni_item_handle_dbusmenu_menu_updated(sni_item_t *item) {
+static void tray_sni_item_destroy(sni_item_t *item) {
 	tray_dbusmenu_menu_popup_t *root_popup = state.tray.popup;
-	sni_dbusmenu_menu_t *menu;
-
-	if ((root_popup == NULL) || (root_popup->menu->dbusmenu->item != item)) {
-		return;
-	}
-
-	menu = item->out.dbusmenu->menu;
-	if (menu && (menu->menu_items_count > 0) &&
-			menu->menu_items[0].submenu &&
-			(menu->menu_items[0].submenu->menu_items_count > 0)) {
-		tray_dbusmenu_menu_popup_update(root_popup, menu->menu_items[0].submenu);
-	} else {
-		MEMSET(&root_popup->parent->in.popups, 0, sizeof(root_popup->parent->in.popups));
-		tray_dbusmenu_menu_popup_destroy(root_popup);
-	}
-}
-
-static void tray_sni_item_handle_destroy(sni_item_t *item) {
-	tray_dbusmenu_menu_popup_t *root_popup = state.tray.popup;
-	if (root_popup && (root_popup->menu->dbusmenu->item == item)) {
-		MEMSET(&root_popup->parent->in.popups, 0, sizeof(root_popup->parent->in.popups));
-		tray_dbusmenu_menu_popup_destroy(root_popup);
+	if (root_popup && (root_popup->item == item)) {
+		root_popup->parent_menu_item = NULL;
+		MEMSET(root_popup->list, 0, sizeof(*root_popup->list));
+		root_popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+		LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
 	}
 
 	FREE(&gp_alloc, item);
@@ -1157,14 +1052,60 @@ static void tray_sni_item_handle_destroy(sni_item_t *item) {
 	}
 }
 
-static sni_item_t *tray_sni_item_handle_create(void) {
+static sni_item_t *tray_sni_item_create(void) {
 	sni_item_t *item;
 	ALLOCCT(item, &gp_alloc);
-	item->in.destroy = tray_sni_item_handle_destroy;
-	item->in.properties_updated = tray_sni_item_handle_properties_updated;
-	item->in.dbusmenu_menu_updated = tray_sni_item_handle_dbusmenu_menu_updated;
-
 	return item;
+}
+
+static bool32_t tray_process_events(void) {
+	bool32_t ret = FALSE;
+	size_t i;
+	for ( i = 0; i < sni_server.out.events_count; ++i) {
+		sni_server_event_t *event = &sni_server.out.events[i];
+		switch (event->type) {
+		case SNI_SERVER_EVENT_TYPE_ITEM_CREATE:
+			event->item = tray_sni_item_create();
+			ret = TRUE;
+			break;
+		case SNI_SERVER_EVENT_TYPE_ITEM_DESTROY:
+			tray_sni_item_destroy(event->item);
+			break;
+		case SNI_SERVER_EVENT_TYPE_ITEM_PROPERTIES_UPDATED: {
+			bar_t *bar;
+			for ( bar = (bar_t *)state.sw.in.backend.wayland.layers.head; bar; bar = (bar_t *)bar->_.next) {
+				if (tray_visible_on_bar(bar)) {
+					bar->dirty = TRUE;
+				}
+			}
+			break;
+		}
+		case SNI_SERVER_EVENT_TYPE_ITEM_DBUSMENU_MENU_UPDATED: {
+			tray_dbusmenu_menu_popup_t *root_popup = state.tray.popup;
+			sni_dbusmenu_menu_t *menu;
+
+			if (!root_popup || (root_popup->item != event->item)) {
+				break;
+			}
+
+			menu = event->item->out.dbusmenu->menu;
+			if (menu && (menu->menu_items_count > 0) &&
+					menu->menu_items[0].submenu &&
+					(menu->menu_items[0].submenu->menu_items_count > 0)) {
+				tray_dbusmenu_menu_popup_update(root_popup, menu->menu_items[0].submenu);
+			} else {
+				MEMSET(root_popup->list, 0, sizeof(*root_popup->list));
+				root_popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+				LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
+			}
+			break;
+		}
+		default:
+			ASSERT_UNREACHABLE;
+		}
+	}
+
+	return ret;
 }
 
 static void tray_init(void) {
@@ -1175,7 +1116,6 @@ static void tray_init(void) {
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
 	sni_server.in.alloc = &gp_alloc;
-	sni_server.in.item_create = tray_sni_item_handle_create;
 
 	ret = sni_server_init();
 	if (ret < 0) {
@@ -1191,12 +1131,24 @@ static void tray_fini(void) {
 
 	sni_server_fini();
 
+	tray_process_events();
+	FREE(&gp_alloc, sni_server.out.events);
+
 #if SW_WITH_SVG || SW_WITH_PNG
 	xdg_icon_theme_cache_fini(&tray->cache, &page_allocator);
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
 	MEMSET(tray, 0, sizeof(*tray));
 	state.poll_fds[POLL_FD_SNI_SERVER].fd = -1;
+}
+
+static void tray_process(void) {
+	do {
+		int ret = sni_server_process();
+		if (ret < 0) {
+			su_abort(-ret, "sni_server_process: %s", strerror(-ret));
+		}
+	} while (tray_process_events());
 }
 
 static void tray_update(void) {
@@ -1213,67 +1165,7 @@ static void bar_destroy(bar_t *bar) {
 	if (status->active && (state.sw.in.backend.wayland.layers.count == 0)) {
 		kill(-status->pid, status->stop_signal);
 	}
-
-	if (bar->_.out.fini) {
-		bar->_.out.fini(&bar->_, &state.sw);
-	}
-	arena_fini(&bar->block_allocator.arena, &page_allocator);
 	FREE(&gp_alloc, bar);
-
-	state.update = TRUE;
-}
-
-static void output_handle_destroy(sw_wayland_output_t *sw_output, sw_context_t *sw) {
-	output_t *output = (output_t *)sw_output;
-	size_t i = 0;
-
-	NOTUSED(sw);
-
-	for ( ; i < output->workspaces_count; ++i) {
-		string_fini(&output->workspaces[i].name, &gp_alloc);
-	}
-	FREE(&gp_alloc, output->workspaces);
-
-	FREE(&gp_alloc, output);
-}
-
-static sw_wayland_output_t *output_handle_create(sw_wayland_output_t *sw_output, sw_context_t *sw) {
-	output_t *output;
-
-	NOTUSED(sw_output); NOTUSED(sw);
-
-	if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES, NULL) == -1) {
-		su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
-	}
-
-	ALLOCCT(output, &gp_alloc);
-	output->_.in.destroy = output_handle_destroy;
-
-	return &output->_;
-}
-
-static void pointer_handle_destroy(sw_wayland_pointer_t *pointer, sw_context_t *sw) {
-	NOTUSED(sw);
-	FREE(&gp_alloc, pointer);
-}
-
-static sw_wayland_pointer_t *pointer_handle_create(sw_wayland_seat_t *seat, sw_context_t *sw) {
-	sw_wayland_pointer_t *pointer;
-
-	NOTUSED(seat); NOTUSED(sw);
-
-	ALLOCCT(pointer, &gp_alloc);
-	pointer->in.destroy = pointer_handle_destroy;
-
-	return pointer;
-}
-
-static sw_wayland_seat_t *seat_handle_create(sw_wayland_seat_t *seat, sw_context_t *sw) {
-	NOTUSED(sw);
-
-	seat->in.pointer_create = pointer_handle_create;
-
-	return seat;
 }
 
 static void status_init(void) {
@@ -1495,7 +1387,7 @@ static void status_i3bar_block_pointer_button(layout_block_t *block,
 
 	su__json_buffer_add_char(&writer.buf, &scratch_alloc, '\n');
 
-	if (write(status->write_fd, writer.buf.data, writer.buf.idx) == -1) {
+	if (write(status->write_fd, writer.buf.data, writer.buf.idx) <= 0) {
 		status_set_error(string("[failed to write click event]"));
 		set_bars_dirty();
 	}
@@ -1511,13 +1403,14 @@ static void status_describe(bar_t *bar) {
 	case STATUS_PROTOCOL_ERROR:
 	case STATUS_PROTOCOL_TEXT:
 		if (status->buf.idx > 0) {
-			layout_block_t *block = layout_block_create(&bar->block_allocator);
+			layout_block_t *block;
 			string_t text;
 			text.s = (char *)status->buf.data;
 			text.len = status->buf.idx;
 			text.free_contents = FALSE;
 			text.nul_terminated = FALSE;
-			layout_block_init_text(&block->_, &text);
+			ALLOCCT(block, &gp_alloc);
+			layout_block_init_text(block, &text);
 			if (status->protocol == STATUS_PROTOCOL_TEXT) {
 				block->_.in._.text.color._.argb32 = output->focused ?
 					config->colors.focused_statusline : config->colors.statusline;
@@ -1539,8 +1432,10 @@ static void status_describe(bar_t *bar) {
 		size_t i = (status->blocks_count - 1);
 		for ( ; i != SIZE_MAX; --i) {
 			status_i3bar_block_t *i3bar_block = &status->blocks[i];
-			layout_block_t *block = layout_block_create(&bar->block_allocator);
-			layout_block_t *text = layout_block_create(&bar->block_allocator);
+			layout_block_t *block;
+			layout_block_t *text;
+			ALLOCCT(block, &gp_alloc);
+			ALLOCCT(text, &gp_alloc);
 			if (status->click_events && (i3bar_block->name.len > 0)) {
 				block->data = i3bar_block;
 				block->type = LAYOUT_BLOCK_TYPE_STATUS_LINE_I3BAR;
@@ -1563,7 +1458,7 @@ static void status_describe(bar_t *bar) {
 				}
 			}
 
-			layout_block_init_text(&text->_, &i3bar_block->full_text);
+			layout_block_init_text(text, &i3bar_block->full_text);
 			text->_.in._.text.color._.argb32 = (i3bar_block->urgent ? config->colors.urgent_workspace.text :
 				(i3bar_block->text_color_set ? i3bar_block->text_color :
 				(output->focused ? config->colors.focused_statusline : config->colors.statusline)));
@@ -1571,7 +1466,8 @@ static void status_describe(bar_t *bar) {
 			text->_.in.borders[3].width = text->_.in.borders[2].width = config->status_padding;
 
 			if (edge && (config->status_edge_padding > 0)) {
-				layout_block_t *spacer = layout_block_create(&bar->block_allocator);
+				layout_block_t *spacer;
+				ALLOCCT(spacer, &gp_alloc);
 				spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
 				spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				spacer->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
@@ -1579,12 +1475,13 @@ static void status_describe(bar_t *bar) {
 
 				LLIST_APPEND_TAIL(&root->in._.composite.children, &spacer->_);
 			} else if (!edge && ((i3bar_block->separator_block_width > 0) || i3bar_block->separator)) {
-				layout_block_t *separator = layout_block_create(&bar->block_allocator);
+				layout_block_t *separator;
+				ALLOCCT(separator, &gp_alloc);
 				separator->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
 				separator->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 				if (i3bar_block->separator) {
 					if (config->separator_symbol.len > 0) {
-						layout_block_init_text(&separator->_, &config->separator_symbol);
+						layout_block_init_text(separator, &config->separator_symbol);
 						separator->_.in._.text.color._.argb32 = (output->focused ?
 							config->colors.focused_separator : config->colors.separator);
 						if (i3bar_block->separator_block_width > 0) {
@@ -1614,12 +1511,13 @@ static void status_describe(bar_t *bar) {
 
 			if (i3bar_block->min_width_str.len > 0) {
 				/* TODO: rework */
-				layout_block_t *min_width = layout_block_create(&bar->block_allocator);
-				layout_block_init_text(&min_width->_, &i3bar_block->min_width_str);
+				layout_block_t *min_width;
+				ALLOCCT(min_width, &gp_alloc);
+				layout_block_init_text(min_width, &i3bar_block->min_width_str);
 				min_width->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
 				LLIST_APPEND_TAIL(&root->in._.composite.children, &min_width->_);
-
 				block->sample_block = min_width;
+				block->_.in.prepare = layout_block_handle_prepare;
 			}
 
 			LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
@@ -1978,9 +1876,7 @@ static void describe_workspaces(bar_t *bar) {
 	size_t i = 0;
 	for ( ; i < output->workspaces_count; ++i) {
 		workspace_t *workspace = &output->workspaces[i];
-		layout_block_t *block = layout_block_create(&bar->block_allocator);
-		layout_block_t *text = layout_block_create(&bar->block_allocator);
-
+		layout_block_t *block, *text;
 		bar_box_colors_t colors;
 		if (workspace->urgent) {
 			colors = config->colors.urgent_workspace;
@@ -1991,6 +1887,9 @@ static void describe_workspaces(bar_t *bar) {
 		} else {
 			colors = config->colors.inactive_workspace;
 		}
+
+		ALLOCCT(block, &gp_alloc);
+		ALLOCCT(text, &gp_alloc);
 
 		block->type = LAYOUT_BLOCK_TYPE_WORKSPACE;
 		block->data = workspace;
@@ -2008,13 +1907,14 @@ static void describe_workspaces(bar_t *bar) {
 			block->_.in.borders[2].color._.argb32 = block->_.in.borders[3].color._.argb32 =
 			colors.border;
 
-		layout_block_init_text(&text->_, NULL);
+		layout_block_init_text(text, NULL);
 		text->_.in._.text.color._.argb32 = colors.text;
 		text->_.in.borders[0].width = text->_.in.borders[1].width = 5;
 		text->_.in.borders[2].width = text->_.in.borders[3].width = 1;
 		if (workspace->num != -1) {
 			if (config->strip_workspace_name) {
 				string_init_format(&text->_.in._.text.text, &gp_alloc, "%d", workspace->num);
+				text->destroy = LAYOUT_BLOCK_DESTROY_TEXT;
 			} else if (config->strip_workspace_numbers) {
 				int num_len = su_snprintf(NULL, 0, "%d", workspace->num);
 				num_len += (workspace->name.s[num_len] == ':');
@@ -2046,7 +1946,7 @@ static void describe_binding_mode_indicator(bar_t *bar) {
 		return;
 	}
 
-	block = layout_block_create(&bar->block_allocator);
+	ALLOCCT(block, &gp_alloc);
 	block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 	block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 	if (config->workspace_min_width > 0) {
@@ -2060,8 +1960,8 @@ static void describe_binding_mode_indicator(bar_t *bar) {
 		block->_.in.borders[2].color._.argb32 = block->_.in.borders[3].color._.argb32 =
 		config->colors.binding_mode.border;
 
-	text = layout_block_create(&bar->block_allocator);
-	layout_block_init_text(&text->_, &state.binding_mode_indicator_text);
+	ALLOCCT(text, &gp_alloc);
+	layout_block_init_text(text, &state.binding_mode_indicator_text);
 	text->_.in._.text.color._.argb32 = config->colors.binding_mode.text;
 	text->_.in.borders[0].width = text->_.in.borders[1].width = 5;
 	text->_.in.borders[2].width = text->_.in.borders[3].width = 1;
@@ -2072,22 +1972,20 @@ static void describe_binding_mode_indicator(bar_t *bar) {
 }
 
 static void bar_update(bar_t *bar) {
-	sw_wayland_surface_t *surface = &bar->_;
-	sw_wayland_surface_layer_t *layer = &surface->in._.layer;
+	sw_wayland_surface_layer_t *layer = &bar->_.in._.layer;
 	config_t *config = &state.config;
-	sw_layout_block_t *root;
+	layout_block_t *root;
 
 	/* TODO: rework */
 	layout_block_t *min_height;
 	string_t min_height_str = string(" ");
 
-	if (surface->in.root && surface->in.root->out.fini) {
-		surface->in.root->out.fini(surface->in.root, &state.sw);
+	if (LIKELY(bar->_.in.root)) { /* TODO: remove */
+		LLIST_APPEND_TAIL(&state.sw.in.blocks_to_destroy, bar->_.in.root);
 	}
-	arena_reset(&bar->block_allocator.arena, &page_allocator);
 
-	surface->in.input_regions_count = 0;
-	surface->in.height = config->height;
+	bar->_.in.input_regions_count = 0;
+	bar->_.in.height = config->height;
 	layer->anchor = config->position;
 	MEMCPY(layer->margins, config->gaps, sizeof(layer->margins));
 	if ((config->mode == BAR_MODE_OVERLAY) || (config->mode == BAR_MODE_HIDE)) {
@@ -2095,25 +1993,26 @@ static void bar_update(bar_t *bar) {
 		layer->exclusive_zone = -1;
 		if (config->mode == BAR_MODE_OVERLAY) {
 			static sw_wayland_region_t empty_region = { 0, 0, 0, 0 };
-			surface->in.input_regions = &empty_region;
-			surface->in.input_regions_count = 1;
+			bar->_.in.input_regions = &empty_region;
+			bar->_.in.input_regions_count = 1;
 		}
 	} else {
 		layer->layer = SW_WAYLAND_SURFACE_LAYER_LAYER_BOTTOM;
 		layer->exclusive_zone = INT_MIN;
 	}
 
-	root = (sw_layout_block_t *)layout_block_create(&bar->block_allocator);
-	root->in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
-	root->in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES_CONTENT;
-	root->in.color._.argb32 = (((output_t *)layer->output)->focused
+	ALLOCCT(root, &gp_alloc);
+	root->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
+	root->_.in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES_CONTENT;
+	root->_.in.color._.argb32 = (((output_t *)layer->output)->focused
 		? config->colors.focused_background : config->colors.background);
-	surface->in.root = root;
 
-	min_height = layout_block_create(&bar->block_allocator);
-	layout_block_init_text(&min_height->_, &min_height_str);
+	ALLOCCT(min_height, &gp_alloc);
+	layout_block_init_text(min_height, &min_height_str);
 	min_height->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
-	LLIST_APPEND_TAIL(&root->in._.composite.children, &min_height->_);
+	LLIST_APPEND_TAIL(&root->_.in._.composite.children, &min_height->_);
+
+	bar->_.in.root = &root->_;
 
 #if WITH_TRAY
 	if (state.tray.active) {
@@ -2131,7 +2030,7 @@ static void bar_update(bar_t *bar) {
 		describe_binding_mode_indicator(bar);
 	}
 
-	state.update = TRUE;
+	state.sw.in.update_and_render = TRUE;
 }
 
 static void update_config(string_t str) {
@@ -2626,8 +2525,9 @@ static bool32_t bar_process_button_event(bar_t *bar,
 	tray_dbusmenu_menu_popup_t *popup = state.tray.popup;
 	if (state.tray.active && popup && (popup->seat == seat)) {
 		if (button_state == SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED) {
-			MEMSET(&popup->parent->in.popups, 0, sizeof(popup->parent->in.popups));
-			tray_dbusmenu_menu_popup_destroy(popup);
+			MEMSET(popup->list, 0, sizeof(*popup->list));
+			popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+			LLIST_APPEND_TAIL(popup->list, &popup->_);
 		}
 		return TRUE;
 	}
@@ -2680,65 +2580,6 @@ static bool32_t bar_process_button_event(bar_t *bar,
 	return FALSE;
 }
 
-static bool32_t bar_handle_event(sw_wayland_event_source_t *source, sw_context_t *ctx, sw_wayland_event_t event) {
-	NOTUSED(ctx);
-
-	switch (event) {
-	case SW_WAYLAND_EVENT_SURFACE_CLOSE: {
-		sw_wayland_surface_t *surface = (sw_wayland_surface_t *)source;
-		MEMSET(&state.sw.in.backend.wayland.layers, 0, sizeof(state.sw.in.backend.wayland.layers));
-		bar_destroy((bar_t *)surface);
-		break;
-	}
-	case SW_WAYLAND_EVENT_POINTER_BUTTON: {
-		sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
-		bar_process_button_event( (bar_t *)pointer->out.focused_surface,
-				pointer->out.btn_code, pointer->out.btn_state,
-				pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat);
-		break;
-	}
-	case SW_WAYLAND_EVENT_POINTER_SCROLL: {
-		sw_wayland_pointer_t *pointer = (sw_wayland_pointer_t *)source;
-		bar_t *bar = (bar_t *)pointer->out.focused_surface;
-		bool32_t negative = (pointer->out.scroll_vector_length < 0);
-		uint32_t button_code;
-
-		switch (pointer->out.scroll_axis) {
-		case SW_WAYLAND_POINTER_AXIS_VERTICAL_SCROLL:
-			button_code = (negative ? KEY_SCROLL_UP : KEY_SCROLL_DOWN);
-			break;
-		case SW_WAYLAND_POINTER_AXIS_HORIZONTAL_SCROLL:
-			button_code = (negative ? KEY_SCROLL_LEFT : KEY_SCROLL_RIGHT);
-			break;
-		default:
-			ASSERT_UNREACHABLE;
-		}
-
-		if (!bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED,
-					pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat)) {
-			bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED,
-				pointer->out.pos_x, pointer->out.pos_y, pointer->out.seat);
-		}
-		break;
-	}
-	case SW_WAYLAND_EVENT_POINTER_ENTER:
-	case SW_WAYLAND_EVENT_POINTER_LEAVE:
-	case SW_WAYLAND_EVENT_POINTER_MOTION:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_DECORATIONS:
-	case SW_WAYLAND_EVENT_SURFACE_LAYOUT_FAILED:
-		break;
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
-	case SW_WAYLAND_EVENT_SURFACE_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
-	case SW_WAYLAND_EVENT_SURFACE_ERROR_MISSING_PROTOCOL:
-	case SW_WAYLAND_EVENT_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
-		su_abort((int)event, "Failed to create layer surface: (%u)", event); /* TODO: string */
-	default:
-		ASSERT_UNREACHABLE;
-	}
-
-	return TRUE;
-}
-
 static bar_t *bar_create(output_t *output) {
 	bar_t *bar;
 
@@ -2747,12 +2588,8 @@ static bar_t *bar_create(output_t *output) {
 	}
 
 	ALLOCCT(bar, &gp_alloc);
-	arena_init(&bar->block_allocator.arena, &page_allocator, 8192);
-	bar->block_allocator.alloc.alloc = layout_block_alloc_alloc;
-	bar->block_allocator.alloc.free = layout_block_alloc_free;
 	bar->dirty = TRUE;
 	bar->_.in.type = SW_WAYLAND_SURFACE_TYPE_LAYER;
-	bar->_.in.notify = bar_handle_event;
 	bar->_.in.height = -1;
 	bar->_.in._.layer.output = &output->_;
 	bar->_.in._.layer.exclusive_zone = INT_MIN;
@@ -2959,7 +2796,8 @@ static void process_ipc(void) {
 				}
 				if (!bar) {
 					bar = bar_create((output_t *)output);
-					LLIST_APPEND_TAIL(&state.sw.in.backend.wayland.layers, &bar->_);
+					bar->list = &state.sw.in.backend.wayland.layers;
+					LLIST_APPEND_TAIL(bar->list, &bar->_);
 				} else {
 					bar->dirty = TRUE;
 				}
@@ -2967,8 +2805,9 @@ static void process_ipc(void) {
 				sw_wayland_surface_t *bar = state.sw.in.backend.wayland.layers.head;
 				for ( ; bar; bar = bar->next) {
 					if (bar->in._.layer.output == output) {
-						MEMSET(&state.sw.in.backend.wayland.layers, 0, sizeof(state.sw.in.backend.wayland.layers));
-						bar_destroy((bar_t *)bar);
+						LLIST_POP(&state.sw.in.backend.wayland.layers, bar);
+						((bar_t *)bar)->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
+						LLIST_APPEND_TAIL(&state.sw.in.backend.wayland.surfaces_to_destroy, bar);
 						break;
 					}
 				}
@@ -3008,32 +2847,238 @@ static void handle_signal(int sig) {
 	state.running = FALSE;
 }
 
+static output_t *output_create(void) {
+	output_t *output;
+	if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES, NULL) == -1) {
+		su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+	}
+	ALLOCCT(output, &gp_alloc);
+	return output;
+}
+
+static void output_destroy(output_t *output) {
+	size_t i;
+	for ( i = 0; i < output->workspaces_count; ++i) {
+		string_fini(&output->workspaces[i].name, &gp_alloc);
+	}
+	FREE(&gp_alloc, output->workspaces);
+	FREE(&gp_alloc, output);
+}
+
+static bool32_t process_sw_events(void) {
+	size_t i;
+	for ( i = 0; i < state.sw.out.events_count; ++i) {
+		sw_event_t *event = &state.sw.out.events[i];
+		switch (event->out.type) {
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_MISSING_PROTOCOL:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
+			su_abort((int)event->out.type, "failed to create surface: (%u)", event->out.type); /* TODO: string */
+		case SW_EVENT_WAYLAND_SURFACE_DESTROY: {
+			sw_wayland_surface_t *surface = event->out._.wayland_surface;
+			switch (surface->in.type) {
+			case SW_WAYLAND_SURFACE_TYPE_LAYER: {
+				bar_t *bar = (bar_t *)surface;
+				if (bar->list->count > 0) {
+					LLIST_POP(bar->list, &bar->_);
+				}
+				bar_destroy(bar);
+				break;
+			}				
+			case SW_WAYLAND_SURFACE_TYPE_POPUP: {
+#if WITH_TRAY
+				tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)surface;
+				if (popup->list->count > 0) {
+					LLIST_POP(popup->list, &popup->_);
+				}
+				tray_dbusmenu_menu_popup_destroy(popup);
+				break;
+#endif /* WITH_TRAY */
+			}
+			case SW_WAYLAND_SURFACE_TYPE_CURSOR_IMAGE:
+			case SW_WAYLAND_SURFACE_TYPE_TOPLEVEL:
+			default:
+				ASSERT_UNREACHABLE;
+			}
+			break;
+		}
+		case SW_EVENT_WAYLAND_POINTER_ENTER: {
+#if WITH_TRAY
+			sw_wayland_pointer_out_t *pointer_state = &event->out._.wayland_pointer.state;
+			tray_dbusmenu_menu_popup_t *popup;
+
+			if (pointer_state->focused_surface->in.type != SW_WAYLAND_SURFACE_TYPE_POPUP) {
+				break;
+			}
+
+			popup = (tray_dbusmenu_menu_popup_t *)pointer_state->focused_surface;
+			if (popup->seat == pointer_state->seat) {
+				popup->focused_block = NULL;
+				tray_dbusmenu_menu_popup_pointer_move(popup, pointer_state->pos_x, pointer_state->pos_y);
+			}
+#endif /* WITH_TRAY */
+			break;
+		}
+		case SW_EVENT_WAYLAND_POINTER_LEAVE: {
+#if WITH_TRAY
+			sw_wayland_pointer_out_t *pointer_state = &event->out._.wayland_pointer.state;
+			tray_dbusmenu_menu_popup_t *popup;
+
+			if (pointer_state->focused_surface->in.type != SW_WAYLAND_SURFACE_TYPE_POPUP) {
+				break;
+			}
+
+			popup = (tray_dbusmenu_menu_popup_t *)pointer_state->focused_surface;
+			if ((popup->seat == pointer_state->seat) && popup->focused_block) {
+				sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
+				tray_dbusmenu_menu_item_pointer_leave(menu_item, popup->focused_block);
+				popup->focused_block = NULL;
+			}
+#endif /* WITH_TRAY */
+			break;
+		}
+		case SW_EVENT_WAYLAND_POINTER_MOTION: {
+#if WITH_TRAY
+			sw_wayland_pointer_out_t *pointer_state = &event->out._.wayland_pointer.state;
+			tray_dbusmenu_menu_popup_t *popup;
+
+			if (pointer_state->focused_surface->in.type != SW_WAYLAND_SURFACE_TYPE_POPUP) {
+				break;
+			}
+
+			popup = (tray_dbusmenu_menu_popup_t *)pointer_state->focused_surface;
+			if (popup->seat == pointer_state->seat) {
+				tray_dbusmenu_menu_popup_pointer_move(popup, pointer_state->pos_x, pointer_state->pos_y);
+			}
+#endif /* WITH_TRAY */
+			break;
+		}
+		case SW_EVENT_WAYLAND_POINTER_BUTTON: {
+			sw_wayland_pointer_out_t *pointer_state = &event->out._.wayland_pointer.state;
+			switch (pointer_state->focused_surface->in.type) {
+			case SW_WAYLAND_SURFACE_TYPE_LAYER:
+				bar_process_button_event( (bar_t *)pointer_state->focused_surface,
+					pointer_state->btn_code, pointer_state->btn_state,
+					pointer_state->pos_x, pointer_state->pos_y, pointer_state->seat);
+				break;
+			case SW_WAYLAND_SURFACE_TYPE_POPUP: {
+#if WITH_TRAY
+				tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)pointer_state->focused_surface;
+				if ((popup->seat == pointer_state->seat) && popup->focused_block) {
+					sni_dbusmenu_menu_item_t *menu_item = (sni_dbusmenu_menu_item_t *)popup->focused_block->data;
+					tray_dbusmenu_menu_item_pointer_button(menu_item, pointer_state->btn_code, pointer_state->btn_state);
+				}
+				break;
+#endif /* WITH_TRAY */
+			}
+			case SW_WAYLAND_SURFACE_TYPE_TOPLEVEL:
+			case SW_WAYLAND_SURFACE_TYPE_CURSOR_IMAGE:
+			default:
+				ASSERT_UNREACHABLE;
+			}
+			break;
+		}
+		case SW_EVENT_WAYLAND_POINTER_SCROLL: {
+			sw_wayland_pointer_out_t *pointer_state = &event->out._.wayland_pointer.state;
+			bar_t *bar;
+			bool32_t negative;
+			uint32_t button_code;
+#if WITH_TRAY
+			if (pointer_state->focused_surface->in.type != SW_WAYLAND_SURFACE_TYPE_LAYER) {
+				break;
+			}
+#else
+			ASSERT(pointer_state->focused_surface->in.type == SW_WAYLAND_SURFACE_TYPE_LAYER);
+#endif
+
+			negative = (pointer_state->scroll_vector_length < 0);
+			switch (pointer_state->scroll_axis) {
+			case SW_WAYLAND_POINTER_AXIS_VERTICAL_SCROLL:
+				button_code = (negative ? KEY_SCROLL_UP : KEY_SCROLL_DOWN);
+				break;
+			case SW_WAYLAND_POINTER_AXIS_HORIZONTAL_SCROLL:
+				button_code = (negative ? KEY_SCROLL_LEFT : KEY_SCROLL_RIGHT);
+				break;
+			default:
+				ASSERT_UNREACHABLE;
+			}
+
+			bar = (bar_t *)pointer_state->focused_surface;
+			if (!bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED,
+					pointer_state->pos_x, pointer_state->pos_y, pointer_state->seat)) {
+				bar_process_button_event(bar, button_code, SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED,
+					pointer_state->pos_x, pointer_state->pos_y, pointer_state->seat);
+			}
+			break;
+		}
+		case SW_EVENT_WAYLAND_OUTPUT_CREATE:
+			event->in.wayland_output = (sw_wayland_output_t *)output_create();
+			break;
+		case SW_EVENT_WAYLAND_OUTPUT_DESTROY:
+			output_destroy((output_t *)event->out._.wayland_output);
+			break;
+		case SW_EVENT_WAYLAND_SEAT_CREATE:
+		case SW_EVENT_WAYLAND_POINTER_CREATE:
+		case SW_EVENT_WAYLAND_SEAT_DESTROY:
+		case SW_EVENT_WAYLAND_POINTER_DESTROY:
+			break;
+		case SW_EVENT_LAYOUT_BLOCK_DESTROY: {
+			layout_block_t *block = (layout_block_t *)event->out._.layout_block;
+			switch (block->destroy) {
+			case LAYOUT_BLOCK_DESTROY_IMAGE:
+				FREE(&gp_alloc, block->_.in._.image.data.ptr);
+				break;
+			case LAYOUT_BLOCK_DESTROY_TEXT:
+				string_fini(&block->_.in._.text.text, &gp_alloc);
+				break;
+			case LAYOUT_BLOCK_DESTROY_NOTHING:
+				break;
+			default:
+				ASSERT_UNREACHABLE;
+			}
+			FREE(&gp_alloc, block);
+			break;
+		}
+		case SW_EVENT_WAYLAND_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_FAILED_TO_INITIALIZE_ROOT_LAYOUT_BLOCK:
+		case SW_EVENT_WAYLAND_SURFACE_ERROR_LAYOUT_FAILED:
+		case SW_EVENT_LAYOUT_BLOCK_ERROR_INVALID_IMAGE:
+		case SW_EVENT_LAYOUT_BLOCK_ERROR_INVALID_FONT:
+		case SW_EVENT_LAYOUT_BLOCK_ERROR_INVALID_TEXT:
+			/* TODO: log */
+			break;
+		case SW_EVENT_WAYLAND_SURFACE_TOPLEVEL_FAILED_TO_SET_DECORATIONS:
+		case SW_EVENT_WAYLAND_SURFACE_TOPLEVEL_CLOSE:
+		default:
+			ASSERT_UNREACHABLE;
+		}
+	}
+
+	return state.sw.in.update_and_render;
+}
+
 static void setup(int argc, char *argv[]) {
 	static struct sigaction sigact;
 	int sway_ipc_fd;
 	static char sway_ipc_socket_path[PATH_MAX];
+	char *s;
 
 	setlocale(LC_ALL, "");
 	if (!locale_is_utf8()) {
 		su_abort(1, "failed to set UTF-8 locale");
 	}
 
-	ARGPARSE_BEGIN {
+	ARGPARSE_LOOP_BEGIN {
 		switch (ARGPARSE_KEY) {
-		case 's': {
-			char *s = ARGPARSE_VALUE;
-			if (s) {
+		case 's':
+			if ((s = ARGPARSE_VALUE)) {
 				STRNCPY(sway_ipc_socket_path, s, sizeof(sway_ipc_socket_path));
 			}
 			break;
-		}
-		case 'b': {
-			char *s = ARGPARSE_VALUE;
-			if (s) {
+		case 'b':
+			if ((s = ARGPARSE_VALUE)) {
 				state.bar_id = string(s);
 			}
 			break;
-		}
 		case 'v':
 			su_abort(0, "sw_swaybar version" ); /* TODO */
 		default:
@@ -3049,7 +3094,7 @@ static void setup(int argc, char *argv[]) {
 				" configuration file to let sway start sw_swaybar automatically.\n"
 				" You should never need to start it manually.\n");
 		}
-	} ARGPARSE_END
+	} ARGPARSE_LOOP_END
 
 	if (state.bar_id.len == 0) {
 		su_abort(1, "No bar id passed. Provide -b or use swaybar_command in sway config file");
@@ -3065,15 +3110,15 @@ static void setup(int argc, char *argv[]) {
 
 	if (!*sway_ipc_socket_path) {
 		if (!sway_ipc_get_socket_path(sway_ipc_socket_path)) {
-			su_abort(ESOCKTNOSUPPORT, "Failed to get sway ipc socket path");
+			su_abort(ESOCKTNOSUPPORT, "failed to get sway ipc socket path");
 		}
 	}
 	sway_ipc_fd = sway_ipc_connect(sway_ipc_socket_path);
 	if (sway_ipc_fd == -1) {
-		su_abort(errno, "Failed to connect to sway ipc socket '%s': %s", sway_ipc_socket_path, strerror(errno));
+		su_abort(errno, "failed to connect to sway ipc socket '%s': %s", sway_ipc_socket_path, strerror(errno));
 	}
 	if (!init_sway_ipc(sway_ipc_fd)) {
-		su_abort(errno, "Failed to initialize sway ipc: %s", strerror(errno));
+		su_abort(errno, "failed to initialize sway ipc: %s", strerror(errno));
 	}
 
 	sigact.sa_handler = handle_signal;
@@ -3085,29 +3130,24 @@ static void setup(int argc, char *argv[]) {
 	state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
 	state.sw.in.gp_alloc = &gp_alloc;
 	state.sw.in.scratch_alloc = &scratch_alloc;
-	state.sw.in.backend.wayland.output_create = output_handle_create;
-	state.sw.in.backend.wayland.seat_create = seat_handle_create;
 	state.running = TRUE;
-	state.update = TRUE;
 }
 
 static void run(void) {
 	while (state.running) {
 		static short err = (POLLHUP | POLLERR | POLLNVAL);
-
 		int timeout, sw_timeout, tray_timeout = -1;
 		bool32_t process_tray = FALSE;
 
-		if (state.update) {
+		do {
 			if (!sw_set(&state.sw)) {
 				su_abort(errno, "sw_set: %s", strerror(errno));
 			}
-			state.poll_fds[POLL_FD_SW] = state.sw.out.backend.wayland.pfd;
-			state.update = FALSE;
-		}
-		if (!sw_flush(&state.sw)) {
-			su_abort(errno, "sw_flush: %s", strerror(errno));
-		}
+			MEMSET(&state.sw.in.blocks_to_destroy, 0, sizeof(state.sw.in.blocks_to_destroy));
+			MEMSET(&state.sw.in.backend.wayland.surfaces_to_destroy, 0, sizeof(state.sw.in.backend.wayland.surfaces_to_destroy));
+			state.poll_fds[POLL_FD_SW] = state.sw.out.backend.wayland.fds[0];
+			state.sw.in.update_and_render = FALSE;
+		} while (process_sw_events());
 
 		arena_reset(&state.scratch_arena, &page_allocator);
 
@@ -3118,7 +3158,9 @@ static void run(void) {
 			if (c < 0) {
 				su_abort(-c, "sni_server_get_poll_info: %s", strerror(-c));
 			}
-			tray_timeout = (absolute_timeout_ms > 0) ? (int)(absolute_timeout_ms - now_ms(CLOCK_MONOTONIC)) : (int)absolute_timeout_ms;
+			tray_timeout = (absolute_timeout_ms > 0) ? 
+				(int)(absolute_timeout_ms - now_ms(CLOCK_MONOTONIC)) :
+				(int)absolute_timeout_ms;
 		}
 #endif /* WITH_TRAY */
 
@@ -3134,16 +3176,9 @@ static void run(void) {
 			break;
 		case 0:
 			process_tray = (timeout == tray_timeout);
-			state.update = (timeout == sw_timeout);
 			break;
 		default:
 			break;
-		}
-
-		if (state.poll_fds[POLL_FD_SW].revents & (state.poll_fds[POLL_FD_SW].events | err)) {
-			if (!sw_process(&state.sw)) {
-				su_abort(errno, "sw_process: %s", strerror(errno));
-			}
 		}
 
 		if (state.poll_fds[POLL_FD_SWAY_IPC].revents & (state.poll_fds[POLL_FD_SWAY_IPC].events | err)) {
@@ -3161,10 +3196,7 @@ static void run(void) {
 #if WITH_TRAY
 		if (state.tray.active && (process_tray || (state.poll_fds[POLL_FD_SNI_SERVER].revents
 				& (state.poll_fds[POLL_FD_SNI_SERVER].events | err)))) {
-			int ret = sni_server_process();
-			if (ret < 0) {
-				su_abort(-ret, "sni_server_process: %s", strerror(-ret));
-			}
+			tray_process();
 		}
 #else
 		NOTUSED(process_tray);
@@ -3195,10 +3227,16 @@ static void cleanup(void) {
 
 	close(state.poll_fds[POLL_FD_SWAY_IPC].fd);
 
+	state.sw.in.backend_type = SW_BACKEND_TYPE_NONE;
+	sw_set(&state.sw);
+
 #if DEBUG
 	{
 		size_t i;
 		config_t *config = &state.config;
+
+		process_sw_events();
+		FREE(&gp_alloc, state.sw.out.events);
 
 		for ( i = 0; i < state.icon_cache.capacity; ++i) {
 			file_cache_t *c = &state.icon_cache.items[i];
@@ -3235,8 +3273,6 @@ static void cleanup(void) {
 		arena_fini(&state.scratch_arena, &page_allocator);
 	}
 #endif /* DEBUG */
-
-	sw_cleanup(&state.sw);
 }
 
 int main(int argc, char *argv[]) {

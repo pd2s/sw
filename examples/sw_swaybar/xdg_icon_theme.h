@@ -2,10 +2,10 @@
 #define XDG_ICON_THEME_H
 
 #if !defined(WITH_SVG)
-#define WITH_SVG 1
+	#define WITH_SVG 1
 #endif /* !defined(WITH_SVG) */
 #if !defined(WITH_PNG)
-#define WITH_PNG 1
+	#define WITH_PNG 1
 #endif /* !defined(WITH_PNG) */
 
 #include <stdlib.h>
@@ -19,10 +19,10 @@
 #include <stddef.h>
 
 #if !defined(SU_IMPLEMENTATION)
-#define SU_IMPLEMENTATION
+	#define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
 #if !defined(SU_STRIP_PREFIXES)
-#define SU_STRIP_PREFIXES
+	#define SU_STRIP_PREFIXES
 #endif /* !defined(SU_STRIP_PREFIXES) */
 #include <sutil.h>
 
@@ -40,7 +40,8 @@ typedef struct xdg_icon_theme__icon {
 #endif /* WITH_PNG */
 } xdg_icon_theme__icon_t;
 
-HASH_TABLE_DECLARE_DEFINE(xdg_icon_theme__icon_t, string_t, stbds_hash_string, string_equal, 16)
+/* TODO: better hash function */
+HASH_TABLE_DECLARE_DEFINE(xdg_icon_theme__icon_t, string_t, stbds_hash_string, string_equal, MEMCPY, 16)
 
 typedef struct xdg_icon_theme__theme xdg_icon_theme__theme_t;
 
@@ -82,7 +83,7 @@ static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
 	}
 
 	xdg_name.s = name.s;
-	xdg_name.len = name.len - 4;
+	xdg_name.len = (name.len - 4);
 	xdg_name.free_contents = FALSE;
 	xdg_name.nul_terminated = FALSE;
 
@@ -262,7 +263,7 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 			(0 == pthread_create(&th, NULL, xdg_icon_theme__theme_populate_thread, theme))) {
 		cache->threads[cache->threads_count++] = th;
 	} else {
-		DEBUG_LOG("warning: failed to create thread/thread pool is full. threads_count = %lu", cache->threads_count);
+		DEBUG_LOG("warning: failed to create thread / thread pool is full. threads_count = %lu", cache->threads_count);
 		xdg_icon_theme__theme_populate(theme, path);
 	}
 
@@ -470,7 +471,8 @@ static bool32_t xdg_icon_theme__find_icon(
 	bool32_t ret = FALSE;
 	xdg_icon_theme__icon_t *c;
 	
-	NOTUSED(svgs_out); NOTUSED(pngs_out);
+	NOTUSED(svgs_out); NOTUSED(svgs_count_out);
+	NOTUSED(pngs_out); NOTUSED(pngs_count_out);
 
 	if (su_hash_table__xdg_icon_theme__icon_t__get(&theme->icons, icon_name , &c)) {
 #if WITH_SVG
