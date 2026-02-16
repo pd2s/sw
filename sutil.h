@@ -76,6 +76,12 @@
 #if !defined(SU_STRLEN)
 	#define SU_STRLEN __builtin_strlen
 #endif /* SU_STRLEN */
+#if !defined(SU_ABS)
+	#define SU_ABS __builtin_abs
+#endif /* SU_ABS */
+#if !defined(SU_OFFSETOF)
+	#define SU_OFFSETOF __builtin_offsetof
+#endif /* SU_OFFSETOF */
 
 #else
 
@@ -123,6 +129,12 @@
 #if !defined(SU_STRLEN)
 	#define SU_STRLEN strlen
 #endif /* SU_STRLEN */
+#if !defined(SU_ABS)
+	#define SU_ABS abs
+#endif /* SU_ABS */
+#if !defined(SU_OFFSETOF)
+	#define SU_OFFSETOF offsetof
+#endif /* SU_OFFSETOF */
 #endif
 
 #define SU_UNREACHABLE 0
@@ -729,6 +741,9 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 #define STRNCMP SU_STRNCMP
 #define STRLEN SU_STRLEN
 #define STRNLEN SU_STRNLEN
+#define ABS SU_ABS
+
+#define OFFSETOF SU_OFFSETOF
 
 #define HAS_FEATURE SU_HAS_FEATURE
 #define HAS_INCLUDE SU_HAS_INCLUDE
