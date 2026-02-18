@@ -24,9 +24,12 @@ typedef enum sw_glyph_load_flag {
     SW_GLYPH_LOAD_FLAG_DEFAULT = 0,
     SW_GLYPH_LOAD_FLAG_COLOR = (1L << 20),
     SW_GLYPH_LOAD_FLAG_NO_HINTING = (1L << 1),
+    SW_GLYPH_LOAD_FLAG_NO_AUTOHINT = (1L << 15),
     SW_GLYPH_LOAD_FLAG_FORCE_AUTOHINT = (1L << 5),
-    SW_GLYPH_LOAD_FLAG_NO_AUTOHINT = (1L << 15)
-    /* ? TODO: NO_BITMAP VERTICAL_LAYOUT SBITS_ONLY NO_SVG ?? COMPUTE_METRICS BITMAP_METRICS_ONLY */
+    SW_GLYPH_LOAD_FLAG_NO_BITMAP = (1L << 3),
+    SW_GLYPH_LOAD_FLAG_SBITS_ONLY = (1L << 14),
+    SW_GLYPH_LOAD_FLAG_NO_SVG = (1L << 24)
+    /* ? TODO: VERTICAL_LAYOUT COMPUTE_METRICS BITMAP_METRICS_ONLY */
 } sw_glyph_load_flag_t;
 
 typedef uint32_t sw_glyph_load_flag_mask_t;
@@ -39,24 +42,34 @@ typedef enum sw_glyph_render_mode {
     /* TODO: sdf */
 } sw_glyph_render_mode_t;
 
+typedef enum sw_glyph_hinting_algorithm {
+    SW_GLYPH_HINTING_ALGORITHM_NORMAL = 0,
+    SW_GLYPH_HINTING_ALGORITHM_LIGHT = 0x10000,
+    SW_GLYPH_HINTING_ALGORITHM_MONO = 0x20000,
+    SW_GLYPH_HINTING_ALGORITHM_LCD = 0x30000,
+    SW_GLYPH_HINTING_ALGORITHM_LCD_V = 0x40000
+} sw_glyph_hinting_algorithm_t;
+
 typedef struct sw_font_in {
     su_fat_ptr_t data;
     size_t idx;
     uint32_t pixel_size;
     sw_glyph_render_mode_t glyph_render_mode;
     sw_glyph_load_flag_mask_t glyph_load_flags;
-    SU_PAD32;
+    sw_glyph_hinting_algorithm_t hinting_algorithm;
+    su_string_t *features; /* ? TODO: parsed form */
+    size_t features_count;
 } sw_font_in_t;
 
 typedef struct sw__cached_glyph {
+    uint8_t *data;
     uint32_t width, height, pitch;
     FT_Pixel_Mode pixel_mode;
-    int32_t left, top; 
+    int32_t left, top;
     float scale_factor; /* ? TODO: scale FT_PIXEL_MODE_BGRA right away */
     uint32_t pixel_size;
     sw_glyph_render_mode_t render_mode;
     sw_glyph_load_flag_mask_t load_flags;
-    uint8_t *data;
 } sw__cached_glyph_t;
 
 typedef struct sw__font {
@@ -66,6 +79,8 @@ typedef struct sw__font {
     size_t idx;
     uint32_t pixel_size;
     sw_glyph_load_flag_mask_t glyph_load_flags;
+    hb_feature_t *features;
+    size_t features_count;
     /* ? TODO: cache multiple sizes / render modes / load flags */
     sw__cached_glyph_t **glyph_cache; /* size: FT_Face.num_glyphs */
 } sw__font_t;
@@ -75,15 +90,19 @@ typedef struct sw_font {
     SW__PRIVATE_FIELDS(sizeof(sw__font_t));
 } sw_font_t;
 
+typedef struct sw_text {
+	uint32_t *codepoints; /* must be valid utf32, there is no validator at this moment */
+    size_t codepoints_count;
+} sw_text_t;
+
 typedef struct sw_layout_block_text {
-	su_string_t text;
+    sw_text_t text; /* ? TODO: utf8 option */
 	sw_font_t *fonts; /* fallback order */
 	size_t fonts_count;
-    /* for now, the only way to get text layed out vertically is to set this flag */
-    /* ? TODO: implicit vertical, based on string contents */
     su_bool32_t vertical;
-    /* TODO: utf8/utf32 */
 	sw_color_argb32_t text_color; /* TODO: sw_color_t */
+    uint32_t letter_spacing;
+    SU_PAD32;
 } sw_layout_block_text_t;
 
 typedef struct sw__glyph {
@@ -96,12 +115,10 @@ typedef struct sw__glyph {
 } sw__glyph_t;
 
 typedef struct sw_glyph {
-    /* TODO */
-	/*uint32_t codepoint;
-	int32_t cluster;
+	uint32_t codepoint;
+	uint32_t cluster;
 	int32_t x, y;
-	int32_t width, height;*/
-
+	int32_t width, height;
     sw_font_t *font;
     SW__PRIVATE_FIELDS(sizeof(sw__glyph_t));
 } sw_glyph_t;
@@ -117,18 +134,18 @@ typedef struct sw__text_run {
     size_t glyphs_count;
     int32_t w, h;
     su_bool32_t vertical;
-    SU_PAD32;
+    uint32_t clusters_count;
 } sw__text_run_t;
 
 typedef struct sw__text_run_cache {
-	SU_HASH_TABLE_FIELDS(su_string_t);
+	SU_HASH_TABLE_FIELDS(sw_text_t);
     sw__text_run_t text_run; /* ? TODO: cache multiple runs for different font combinations */
 	FT_Face *faces;
 	size_t faces_count;
 } sw__text_run_cache_t;
 
 /* TODO: better hash function */
-SU_HASH_TABLE_DECLARE_DEFINE(sw__text_run_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, SU_MEMCPY, 16)
+SU_HASH_TABLE_DECLARE(sw__text_run_cache_t, sw_text_t, sw__stbds_hash_codepoints, sw__codepoints_equal, SU_MEMCPY, 16);
 
 typedef struct state {
     FT_Library ft;
@@ -175,6 +192,23 @@ static sw_context_t sw;
 static state_t state;
 
 static const su_allocator_t gp_alloc = { su_libc_alloc, su_libc_free };
+
+static size_t sw__stbds_hash_text(sw_text_t text) {
+    su_fat_ptr_t data;
+    data.ptr = text.codepoints;
+    data.len = (sizeof(*text.codepoints) * text.codepoints_count);
+    return su_stbds_hash(data);
+}
+
+static su_bool32_t sw__text_equal(sw_text_t a, sw_text_t b) {
+    if (a.codepoints_count != b.codepoints_count) {
+        return SU_FALSE;
+    }
+    return (SU_MEMCMP(a.codepoints, b.codepoints, a.codepoints_count) == 0);
+}
+
+/* TODO: better hash function */
+SU_HASH_TABLE_DEFINE(sw__text_run_cache_t, sw_text_t, sw__stbds_hash_text, sw__text_equal, SU_MEMCPY, 16)
 
 static void *sw__text_cache_alloc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
     SU_NOTUSED(alloc);
@@ -546,6 +580,7 @@ static void face_on_destroy_ft(void *data) {
             SU_FREE(&gp_alloc, g);
         }
     }
+    SU_FREE(&gp_alloc, font_priv->features);
     SU_FREE(&gp_alloc, font_priv->glyph_cache);
 }
 
@@ -557,12 +592,14 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
     sw__partial_run_t *pruns;
     size_t pruns_count;
     sw__partial_run_t *prun;
-    uint32_t *codepoints;
     sw__text_run_t new_text_run;
     sw__text_run_cache_t *cache;
     su_bool32_t fonts_changed = SU_FALSE;
     size_t glyph_advance_field_offset;
     int32_t *axis;
+    uint32_t prev_cluster;
+    uint32_t next_notdef_cluster = UINT32_MAX;
+    hb_script_t prev_script;
 
     SU_ASSERT(block->fonts_count > 0);
 
@@ -594,12 +631,13 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
         }
 
         if ((font->in.pixel_size != font_priv->pixel_size) ||
-                (font->in.glyph_load_flags != font_priv->glyph_load_flags)) {
+                ((font->in.glyph_load_flags | font->in.hinting_algorithm) != font_priv->glyph_load_flags)) {
+            font_priv->glyph_load_flags = (font->in.glyph_load_flags | font->in.hinting_algorithm);
             c = FT_Set_Pixel_Sizes(font_priv->face, 0, (FT_UInt)font->in.pixel_size);
             if (c != FT_Err_Ok) {
                 FT_Pos target = ((FT_Pos)font->in.pixel_size * 64);
                 FT_Int best = 0;
-                FT_Int best_err = INT_MAX;
+                int best_err = INT_MAX;
                 SU_ASSERT(c == FT_Err_Invalid_Pixel_Size);
                 SU_ASSERT(font_priv->face->num_fixed_sizes >= 0);
                 for ( i = 0; i < (size_t)font_priv->face->num_fixed_sizes; ++i) {
@@ -618,11 +656,26 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
                 font_priv->hb_font = hb_ft_font_create_referenced(font_priv->face);
                 SU_ASSERT(font_priv->hb_font != NULL);
             }
-            hb_ft_font_set_load_flags(font_priv->hb_font, (int)font->in.glyph_load_flags);
+            hb_ft_font_set_load_flags(font_priv->hb_font, (int)font_priv->glyph_load_flags);
             hb_ft_font_changed(font_priv->hb_font);
             font_priv->pixel_size = font->in.pixel_size;
-            font_priv->glyph_load_flags = font->in.glyph_load_flags;
             fonts_changed = SU_TRUE;
+        }
+
+        if (font->in.features_count != font_priv->features_count) {
+            SU_FREE(&gp_alloc, font_priv->features);
+            SU_ARRAY_ALLOCC(font_priv->features, &gp_alloc, font->in.features_count);
+            font_priv->features_count = font->in.features_count;
+            fonts_changed = SU_TRUE;
+        }
+        for ( i = 0; i < font->in.features_count; ++i) {
+            su_string_t str = font->in.features[i];
+            hb_feature_t feat;
+            hb_feature_from_string(str.s, (int)str.len, &feat);
+            if (SU_MEMCMP(&feat, &font_priv->features[i], sizeof(feat)) != 0) {
+                font_priv->features[i] = feat;
+                fonts_changed = SU_TRUE;
+            }
         }
 
         /* ? TODO: FT_Set_Transform */
@@ -638,68 +691,42 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
             goto render;
         }
     } else {
-        su_string_init_string(&cache->key, &text_cache_alloc, cache->key);
+        SU_ARRAY_ALLOC(cache->key.codepoints, &text_cache_alloc, block->text.codepoints_count);
+        SU_MEMCPY(cache->key.codepoints, block->text.codepoints, sizeof(block->text.codepoints[0]) * block->text.codepoints_count);
+        cache->key.codepoints_count = block->text.codepoints_count;
     }
 
 shape:
-    SU_ARRAY_ALLOC(pruns, &scratch_alloc, (block->text.len * block->fonts_count) + 1);
+    /* ? TODO: validate cps */
+
+    SU_ARRAY_ALLOC(pruns, &scratch_alloc, (block->text.codepoints_count * block->fonts_count) + 1);
     prun = &pruns[0];
     prun->start_idx = 0;
     prun->len = 0;
     prun->script = HB_SCRIPT_INVALID;
     pruns_count = 1;
 
-    /* TODO: utf32 input with cache, validation */
-    /*if (!block->text_utf32)*/ {
-        hb_glyph_info_t *glyph_infos;
-        hb_script_t prev_script = prun->script;
-        unsigned int gc;
-
-        SU_ARRAY_ALLOC(codepoints, &scratch_alloc, block->text.len);
-
-        /* TODO: simd utf8 -> utf32 */
-        hb_buffer_reset(state.hb_buf);
-        hb_buffer_add_utf8(state.hb_buf, block->text.s, (int)block->text.len, 0, -1);
-        glyph_infos = hb_buffer_get_glyph_infos(state.hb_buf, &gc);
-        new_text_run.glyphs_count = gc;
-
-        for ( g = 0; g < new_text_run.glyphs_count; ++g) {
-            hb_script_t script = hb_unicode_script(state.hb_unicode_funcs, glyph_infos[g].codepoint);
-            if ((script == HB_SCRIPT_INHERITED) || (script == prev_script)) {
-                prun->len++;
-            } else {
-                prev_script = script;
-                prun = &pruns[pruns_count++];
-                prun->start_idx = g;
-                prun->len = 1;
-                prun->script = script;
-            }
-            codepoints[g] = glyph_infos[g].codepoint;
+    prev_script = prun->script;
+    new_text_run.glyphs_count = block->text.codepoints_count;
+    for ( g = 0; g < new_text_run.glyphs_count; ++g) {
+        hb_script_t script = hb_unicode_script(state.hb_unicode_funcs, block->text.codepoints[g]);
+        if ((script == HB_SCRIPT_INHERITED) || (script == prev_script)) {
+            prun->len++;
+        } else {
+            prev_script = script;
+            prun = &pruns[pruns_count++];
+            prun->start_idx = g;
+            prun->len = 1;
+            prun->script = script;
         }
-    }/* else {
-        hb_script_t prev_script = prun->script;
-
-        codepoints = (uint32_t *)(void *)block->text.s;
-        new_text_run.glyphs_count = block->text.len;
-        for ( g = 0; g < new_text_run.glyphs_count; ++g) {
-            hb_script_t script = hb_unicode_script(state.hb_unicode_funcs, codepoints[g]);
-            if ((script == HB_SCRIPT_INHERITED) || (script == prev_script)) {
-                prun->len++;
-            } else {
-                prev_script = script;
-                prun = &pruns[pruns_count++];
-                prun->start_idx = g;
-                prun->len = 1;
-                prun->script = script;
-            }
-        }
-    }*/
+    }
 
     new_text_run.vertical = block->vertical;
-    new_text_run.w = new_text_run.h = 0;
+    new_text_run.w = new_text_run.h = new_text_run.clusters_count = 0;
     if (cache->text_run.glyphs &&
-            (cache->text_run.glyphs_count <= new_text_run.glyphs_count)) {
+            (cache->text_run.glyphs_count >= new_text_run.glyphs_count)) {
         new_text_run.glyphs = cache->text_run.glyphs;
+        SU_MEMSET(new_text_run.glyphs, 0, new_text_run.glyphs_count);
     } else {
         SU_ARRAY_ALLOCC(new_text_run.glyphs, &text_cache_alloc, new_text_run.glyphs_count);
     }
@@ -723,25 +750,21 @@ shape:
             unsigned int gc;
             hb_glyph_info_t *glyph_infos;
             hb_glyph_position_t *glyph_pos;
-            hb_direction_t dir;
 
             prun = &pruns[r];
             insert_idx = prun->start_idx;
+            prev_cluster = UINT32_MAX;
 
             hb_buffer_reset(state.hb_buf);
-            hb_buffer_add_codepoints( state.hb_buf, codepoints,
+            hb_buffer_add_codepoints( state.hb_buf, block->text.codepoints,
                 (int)new_text_run.glyphs_count, (unsigned int)prun->start_idx, (int)prun->len);
 
             hb_buffer_guess_segment_properties(state.hb_buf);
 
-            dir = hb_buffer_get_direction(state.hb_buf);
-            if (!block->vertical && (dir != HB_DIRECTION_RTL)) {
-                hb_buffer_set_direction(state.hb_buf, HB_DIRECTION_LTR);
-            } else if (block->vertical && (dir != HB_DIRECTION_BTT)) {
-                hb_buffer_set_direction(state.hb_buf, HB_DIRECTION_TTB);
-            }
+            SU_ASSERT((hb_buffer_get_direction(state.hb_buf) == HB_DIRECTION_LTR) ||
+                    (hb_buffer_get_direction(state.hb_buf) == HB_DIRECTION_RTL));
 
-            hb_shape(font_priv->hb_font, state.hb_buf, NULL, 0);
+            hb_shape(font_priv->hb_font, state.hb_buf, font_priv->features, (unsigned int)font_priv->features_count);
 
             glyph_infos = hb_buffer_get_glyph_infos(state.hb_buf, &gc);
             glyph_pos = hb_buffer_get_glyph_positions(state.hb_buf, &gc);
@@ -755,14 +778,13 @@ shape:
                 hb_codepoint_t idx = glyph_infos[g].codepoint;
                 sw__cached_glyph_t **glyph_cache;
                 FT_Face face;
+                sw_glyph_load_flag_mask_t load_flags;
 
                 if (idx == 0) {
                     uint32_t start_idx = glyph_infos[g].cluster;
-                    hb_script_t script = hb_unicode_script(state.hb_unicode_funcs, codepoints[start_idx]);
+                    hb_script_t script = hb_unicode_script(state.hb_unicode_funcs, block->text.codepoints[start_idx]);
                     sw__partial_run_t *pr = &pruns[pruns_count - 1];
                     size_t len = 1;
-
-                    start_idx = glyph_infos[g].cluster;
 
                     /* ? TODO: also scan backwards */
                     while (((g + 1) < gc) && (glyph_infos[g + 1].cluster == start_idx)) {
@@ -790,23 +812,37 @@ shape:
                     glyph->font = &block->fonts[0];
                     glyph_cache = ((sw__font_t *)glyph->font->sw__private)->glyph_cache;
                     face = ((sw__font_t *)glyph->font->sw__private)->face;
+                    load_flags = ((sw__font_t *)glyph->font->sw__private)->glyph_load_flags;
+                    glyph->cluster = --next_notdef_cluster;
+                    glyph->codepoint = 0;
+                    if (SU_UNLIKELY(glyph_priv->idx != 0)) {
+                        new_text_run.clusters_count--;
+                        *axis -= *glyph_advance;
+                        glyph_priv->valid = SU_FALSE;
+                    }
                 } else {
                     glyph = &new_text_run.glyphs[insert_idx++];
                     glyph_priv = (sw__glyph_t *)&glyph->sw__private;
                     glyph->font = font;
                     glyph_cache = font_priv->glyph_cache;
                     face = font_priv->face;
+                    load_flags = font_priv->glyph_load_flags;
                     glyph_advance = (int32_t *)(void *)((uint8_t *)glyph_priv + glyph_advance_field_offset);
-                    glyph_priv->valid = SU_FALSE;
+                    glyph->cluster = glyph_infos[g].cluster;
+                    glyph->codepoint = block->text.codepoints[glyph->cluster];
 
-                    *axis -= *glyph_advance;
+                    if (glyph_priv->valid) {
+                        new_text_run.clusters_count--;
+                        glyph_priv->valid = SU_FALSE;
+                        *axis -= *glyph_advance;
+                    }
                 }
 
                 if (!glyph_priv->valid) {
                     sw__cached_glyph_t *cached_glyph = glyph_cache[idx];
                     if ( !cached_glyph
                             || (cached_glyph->pixel_size != glyph->font->in.pixel_size)
-                            || (cached_glyph->load_flags != glyph->font->in.glyph_load_flags)
+                            || (cached_glyph->load_flags != load_flags)
                             || (cached_glyph->render_mode != glyph->font->in.glyph_render_mode)) {
                         FT_Bitmap *ft_bitmap;
                         su_bool32_t scale;
@@ -818,7 +854,7 @@ shape:
                             cached_glyph = glyph_cache[idx];
                         }
 
-                        c = FT_Load_Glyph(face, idx, (FT_Int32)glyph->font->in.glyph_load_flags);
+                        c = FT_Load_Glyph(face, idx, (FT_Int32)load_flags);
                         SU_ASSERT(c == FT_Err_Ok);
                         scale = (face->glyph->format == FT_GLYPH_FORMAT_BITMAP);
 
@@ -842,7 +878,7 @@ shape:
                         cached_glyph->left = face->glyph->bitmap_left;
                         cached_glyph->top = face->glyph->bitmap_top;
                         cached_glyph->pixel_size = glyph->font->in.pixel_size;
-                        cached_glyph->load_flags = glyph->font->in.glyph_load_flags;
+                        cached_glyph->load_flags = load_flags;
                         cached_glyph->render_mode = glyph->font->in.glyph_render_mode;
                         cached_glyph->scale_factor = ((scale && (ft_bitmap->width > 0) && (ft_bitmap->rows > 0))
                             ? SU_MIN(
@@ -863,6 +899,11 @@ shape:
                         *glyph_advance = (int32_t)font->in.pixel_size;
                     }
 
+                    if (glyph->cluster != prev_cluster) {
+                        new_text_run.clusters_count++;
+                    }
+
+                    prev_cluster = glyph->cluster;
                     *axis += *glyph_advance;
                 }
             }
@@ -882,11 +923,13 @@ render:
     if (block->vertical) {
         FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].sw__private)->face->size->metrics;
         cache->text_run.w = (int32_t)(((float)metrics->height / 64.f) + 0.5f); /* TODO: width analog */
+        cache->text_run.h += (int32_t)(block->letter_spacing * (cache->text_run.clusters_count - 1));
         pen_x = (cache->text_run.w / 2);
         axis = &pen_y;
         glyph_advance_field_offset = SU_OFFSETOF(sw__glyph_t, y_advance);
     } else {
         FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].sw__private)->face->size->metrics;
+        cache->text_run.w += (int32_t)(block->letter_spacing * (cache->text_run.clusters_count - 1));
         cache->text_run.h = (int32_t)(((float)metrics->height / 64.f) + 0.5f);
         pen_y = (int32_t)((float)cache->text_run.h + ((float)metrics->descender / 64.f) + 0.5f);
         axis = &pen_x;
@@ -900,9 +943,18 @@ render:
         (sizeof(ret->width) + sizeof(ret->height) + (size_t)(cache->text_run.w * cache->text_run.h * 4)));
     ret->width = (uint32_t)cache->text_run.w;
     ret->height = (uint32_t)cache->text_run.h;
-    SU_MEMSET(ret->pixels, 0x00, (size_t)(cache->text_run.w * cache->text_run.h * 4));
+    SU_MEMSET(ret->pixels, 0xFF, (size_t)(cache->text_run.w * cache->text_run.h * 4));
 
-    for ( g = 0; g < cache->text_run.glyphs_count; ++g) {
+    for ( g = 0; ; ++g) {
+        sw_glyph_t *glyph = &cache->text_run.glyphs[g];
+        sw__glyph_t *glyph_priv = (sw__glyph_t *)&glyph->sw__private;
+        if (glyph_priv->valid) {
+            prev_cluster = cache->text_run.glyphs[g].cluster;
+            break;
+        }
+    }
+
+    for ( ; g < cache->text_run.glyphs_count; ++g) {
         sw_glyph_t *glyph = &cache->text_run.glyphs[g];
         sw__glyph_t *glyph_priv = (sw__glyph_t *)&glyph->sw__private;
         int32_t *glyph_advance;
@@ -910,12 +962,17 @@ render:
         sw__font_t *font_priv;
         sw__cached_glyph_t *cached_glyph;
 
-        if (!glyph_priv->valid) {
+        if (SU_UNLIKELY(!glyph_priv->valid)) {
             continue;
         }
 
         font = glyph->font;
         glyph_advance = (int32_t *)(void *)((uint8_t *)glyph_priv + glyph_advance_field_offset);
+
+        if (glyph->cluster != prev_cluster) {
+            prev_cluster = glyph->cluster;
+            *axis += (int32_t)block->letter_spacing;
+        }
 
         font_priv = (sw__font_t *)font->sw__private;
         SU_ASSERT(glyph_priv->idx < font_priv->face->num_glyphs);
@@ -923,7 +980,7 @@ render:
         cached_glyph = font_priv->glyph_cache[glyph_priv->idx];
         SU_ASSERT(cached_glyph != NULL);
 
-        /* TODO: simd, blend */
+        /* TODO: simd, blend, optimize alpha==0 */
         if (cached_glyph->data) {
             int32_t y, x;
             int32_t start_x = 0, start_y = 0;
@@ -1176,7 +1233,11 @@ render:
                     SU_ASSERT_UNREACHABLE;
                 }
             }
-        }
+            glyph->x = dst_x_offs;
+            glyph->y = dst_y_offs;
+            glyph->width = (end_x - start_x);
+            glyph->height = (end_y - start_y);
+        } /* ? TODO: else,next_glyph: set glyph->x = pen_x, glyph->y = pen_y, glyph->width = glyph_priv->x_advance, glyph->height = glyph_priv->y_advance */
 next_glyph:
         *axis += *glyph_advance;
     }
@@ -1260,8 +1321,8 @@ int main(void) {
     static char *font_files[] = {
         /*"/usr/share/fonts/nerdfonts/CaskaydiaCoveNerdFont-Regular.ttf", */
         /*"/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",*/
-        "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
         "/usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
 #if 1
         "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
 #else
@@ -1275,20 +1336,25 @@ int main(void) {
     static sw_font_t fonts[SU_LENGTH(font_files)];
     /* "hello world | fi | اَلْعَرَبِيَّةُ | עִבְרִית | 👨‍👩‍👧‍👦 🇸🇪 🧍‍♀️ | привет, мир! | 你好世界" */
 #if 1
-    block.text = su_string_("hello world | fi | اَلْعَرَبِيَّةُ | עִבְרִית | 👨‍👩‍👧‍👦 🇸🇪 🧍‍♀️ | привет, мир! | 你好世界");
+    su_string_t text = su_string_("hello world | fi | اَلْعَرَبِيَّةُ | עִבְרִית | 👨‍👩‍👧‍👦 🇸🇪 🧍‍♀️ | привет, мир! | 你好世界");
 #elif 0
-    block.text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80");
+    su_string_t text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80");
 #elif 0
-    block.text = su_string_(/*"\xCC\x81 A\xCC\x81\xCC\x80" "\xD9\x8E"*/ "\xEF\xB7\xB2" /*"\xE0\xA5\x98"*/);
+    su_string_t text = su_string_(/*"\xCC\x81 A\xCC\x81\xCC\x80" "\xD9\x8E"*/ "\xEF\xB7\xB2" /*"\xE0\xA5\x98"*/);
 #elif 0
-    block.text = su_string_("\xE1\xA0\xA0\xE1\xA0\xA8\xE1\xA0\xB6 | \xEA\xA1\x80\xEA\xA1\x83");
-#else
-    block.text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80 | \xCC\x81 A\xCC\x81\xCC\x80 \xD9\x8E \xEF\xB7\xB2 \xE0\xA5\x98");
+    su_string_t text = su_string_("\xE1\xA0\xA0\xE1\xA0\xA8\xE1\xA0\xB6 | \xEA\xA1\x80\xEA\xA1\x83");
+#elif 0
+    su_string_t text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80 | \xCC\x81 A\xCC\x81\xCC\x80 \xD9\x8E \xEF\xB7\xB2 \xE0\xA5\x98");
+#elif 1
+    su_string_t text = su_string_("👨‍👩‍👧‍👦 🇸🇪 🧍‍♀️");
 #endif
     block.text_color = color(0xFFFFFFFF);
     block.fonts = fonts;
     block.fonts_count = SU_LENGTH(font_files);
     block.vertical = SU_FALSE;
+    block.letter_spacing = 0;
+
+
 
     setlocale(LC_ALL, "");
     SU_ASSERT(su_locale_is_utf8());
@@ -1298,10 +1364,24 @@ int main(void) {
     c = init();
     SU_ASSERT(c == SU_TRUE);
 
+    {
+        /* TODO: simd, comptime utf8 -> utf32 */
+        hb_glyph_info_t *infos;
+        unsigned int count;
+        SU_ARRAY_ALLOC(block.text.codepoints, &scratch_alloc, text.len);
+        hb_buffer_reset(state.hb_buf);
+        hb_buffer_add_utf8(state.hb_buf, text.s, (int)text.len, 0, -1);
+        infos = hb_buffer_get_glyph_infos(state.hb_buf, &count);
+        block.text.codepoints_count = count;
+        for ( i = 0; i < count; ++i) {
+            block.text.codepoints[i] = infos[i].codepoint;
+        }
+    }
+
     for ( i = 0; i < SU_LENGTH(font_files); ++i) {
         sw_font_t *font = &block.fonts[i];
         su_read_entire_file(su_string_(font_files[i]), &font->in.data, &gp_alloc);
-        font->in.pixel_size = 48;
+        font->in.pixel_size = 28;
         font->in.idx = 0;
         font->in.glyph_load_flags = SW_GLYPH_LOAD_FLAG_COLOR;
         font->in.glyph_render_mode = SW_GLYPH_RENDER_MODE_NORMAL;
@@ -1317,13 +1397,6 @@ int main(void) {
     state.running = SU_TRUE;
 
     pm = render(&block);
-/*#if 0
-    block.fonts[0].in.glyph_load_flags = 0;
-#else
-    block.text = su_string_("hello world");
-#endif
-    block.vertical = SU_FALSE;
-    pm = render(&block);*/
 
     root.in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES;
     root.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
