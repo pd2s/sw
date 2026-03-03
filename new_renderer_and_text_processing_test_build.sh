@@ -32,7 +32,7 @@ case "$FREETYPE_DEP_FLAGS" in
 esac
 # hack to replace libpng with stb_image
 sed -i '/#include "pngshim.c"/d' ${FREETYPE_DEP_PATH}/src/sfnt/sfnt.c
-meson setup -Dharfbuzz=enabled -Derror_strings=true -Dpng=disabled -Dc_args="-DFT_CONFIG_OPTION_USE_PNG -w" -Dbrotli=disabled -Dbzip2=disabled -Dmmap=disabled -Dtests=disabled -Dzlib=disabled -Ddefault_library=static -Dwarning_level=0 -Db_ndebug=if-release -Dwerror=false -Dprefix=${BUILD_PATH} $FREETYPE_DEP_FLAGS $FREETYPE_DEP_BUILD_DIR > ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
+meson setup -Dharfbuzz=enabled -Derror_strings=true -Dpng=disabled -Dc_args="-DFT_CONFIG_OPTION_USE_PNG -DFT_CONFIG_OPTION_DISABLE_STREAM_SUPPORT -w" -Dbrotli=disabled -Dbzip2=disabled -Dmmap=disabled -Dtests=disabled -Dzlib=disabled -Ddefault_library=static -Dwarning_level=0 -Db_ndebug=if-release -Dwerror=false -Dprefix=${BUILD_PATH} $FREETYPE_DEP_FLAGS $FREETYPE_DEP_BUILD_DIR > ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 meson compile -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 meson install -C $FREETYPE_DEP_BUILD_DIR >> ${BUILD_PATH}/freetype.log 2>&1 || fail ${BUILD_PATH}/freetype.log
 
@@ -54,5 +54,4 @@ meson install -C $HARFBUZZ_DEP_BUILD_DIR >> ${BUILD_PATH}/harfbuzz.log 2>&1 || f
 #$AR x "${FREETYPE_DEP_PATH}/build/libfreetype.a"
 #$AR x "${HARFBUZZ_DEP_PATH}/build/src/libharfbuzz.a"
 
-# TODO: remove: $(pkg-config --cflags --libs librsvg-2.0) -w
 $CC $CFLAGS $SW_FLAGS -isystem${BUILD_PATH}/include/freetype2 "${FREETYPE_DEP_PATH}/${FREETYPE_DEP_BUILD_DIR}/libfreetype.a" "${HARFBUZZ_DEP_PATH}/${HARFBUZZ_DEP_BUILD_DIR}/src/libharfbuzz.a" ${ROOT_PATH}/new_renderer_and_text_processing_test.c -o ${ROOT_PATH}/new_renderer_and_text_processing_test
