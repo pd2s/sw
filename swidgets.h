@@ -3504,7 +3504,7 @@ generate_shm_name:
     SU_ASSERT(c == 0);
     su_snprintf(shm_name, sizeof(shm_name),"/sw-%d-%ld-%ld", pid, ts.tv_sec, ts.tv_nsec);
 
-    shm_fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, 0600);
+    shm_fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (SU_UNLIKELY(shm_fd == -1)) {
         if (errno == EEXIST) {
             goto generate_shm_name;

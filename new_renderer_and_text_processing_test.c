@@ -122,7 +122,7 @@ typedef struct sw_glyph {
     uint32_t codepoint;
     uint32_t cluster;
     int32_t x, y;
-    int32_t width, height;
+    uint32_t width, height;
     sw_font_t *font;
     SW__PRIVATE_FIELDS(sizeof(sw__glyph_t));
 } sw_glyph_t;
@@ -136,7 +136,7 @@ typedef struct sw__partial_run {
 typedef struct sw__text_run {
     sw_glyph_t *glyphs;
     size_t glyphs_count;
-    int32_t w, h;
+    uint32_t width, height;
     su_bool32_t vertical;
     uint32_t clusters_count;
 } sw__text_run_t;
@@ -750,7 +750,7 @@ shape:
     }
 
     new_text_run.vertical = block->vertical;
-    new_text_run.w = new_text_run.h = new_text_run.clusters_count = 0;
+    new_text_run.width = new_text_run.height = new_text_run.clusters_count = 0;
     if (cache->text_run.glyphs &&
             (cache->text_run.glyphs_count >= new_text_run.glyphs_count)) {
         new_text_run.glyphs = cache->text_run.glyphs;
@@ -760,10 +760,10 @@ shape:
     }
 
     if (block->vertical) {
-        axis = &new_text_run.h;
+        axis = (int32_t *)&new_text_run.height;
         glyph_advance_field_offset = SU_OFFSETOF(sw__glyph_t, y_advance);
     } else {
-        axis = &new_text_run.w;
+        axis = (int32_t *)&new_text_run.width;
         glyph_advance_field_offset = SU_OFFSETOF(sw__glyph_t, x_advance);
     }
 
@@ -953,28 +953,28 @@ shape:
 render:
     if (block->vertical) {
         FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].sw__private)->face->size->metrics;
-        cache->text_run.w = (int32_t)(((float)metrics->height / 64.f) + 0.5f); /* TODO: width analog */
-        cache->text_run.h += (int32_t)(block->letter_spacing * (cache->text_run.clusters_count - 1));
-        pen_x = (cache->text_run.w / 2);
+        cache->text_run.width = (uint32_t)(((float)metrics->height / 64.f) + 0.5f); /* TODO: width analog */
+        cache->text_run.height += block->letter_spacing * (cache->text_run.clusters_count - 1);
+        pen_x = (cache->text_run.width / 2);
         axis = &pen_y;
         glyph_advance_field_offset = SU_OFFSETOF(sw__glyph_t, y_advance);
     } else {
         FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].sw__private)->face->size->metrics;
-        cache->text_run.w += (int32_t)(block->letter_spacing * (cache->text_run.clusters_count - 1));
-        cache->text_run.h = (int32_t)(((float)metrics->height / 64.f) + 0.5f);
-        pen_y = (int32_t)((float)cache->text_run.h + ((float)metrics->descender / 64.f) + 0.5f);
+        cache->text_run.width += block->letter_spacing * (cache->text_run.clusters_count - 1);
+        cache->text_run.height = (uint32_t)(((float)metrics->height / 64.f) + 0.5f);
+        pen_y = (int32_t)((float)cache->text_run.height + ((float)metrics->descender / 64.f) + 0.5f);
         axis = &pen_x;
         glyph_advance_field_offset = SU_OFFSETOF(sw__glyph_t, x_advance);
     }
 
-    SU_ASSERT(cache->text_run.w > 0);
-    SU_ASSERT(cache->text_run.h > 0);
+    SU_ASSERT(cache->text_run.width > 0);
+    SU_ASSERT(cache->text_run.height > 0);
 
     SU_ALLOCTS( ret, &gp_alloc,
-        (sizeof(ret->width) + sizeof(ret->height) + (size_t)(cache->text_run.w * cache->text_run.h * 4)));
-    ret->width = (uint32_t)cache->text_run.w;
-    ret->height = (uint32_t)cache->text_run.h;
-    SU_MEMSET(ret->pixels, 0xFF, (size_t)(cache->text_run.w * cache->text_run.h * 4));
+        (sizeof(ret->width) + sizeof(ret->height) + cache->text_run.width * cache->text_run.height * 4));
+    ret->width = cache->text_run.width;
+    ret->height = cache->text_run.height;
+    SU_MEMSET(ret->pixels, 0xFF, cache->text_run.width * cache->text_run.height * 4);
 
     for ( g = 0; ; ++g) {
         sw_glyph_t *glyph = &cache->text_run.glyphs[g];
@@ -1013,22 +1013,18 @@ render:
 
         /* TODO: rotation */
         if (cached_glyph->data) {
-            /* int32_t y, x; */
-            int32_t start_x = 0, start_y = 0;
-            int32_t end_x, end_y;
-            int32_t dst_x_offs, dst_y_offs;
+            uint32_t width, height;
+            int32_t dst_x, dst_y;
 
             if (cached_glyph->scale_factor != 1.f) {
-                /* float inv_scale = (1.f / cached_glyph->scale_factor); */
-
-                end_x = (int32_t)((float)cached_glyph->width * cached_glyph->scale_factor + 0.5f);
-                end_y = (int32_t)((float)cached_glyph->height * cached_glyph->scale_factor + 0.5f);
+                width = (uint32_t)((float)cached_glyph->width * cached_glyph->scale_factor + 0.5f);
+                height = (uint32_t)((float)cached_glyph->height * cached_glyph->scale_factor + 0.5f);
                 if (block->vertical) {
-                    dst_x_offs = ((cache->text_run.w - end_x) / 2);
-                    dst_y_offs = pen_y;
+                    dst_x = ((cache->text_run.width - width) / 2);
+                    dst_y = pen_y;
                 } else {
-                    dst_x_offs = pen_x;
-                    dst_y_offs = ((cache->text_run.h - end_y) / 2);
+                    dst_x = pen_x;
+                    dst_y = ((cache->text_run.height - height) / 2);
                 }
 
                 /* fow now, only bilinear filter is available TODO: more filters */
@@ -1038,14 +1034,14 @@ render:
                     su_argb32_mask8_bilinear_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height, cached_glyph->pitch,
-                            dst_x_offs, dst_y_offs,
-                            (uint32_t)end_x, (uint32_t)end_y);
+                            dst_x, dst_y,
+                            width, height);
                     break;
                 case FT_PIXEL_MODE_BGRA:
                     su_argb32_bilinear_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             (uint32_t *)(void *)cached_glyph->data, cached_glyph->width, cached_glyph->height,
-                            dst_x_offs, dst_y_offs,
-                            (uint32_t)end_x, (uint32_t)end_y);
+                            dst_x, dst_y,
+                            width, height);
                     break;
                 case FT_PIXEL_MODE_NONE:
                 case FT_PIXEL_MODE_MONO:
@@ -1058,52 +1054,48 @@ render:
                     SU_ASSERT_UNREACHABLE;
                 }
             } else {
-                end_x = (int32_t)cached_glyph->width;
-                end_y = (int32_t)cached_glyph->height;
-                dst_x_offs = (pen_x + (cached_glyph->left + glyph_priv->x_offset));
-                dst_y_offs = (pen_y - (cached_glyph->top + glyph_priv->y_offset));
+                width = cached_glyph->width;
+                height = cached_glyph->height;
+                dst_x = (pen_x + (cached_glyph->left + glyph_priv->x_offset));
+                dst_y = (pen_y - (cached_glyph->top + glyph_priv->y_offset));
 
                 switch (cached_glyph->pixel_mode) {
                 case FT_PIXEL_MODE_GRAY:
                     su_argb32_mask8_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height, cached_glyph->pitch,
-                            dst_x_offs, dst_y_offs, start_x, start_y,
-                            (uint32_t)(dst_x_offs + end_x), (uint32_t)(dst_y_offs + end_y));
+                            dst_x, dst_y,
+                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
                     break;
                 case FT_PIXEL_MODE_BGRA:
                     su_argb32_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             (uint32_t *)(void *)cached_glyph->data, cached_glyph->width, cached_glyph->height,
-                            dst_x_offs, dst_y_offs, start_x, start_y,
-                            (uint32_t)(dst_x_offs + end_x), (uint32_t)(dst_y_offs + end_y));
+                            dst_x, dst_y, 0, 0,
+                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
                     break;
                 case FT_PIXEL_MODE_MONO:
                     su_argb32_mask1_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height, cached_glyph->pitch,
-                            dst_x_offs, dst_y_offs, start_x, start_y,
-                            (uint32_t)(dst_x_offs + end_x), (uint32_t)(dst_y_offs + end_y));
+                            dst_x, dst_y,
+                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
                     break;
                 case FT_PIXEL_MODE_LCD:
-                    if (end_x > ((int32_t)cached_glyph->width / 3)) {
-                        end_x = ((int32_t)cached_glyph->width / 3);
-                    }
                     SU_ASSERT((cached_glyph->width % 3) == 0);
                     su_argb32_mask24_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width / 3, cached_glyph->height, cached_glyph->pitch,
-                            dst_x_offs, dst_y_offs, start_x, start_y,
-                            (uint32_t)(dst_x_offs + end_x), (uint32_t)(dst_y_offs + end_y));
+                            dst_x, dst_y,
+                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
                     break;
-                case FT_PIXEL_MODE_LCD_V: {
+                case FT_PIXEL_MODE_LCD_V:
                     SU_ASSERT((cached_glyph->height % 3) == 0);
                     su_argb32_mask24v_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height / 3, cached_glyph->pitch,
-                            dst_x_offs, dst_y_offs, start_x, start_y,
-                            (uint32_t)(dst_x_offs + end_x), (uint32_t)(dst_y_offs + end_y));
+                            dst_x, dst_y,
+                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
                     break;
-                }
                 case FT_PIXEL_MODE_NONE:
                 case FT_PIXEL_MODE_GRAY2:
                 case FT_PIXEL_MODE_GRAY4:
@@ -1112,10 +1104,10 @@ render:
                     SU_ASSERT_UNREACHABLE;
                 }
             }
-            glyph->x = dst_x_offs;
-            glyph->y = dst_y_offs;
-            glyph->width = (end_x - start_x);
-            glyph->height = (end_y - start_y);
+            glyph->x = dst_x;
+            glyph->y = dst_y;
+            glyph->width = width;
+            glyph->height = height;
         } /* ? TODO: else,next_glyph: set glyph->x = pen_x, glyph->y = pen_y, glyph->width = glyph_priv->x_advance, glyph->height = glyph_priv->y_advance */
         *axis += *glyph_advance;
     }
@@ -1124,38 +1116,38 @@ render:
     {
         sw_font_t *font = &block->fonts[0];
         sw__font_t *font_priv = (sw__font_t *)&font->sw__private;
-        int32_t start_x, start_y;
-        int32_t end_x, end_y;
+        int32_t x, y;
+        uint32_t width, height;
 
         if (block->vertical) {
-            start_y = 0;
-            end_y = cache->text_run.h;
-            start_x = (cache->text_run.w - (int32_t)font_priv->underline_thickness); /* TODO: rework */
-            end_x = (start_x + (int32_t)font_priv->underline_thickness);
+            y = 0;
+            height = cache->text_run.height;
+            x = ((int32_t)cache->text_run.width - (int32_t)font_priv->underline_thickness); /* TODO: rework */
+            width = (uint32_t)(x + (int32_t)font_priv->underline_thickness);
             su_argb32_rect_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
-                    block->underline_color.u32, start_x, start_y,
-                    (uint32_t)(start_x + end_x), (uint32_t)(start_y + end_y));
+                    block->underline_color.u32, x, y,
+                    (uint32_t)(x + (int32_t)width), (uint32_t)(y + (int32_t)height));
 
-            start_x = ((cache->text_run.w - (int32_t)font_priv->strikeout_thickness) / 2);
-            end_x = (start_x + (int32_t)font_priv->strikeout_thickness);
+            x = (((int32_t)cache->text_run.width - (int32_t)font_priv->strikeout_thickness) / 2);
+            width = (uint32_t)(x + (int32_t)font_priv->strikeout_thickness);
             su_argb32_rect_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
-                    block->strikeout_color.u32, start_x, start_y,
-                    (uint32_t)(start_x + end_x), (uint32_t)(start_y + end_y));
+                    block->strikeout_color.u32, x, y,
+                    (uint32_t)(x + (int32_t)width), (uint32_t)(y + (int32_t)height));
         } else {
-            start_x = 0;
-            end_x = cache->text_run.w;
+            x = 0;
+            width = cache->text_run.width;
 
-            start_y = (pen_y - font_priv->underline_offset);
-            end_y = (start_y + (int32_t)font_priv->underline_thickness);
+            y = (pen_y - font_priv->underline_offset);
+            height = (uint32_t)(y + (int32_t)font_priv->underline_thickness);
             su_argb32_rect_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
-                    block->underline_color.u32, start_x, start_y,
-                    (uint32_t)(start_x + end_x), (uint32_t)(start_y + end_y));
+                    block->underline_color.u32, x, y,
+                    (uint32_t)(x + (int32_t)width), (uint32_t)(y + (int32_t)height));
 
-            start_y = (pen_y - font_priv->strikeout_offset);
-            end_y = (start_y + (int32_t)font_priv->strikeout_thickness);
+            y = (pen_y - font_priv->strikeout_offset);
+            height = (uint32_t)(y + (int32_t)font_priv->strikeout_thickness);
             su_argb32_rect_blend_argb32((uint32_t *)ret->pixels, ret->width, ret->height,
-                    block->strikeout_color.u32, start_x, start_y,
-                    (uint32_t)(start_x + end_x), (uint32_t)(start_y + end_y));
+                    block->strikeout_color.u32, x, y,
+                    (uint32_t)(x + (int32_t)width), (uint32_t)(y + (int32_t)height));
         }
     }
 
@@ -1240,7 +1232,7 @@ int main(void) {
         /*"/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",*/
         "/usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf",
         "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
-#if 0
+#if 1
         "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
 #else
         "/home/user/Downloads/tmp/TwitterColorEmoji-SVGinOT-Linux-15.1.0/TwitterColorEmoji-SVGinOT.ttf", /* svg */
@@ -1263,9 +1255,9 @@ int main(void) {
 #elif 0
     su_string_t text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80 | \xCC\x81 A\xCC\x81\xCC\x80 \xD9\x8E \xEF\xB7\xB2 \xE0\xA5\x98");
 #elif 1
-    su_string_t text = su_string_("🧍‍♀️");
+    su_string_t text = su_string_("р");
 #endif
-    block.text_color = color(0x80FF0000);
+    block.text_color = color(0x80808080);
     block.fonts = fonts;
     block.fonts_count = SU_LENGTH(font_files);
     block.vertical = SU_FALSE;
@@ -1316,6 +1308,23 @@ int main(void) {
     state.running = SU_TRUE;
 
     pm = render(&block);
+
+#if 0
+    {
+        su_fat_ptr_t data;
+        su_string_t path = su_string_("test_pm");
+        size_t len = ((pm->width * pm->height * 4) + sizeof(pm->width) + sizeof(pm->height));
+#if 0
+        data.ptr = pm;
+        data.len = len;
+        su_write_entire_file(path, data);
+#else
+        su_read_entire_file(path, &data, &gp_alloc);
+        SU_ASSERT(SU_MEMCMP(pm, data.ptr, len) == 0);
+        SU_FREE(&gp_alloc, data.ptr);
+#endif
+    }
+#endif
 
     root.in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES;
     root.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;

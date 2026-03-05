@@ -687,22 +687,22 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
 static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
 static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
 static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
 static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
 static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
@@ -714,6 +714,7 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
 
+static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t);
 static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *);
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
     const su_allocator_t *, su_hash_table__su_file_cache_t__t *cache);
@@ -1018,6 +1019,7 @@ typedef su_json_ast_t json_ast_t;
 #define argb32_mask24v_blend_argb32 su_argb32_mask24v_blend_argb32
 #define argb32_mask8_bilinear_blend_argb32 su_argb32_mask8_bilinear_blend_argb32
 
+#define write_entire_file su_write_entire_file
 #define read_entire_file su_read_entire_file
 #define read_entire_file_with_cache su_read_entire_file_with_cache
 
@@ -2337,25 +2339,24 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
 
 #if SU_WITH_SIMD && defined(__AVX2__)
         for ( ; (x + 8) <= w; x += 8) {
-            __m256i src_8x32;
-            uint32_t src_amask_8x32;
+            __m256i src_8x32, src_a_8x32;
 
             src_8x32 = _mm256_loadu_si256((__m256i_u *)&src_row[x]);
-            src_amask_8x32 = (uint32_t)_mm256_movemask_epi8(src_8x32);
-            if (src_amask_8x32 == 0) {
+            src_a_8x32 = _mm256_shuffle_epi8(src_8x32, a_mask);
+
+            if (_mm256_testc_si256(const_0, src_a_8x32)) {
                 continue;
-            } else if (src_amask_8x32 == UINT32_MAX) {
+            } else if (_mm256_testc_si256(src_a_8x32, const_255_32x8)) {
                 _mm256_storeu_si256((__m256i_u *)&dst_row[x], src_8x32);
             } else {
                 __m256i dst_8x32, dst_16x16_lo, dst_16x16_hi;
-                __m256i src_a_8x32, inv_src_a_8x32, inv_src_a_16x16_lo, inv_src_a_16x16_hi;
+                __m256i inv_src_a_8x32, inv_src_a_16x16_lo, inv_src_a_16x16_hi;
                 __m256i result_8x32;
 
                 dst_8x32 = _mm256_loadu_si256((__m256i_u *)&dst_row[x]);
                 dst_16x16_lo = _mm256_unpacklo_epi8(dst_8x32, const_0);
                 dst_16x16_hi = _mm256_unpackhi_epi8(dst_8x32, const_0);
 
-                src_a_8x32 = _mm256_shuffle_epi8(src_8x32, a_mask);
                 inv_src_a_8x32 = _mm256_sub_epi32(const_255_32x8, src_a_8x32);
                 inv_src_a_16x16_lo = _mm256_unpacklo_epi8(inv_src_a_8x32, const_0);
                 inv_src_a_16x16_hi = _mm256_unpackhi_epi8(inv_src_a_8x32, const_0);
@@ -2411,7 +2412,7 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
 static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
     uint32_t x, y;
 
@@ -2419,6 +2420,8 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     uint32_t color_r = ((color >> 16) & 0xFF);
     uint32_t color_g = ((color >> 8) & 0xFF);
     uint32_t color_b = ((color >> 0) & 0xFF);
+
+    uint32_t mask_x = 0, mask_y = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
     __m256i const_0 = _mm256_setzero_si256();
@@ -2435,6 +2438,14 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     __m256i mask_mask = _mm256_setr_epi8(
         0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
         4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7);
+
+#define ZERO 0x80
+__m256i src_a_mask = _mm256_setr_epi8(
+        6, ZERO, 6, ZERO, 6, ZERO, 6, ZERO,
+        14, ZERO, 14, ZERO, 14, ZERO, 14, ZERO,
+        22, ZERO, 22, ZERO, 22, ZERO, 22, ZERO,
+        30, ZERO, 30, ZERO, 30, ZERO, 30, ZERO);
+#undef ZERO
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
     if (dst_x < 0) {
@@ -2443,7 +2454,7 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
             return;
         }
         dst_x = 0;
-        mask_x += (int32_t)shift;
+        mask_x += shift;
         w -= shift;
     }
     if (dst_y < 0) {
@@ -2452,26 +2463,7 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
             return;
         }
         dst_y = 0;
-        mask_y += (int32_t)shift;
-        h -= shift;
-    }
-
-    if (mask_x < 0) {
-        uint32_t shift = (uint32_t)(-mask_x);
-        if (shift >= w) {
-            return;
-        }
-        mask_x = 0;
-        dst_x += (int32_t)shift;
-        w -= shift;
-    }
-    if (mask_y < 0) {
-        uint32_t shift = (uint32_t)(-mask_y);
-        if (shift >= h) {
-            return;
-        }
-        mask_y = 0;
-        dst_y += (int32_t)shift;
+        mask_y += shift;
         h -= shift;
     }
 
@@ -2485,14 +2477,14 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
         h = (dst_h - (uint32_t)dst_y);
     }
 
-    if ((mask_x >= (int32_t)mask_w) || (mask_y >= (int32_t)mask_h)) {
+    if ((mask_x >= mask_w) || (mask_y >= mask_h)) {
         return;
     }
-    if (w > (mask_w - (uint32_t)mask_x)) {
-        w = (mask_w - (uint32_t)mask_x);
+    if (w > (mask_w - mask_x)) {
+        w = (mask_w - mask_x);
     }
-    if (h > (mask_h - (uint32_t)mask_y)) {
-        h = (mask_h - (uint32_t)mask_y);
+    if (h > (mask_h - mask_y)) {
+        h = (mask_h - mask_y);
     }
 
     if (color_a == 0) {
@@ -2500,7 +2492,7 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     } else if (color_a == 255) {
         for ( y = 0; y < h; ++y) {
             uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
-            uint8_t *mask_row = &mask[((uint32_t)mask_y + y) * mask_pitch + (uint32_t)mask_x];
+            uint8_t *mask_row = &mask[(mask_y + y) * mask_pitch + mask_x];
 
             x = 0;
 
@@ -2595,7 +2587,7 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     } else {
         for ( y = 0; y < h; ++y) {
             uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
-            uint8_t *mask_row = &mask[((uint32_t)mask_y + y) * mask_pitch + (uint32_t)mask_x];
+            uint8_t *mask_row = &mask[(mask_y + y) * mask_pitch + mask_x];
 
             x = 0;
 
@@ -2632,13 +2624,8 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
                     src_lo_16x16 = _mm256_mulhi_epu16(src_lo_16x16, const_257_16x16);
                     src_hi_16x16 = _mm256_mulhi_epu16(src_hi_16x16, const_257_16x16);
 
-                    /* TODO: optimize */
-                    src_a_lo_16x16 = _mm256_mullo_epi16(src_a_16x16_, mask_lo_16x16);
-                    src_a_hi_16x16 = _mm256_mullo_epi16(src_a_16x16_, mask_hi_16x16);
-                    src_a_lo_16x16 = _mm256_add_epi16(src_a_lo_16x16, const_128_16x16);
-                    src_a_hi_16x16 = _mm256_add_epi16(src_a_hi_16x16, const_128_16x16);
-                    src_a_lo_16x16 = _mm256_mulhi_epu16(src_a_lo_16x16, const_257_16x16);
-                    src_a_hi_16x16 = _mm256_mulhi_epu16(src_a_hi_16x16, const_257_16x16);
+                    src_a_lo_16x16 = _mm256_shuffle_epi8(src_lo_16x16, src_a_mask);
+                    src_a_hi_16x16 = _mm256_shuffle_epi8(src_hi_16x16, src_a_mask);       
                 }
 
                 inv_src_a_lo_16x16 = _mm256_subs_epu16(const_255_16x16, src_a_lo_16x16);
@@ -2706,7 +2693,7 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
 static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
     uint32_t x, y;
     uint32_t sa = ((color >> 24) & 0xFF);
@@ -2714,7 +2701,8 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     uint32_t sg = ((color >> 8) & 0xFF);
     uint32_t sb = ((color >> 0) & 0xFF);
     uint32_t inv_sa = (255 - sa);
-    uint32_t start_bit = (mask_x & 7);
+    uint32_t start_bit;
+    uint32_t mask_x = 0, mask_y = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
     __m256i src_8x32 = _mm256_set1_epi32((int)color);
@@ -2728,6 +2716,7 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     __m256i shift_8x32 = _mm256_setr_epi32(7, 6, 5, 4, 3, 2, 1, 0);
 #endif /* SU_WITH_SIMD && __AVX2__ */
 
+    /* TODO: fast paths */
     if (sa == 0) {
         return;
     }
@@ -2738,7 +2727,7 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
             return;
         }
         dst_x = 0;
-        mask_x += (int32_t)shift;
+        mask_x += shift;
         w -= shift;
     }
     if (dst_y < 0) {
@@ -2747,26 +2736,7 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
             return;
         }
         dst_y = 0;
-        mask_y += (int32_t)shift;
-        h -= shift;
-    }
-
-    if (mask_x < 0) {
-        uint32_t shift = (uint32_t)(-mask_x);
-        if (shift >= w) {
-            return;
-        }
-        mask_x = 0;
-        dst_x += (int32_t)shift;
-        w -= shift;
-    }
-    if (mask_y < 0) {
-        uint32_t shift = (uint32_t)(-mask_y);
-        if (shift >= h) {
-            return;
-        }
-        mask_y = 0;
-        dst_y += (int32_t)shift;
+        mask_y += shift;
         h -= shift;
     }
 
@@ -2780,24 +2750,26 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
         h = (dst_h - (uint32_t)dst_y);
     }
 
-    if ((mask_x >= (int32_t)mask_w) || (mask_y >= (int32_t)mask_h)) {
+    if ((mask_x >= mask_w) || (mask_y >= mask_h)) {
         return;
     }
-    if (w > (mask_w - (uint32_t)mask_x)) {
-        w = (mask_w - (uint32_t)mask_x);
+    if (w > (mask_w - mask_x)) {
+        w = (mask_w - mask_x);
     }
-    if (h > (mask_h - (uint32_t)mask_y)) {
-        h = (mask_h - (uint32_t)mask_y);
+    if (h > (mask_h - mask_y)) {
+        h = (mask_h - mask_y);
     }
+
+    start_bit = (mask_x & 7);
 
     for ( y = 0; y < h; ++y) {
         uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
-        uint8_t *mask_row = &mask[((uint32_t)mask_y + y) * mask_pitch];
+        uint8_t *mask_row = &mask[(mask_y + y) * mask_pitch];
 
         x = 0;
 
         for ( ; ((start_bit + x) & 7) && (x < w); ++x) {
-            uint32_t p = ((uint32_t)mask_x + x);
+            uint32_t p = (mask_x + x);
             if (mask_row[p >> 3] & (0x80 >> (p & 7))) {
                 uint32_t d = dst_row[x];
 
@@ -2817,7 +2789,7 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
 
 #if SU_WITH_SIMD && defined(__AVX2__)
         for ( ; (x + 8) <= w; x += 8) {
-            uint8_t m = mask_row[((uint32_t)mask_x + x) >> 3];
+            uint8_t m = mask_row[(mask_x + x) >> 3];
             __m256i m_8x32;
             __m256i dst_8x32, dst_lo_16x16, dst_hi_16x16;
             __m256i result_8x32;
@@ -2848,7 +2820,7 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
 #endif /* SU_WITH_SIMD && __AVX2__ */
 
         for ( ; x < w; ++x) {
-            uint32_t p = ((uint32_t)mask_x + x);
+            uint32_t p = (mask_x + x);
             if (mask_row[p >> 3] & (0x80 >> (p & 7))) {
                 uint32_t d = dst_row[x];
 
@@ -2871,14 +2843,17 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
 static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
+    /* TODO: fast paths, component alpha, rgb/bgr */
     uint32_t x, y;
 
     uint32_t color_a = ((color >> 24) & 0xFF);
     uint32_t color_r = ((color >> 16) & 0xFF);
     uint32_t color_g = ((color >> 8) & 0xFF);
     uint32_t color_b = ((color >> 0) & 0xFF);
+
+    uint32_t mask_x = 0, mask_y = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
     __m256i const_0 = _mm256_setzero_si256();
@@ -2925,7 +2900,7 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
             return;
         }
         dst_x = 0;
-        mask_x += (int32_t)shift;
+        mask_x += shift;
         w -= shift;
     }
     if (dst_y < 0) {
@@ -2934,26 +2909,7 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
             return;
         }
         dst_y = 0;
-        mask_y += (int32_t)shift;
-        h -= shift;
-    }
-
-    if (mask_x < 0) {
-        uint32_t shift = (uint32_t)(-mask_x);
-        if (shift >= w) {
-            return;
-        }
-        mask_x = 0;
-        dst_x += (int32_t)shift;
-        w -= shift;
-    }
-    if (mask_y < 0) {
-        uint32_t shift = (uint32_t)(-mask_y);
-        if (shift >= h) {
-            return;
-        }
-        mask_y = 0;
-        dst_y += (int32_t)shift;
+        mask_y += shift;
         h -= shift;
     }
 
@@ -2967,24 +2923,25 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
         h = (dst_h - (uint32_t)dst_y);
     }
 
-    if ((mask_x >= (int32_t)mask_w) || (mask_y >= (int32_t)mask_h)) {
+    if ((mask_x >= mask_w) || (mask_y >= mask_h)) {
         return;
     }
-    if (w > (mask_w - (uint32_t)mask_x)) {
-        w = (mask_w - (uint32_t)mask_x);
+    if (w > (mask_w - mask_x)) {
+        w = (mask_w - mask_x);
     }
-    if (h > (mask_h - (uint32_t)mask_y)) {
-        h = (mask_h - (uint32_t)mask_y);
+    if (h > (mask_h - mask_y)) {
+        h = (mask_h - mask_y);
     }
 
     for ( y = 0; y < h; ++y) {
         uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
-        uint8_t *mask_row = &mask[((uint32_t)mask_y + y) * mask_pitch + (uint32_t)mask_x * 3];
+        uint8_t *mask_row = &mask[(mask_y + y) * mask_pitch + mask_x * 3];
 
         x = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
-        for ( ; (x + 8) <= w; x += 8) {
+        /* TODO: rework loads, then switch to x + 8 here */
+        for ( ; (x + 10) <= w; x += 8) {
             __m256i dst_8x32, dst_lo_16x16, dst_hi_16x16;
             __m128i mask_1_raw, mask_2_raw;
             __m256i mask_8x32, mask_lo_16x16, mask_hi_16x16;
@@ -3070,7 +3027,7 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
-    /* ? TODO: src_x/y, fast paths (a == 0/255) */
+    /* ? TODO: src_x/y, fast paths */
     int32_t x, y;
 
     float inv_scale = (1.f / (SU_MIN((float)w / (float)src_w, (float)h / (float)src_h)));
@@ -3372,7 +3329,7 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
-    /* ? TODO: mask_x/y */
+    /* ? TODO: mask_x/y, fast paths */
     int32_t x, y;
 
     float inv_scale = (1.f / (SU_MIN((float)w / (float)mask_w, (float)h / (float)mask_h)));
@@ -3564,7 +3521,7 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
             float w11 = (wx * wy);
 
             uint32_t sa = (((uint32_t)((float)color_a *
-                (c00 * w00 + c10 * w10 + c01 * w01 + c11 * w11) + 128.f) * 257) >> 16);
+                (c00 * w00 + c10 * w10 + c01 * w01 + c11 * w11) + 128.5f) * 257) >> 16);
             uint32_t sr = ((((uint32_t)color_r * sa + 128) * 257) >> 16);
             uint32_t sg = ((((uint32_t)color_g * sa + 128) * 257) >> 16);
             uint32_t sb = ((((uint32_t)color_b * sa + 128) * 257) >> 16);
@@ -3590,14 +3547,17 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
 static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
-        int32_t dst_x, int32_t dst_y, int32_t mask_x, int32_t mask_y,
+        int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
+    /* TODO: fast paths, component alpha, rgb/bgr */
     uint32_t x, y;
 
     uint32_t color_a = ((color >> 24) & 0xFF);
     uint32_t color_r = ((color >> 16) & 0xFF);
     uint32_t color_g = ((color >> 8) & 0xFF);
     uint32_t color_b = ((color >> 0) & 0xFF);
+
+    uint32_t mask_x = 0, mask_y = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
     __m256i const_0 = _mm256_setzero_si256();
@@ -3626,7 +3586,7 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
             return;
         }
         dst_x = 0;
-        mask_x += (int32_t)shift;
+        mask_x += shift;
         w -= shift;
     }
     if (dst_y < 0) {
@@ -3635,26 +3595,7 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
             return;
         }
         dst_y = 0;
-        mask_y += (int32_t)shift;
-        h -= shift;
-    }
-
-    if (mask_x < 0) {
-        uint32_t shift = (uint32_t)(-mask_x);
-        if (shift >= w) {
-            return;
-        }
-        mask_x = 0;
-        dst_x += (int32_t)shift;
-        w -= shift;
-    }
-    if (mask_y < 0) {
-        uint32_t shift = (uint32_t)(-mask_y);
-        if (shift >= h) {
-            return;
-        }
-        mask_y = 0;
-        dst_y += (int32_t)shift;
+        mask_y += shift;
         h -= shift;
     }
 
@@ -3668,21 +3609,21 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
         h = (dst_h - (uint32_t)dst_y);
     }
 
-    if ((mask_x >= (int32_t)mask_w) || (mask_y >= (int32_t)mask_h)) {
+    if ((mask_x >= mask_w) || (mask_y >= mask_h)) {
         return;
     }
-    if (w > (mask_w - (uint32_t)mask_x)) {
-        w = (mask_w - (uint32_t)mask_x);
+    if (w > (mask_w - mask_x)) {
+        w = (mask_w - mask_x);
     }
-    if (h > (mask_h - (uint32_t)mask_y)) {
-        h = (mask_h - (uint32_t)mask_y);
+    if (h > (mask_h - mask_y)) {
+        h = (mask_h - mask_y);
     }
 
     for ( y = 0; y < h; ++y) {
         uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
-        uint8_t *mask_row0 = &mask[(((uint32_t)mask_y + y) * 3 + 0) * mask_pitch + (uint32_t)mask_x];
-        uint8_t *mask_row1 = &mask[(((uint32_t)mask_y + y) * 3 + 1) * mask_pitch + (uint32_t)mask_x];
-        uint8_t *mask_row2 = &mask[(((uint32_t)mask_y + y) * 3 + 2) * mask_pitch + (uint32_t)mask_x];
+        uint8_t *mask_row0 = &mask[((mask_y + y) * 3 + 0) * mask_pitch + mask_x];
+        uint8_t *mask_row1 = &mask[((mask_y + y) * 3 + 1) * mask_pitch + mask_x];
+        uint8_t *mask_row2 = &mask[((mask_y + y) * 3 + 2) * mask_pitch + mask_x];
 
         x = 0;
 
@@ -3766,6 +3707,34 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
     }
 }
 
+static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t data) {
+    int fd;
+    size_t bytes_written;
+
+    SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
+
+    if ((fd = open(path.s, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC)) == -1) {
+        return SU_FALSE;
+    }
+
+    bytes_written = 0;
+    do {
+        ssize_t r = write(fd, &((uint8_t *)data.ptr)[bytes_written], data.len - bytes_written);
+        if (r <= 0) {
+            if ((r == -1) && (errno == EINTR)) {
+                continue;
+            }
+            close(fd);
+            return SU_FALSE;
+        }
+        bytes_written += (size_t)r;
+    } while (bytes_written < data.len);
+
+    close(fd);
+
+    return SU_TRUE;
+}
+
 static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *alloc) {
     int fd;
     struct stat sb;
@@ -3774,7 +3743,7 @@ static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, cons
 
     SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
 
-    if ((fd = open(path.s, O_RDONLY)) == -1) {
+    if ((fd = open(path.s, O_RDONLY | O_CLOEXEC)) == -1) {
         return SU_FALSE;
     }
 
@@ -3786,19 +3755,17 @@ static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, cons
     SU_ALLOCTSA(data.ptr, alloc, data.len + 1, 32);
 
     bytes_read = 0;
-    while (bytes_read < data.len) {
-        ssize_t r = read(fd, (uint8_t *)data.ptr + bytes_read, data.len - bytes_read);
-        if (r == -1) {
-            if (errno == EINTR) {
+    do {
+        ssize_t r = read(fd, &((uint8_t *)data.ptr)[bytes_read], data.len - bytes_read);
+        if (r <= 0) {
+            if ((r == -1) && (errno == EINTR)) {
                 continue;
-            } else {
-                SU_FREE(alloc, data.ptr);
-                goto error;
             }
+            SU_FREE(alloc, data.ptr);
+            goto error;
         }
-        SU_ASSERT(r != 0); /* TODO */
         bytes_read += (size_t)r;
-    }
+    } while (bytes_read < data.len); 
 
     close(fd);
     *out = data;
