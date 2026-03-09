@@ -29,7 +29,9 @@
 STATIC_ASSERT(WITH_SVG || WITH_PNG);
 
 typedef struct xdg_icon_theme__icon {
-    HASH_TABLE_FIELDS(string_t);
+    string_t key;
+    bool32_t occupied;
+    PAD32;
 #if WITH_SVG
     string_t *svg_paths;
     size_t svg_paths_count, svg_paths_capacity;
@@ -40,16 +42,17 @@ typedef struct xdg_icon_theme__icon {
 #endif /* WITH_PNG */
 } xdg_icon_theme__icon_t;
 
-/* TODO: better hash function */
-HASH_TABLE_DECLARE_DEFINE(xdg_icon_theme__icon_t, string_t, stbds_hash_string, string_equal, MEMCPY, 16)
+typedef struct xdg_icon_theme__icon_hash_table {
+    xdg_icon_theme__icon_t *items;
+    size_t capacity;
+} xdg_icon_theme__icon_hash_table_t;
 
 typedef struct xdg_icon_theme__theme xdg_icon_theme__theme_t;
-
 struct xdg_icon_theme__theme {
     allocator_t alloc; /* must be first */
     const allocator_t *user_alloc;
     string_t path, name;
-    su_hash_table__xdg_icon_theme__icon_t__t icons;
+    xdg_icon_theme__icon_hash_table_t icons;
     pthread_mutex_t lock;
     arena_t arena;
     xdg_icon_theme__theme_t *next; /* singly linked list */
@@ -73,6 +76,89 @@ static bool32_t xdg_icon_theme_cache_find_icon(xdg_icon_theme_cache_t *,
         string_t icon_name, string_t *theme_name);
 
 
+static bool32_t xdg_icon_theme__icon_hash_table_add(xdg_icon_theme__icon_hash_table_t *ht,
+        const allocator_t *alloc, string_t key, xdg_icon_theme__icon_t **out);
+
+static void xdg_icon_theme__icon_hash_table_grow(xdg_icon_theme__icon_hash_table_t *ht,
+        const allocator_t *alloc) {
+    size_t i;
+    xdg_icon_theme__icon_hash_table_t new_ht;
+
+    ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    new_ht.capacity = (ht->capacity * 2);
+    ARRAY_ALLOCC(new_ht.items, alloc, new_ht.capacity);
+
+    for ( i = 0; i < ht->capacity; ++i) {
+        xdg_icon_theme__icon_t *it = &ht->items[i];
+        if (it->occupied) {
+            xdg_icon_theme__icon_t *new_it;
+            bool32_t r = xdg_icon_theme__icon_hash_table_add(&new_ht, alloc, it->key, &new_it);
+            ASSERT(r == TRUE); NOTUSED(r);
+#if WITH_SVG
+            new_it->svg_paths = it->svg_paths;
+            new_it->svg_paths_count = it->svg_paths_count;
+            new_it->svg_paths_capacity = it->svg_paths_capacity;
+#endif /* WITH_SVG */
+#if WITH_PNG
+            new_it->png_paths = it->png_paths;
+            new_it->png_paths_count = it->png_paths_count;
+            new_it->png_paths_capacity = it->png_paths_capacity;
+#endif /* WITH_PNG */
+        }
+    }
+
+    *ht = new_ht;
+}
+
+static bool32_t xdg_icon_theme__icon_hash_table_add(xdg_icon_theme__icon_hash_table_t *ht,
+        const allocator_t *alloc, string_t key, xdg_icon_theme__icon_t **out) {
+    size_t h = (stbds_hash_string(key) & (ht->capacity - 1));
+    xdg_icon_theme__icon_t *it = &ht->items[h];
+    size_t c = 0;
+    const size_t collisions_to_resize = 128;
+
+    ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !string_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (UNLIKELY((c >= collisions_to_resize) || (c == ht->capacity))) {
+        xdg_icon_theme__icon_hash_table_grow(ht, alloc);
+        return xdg_icon_theme__icon_hash_table_add(ht, alloc, key, out);
+    } else if (it->occupied) {
+        *out = it;
+        return FALSE;
+    } else {
+        it->key = key;
+        it->occupied = TRUE;
+        *out = it;
+        return TRUE;
+    }
+}
+
+static bool32_t xdg_icon_theme__icon_hash_table_get(xdg_icon_theme__icon_hash_table_t *ht,
+        string_t key, xdg_icon_theme__icon_t **out) {
+    size_t h = (stbds_hash_string(key) & (ht->capacity - 1));
+    xdg_icon_theme__icon_t *it = &ht->items[h];
+    size_t c = 0;
+
+    ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !string_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (!it->occupied || UNLIKELY(c == ht->capacity)) {
+        return FALSE;
+    } else {
+        *out = it;
+        return TRUE;
+    }
+}
+
 static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
         string_t path, string_t name) {
     xdg_icon_theme__icon_t *icon;
@@ -89,7 +175,7 @@ static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
 
     pthread_mutex_lock(&theme->lock);
 
-    if (su_hash_table__xdg_icon_theme__icon_t__add(&theme->icons, theme->user_alloc, xdg_name, &icon)) {
+    if (xdg_icon_theme__icon_hash_table_add(&theme->icons, theme->user_alloc, xdg_name, &icon)) {
         string_init_string(&icon->key, &theme->alloc, xdg_name);
 #if WITH_SVG
         icon->svg_paths_capacity = 48;
@@ -246,8 +332,9 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
         pthread_mutex_init(&theme->lock, NULL);
         theme->user_alloc = alloc;
         theme->alloc.alloc = xdg_icon_theme__theme_alloc_alloc;
-        arena_init(&theme->arena, alloc, 67108864);
-        su_hash_table__xdg_icon_theme__icon_t__init(&theme->icons, alloc, 65536);
+        arena_init(&theme->arena, alloc, 32768);
+        theme->icons.capacity = 4096;
+        ARRAY_ALLOCC(theme->icons.items, alloc, theme->icons.capacity);
         string_init_string(&theme->name, &theme->alloc, name);
         theme->next = cache->themes;
 
@@ -374,10 +461,11 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, const alloc
 
     MEMSET(cache, 0, sizeof(*cache));
 
-    arena_init(&cache->unthemed.arena, alloc, 67108864);
+    arena_init(&cache->unthemed.arena, alloc, 16384);
     cache->unthemed.alloc.alloc = xdg_icon_theme__theme_alloc_alloc;
     cache->unthemed.user_alloc = alloc;
-    su_hash_table__xdg_icon_theme__icon_t__init(&cache->unthemed.icons, alloc, 65536);
+    cache->unthemed.icons.capacity = 1024;
+    ARRAY_ALLOCC(cache->unthemed.icons.items, alloc, cache->unthemed.icons.capacity);
     pthread_mutex_init(&cache->unthemed.lock, NULL);
     cache->basedirs_capacity = 32;
     ARRAY_ALLOC(cache->basedirs, alloc, cache->basedirs_capacity);
@@ -452,13 +540,13 @@ static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, const alloc
 
     arena_fini(&cache->unthemed.arena, alloc);
     pthread_mutex_destroy(&cache->unthemed.lock);
-    su_hash_table__xdg_icon_theme__icon_t__fini(&cache->unthemed.icons, alloc);
+    FREE(alloc, cache->unthemed.icons.items);
 
     for ( theme = cache->themes; theme; ) {
         xdg_icon_theme__theme_t *next = theme->next;
         arena_fini(&theme->arena, alloc);
         pthread_mutex_destroy(&theme->lock);
-        su_hash_table__xdg_icon_theme__icon_t__fini(&theme->icons, alloc);
+        FREE(alloc, theme->icons.items);
         FREE(alloc, theme);
         theme = next;
     }
@@ -474,7 +562,7 @@ static bool32_t xdg_icon_theme__find_icon(
     NOTUSED(svgs_out); NOTUSED(svgs_count_out);
     NOTUSED(pngs_out); NOTUSED(pngs_count_out);
 
-    if (su_hash_table__xdg_icon_theme__icon_t__get(&theme->icons, icon_name , &c)) {
+    if (xdg_icon_theme__icon_hash_table_get(&theme->icons, icon_name, &c)) {
 #if WITH_SVG
         if (c->svg_paths_count > 0) {
             *svgs_out = c->svg_paths;

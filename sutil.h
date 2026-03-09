@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <stdarg.h>
 
+#include <math.h>
+
 #define SU__CONCAT(a, b) a##b
 #define SU_CONCAT(a, b) SU__CONCAT(a, b)
 
@@ -142,7 +144,6 @@
     #define SU_OFFSETOF offsetof
 #endif /* SU_OFFSETOF */
 
-#include <math.h>
 #if !defined(SU_FABS)
     #define SU_FABS fabs
 #endif /* SU_FABS */
@@ -343,26 +344,6 @@ SU_STMT_START { \
 } SU_STMT_END
 /* TODO: llist_insert/append_list/after/before */
 
-/* TODO: rework */
-#define SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize) \
-\
-typedef struct su_hash_table__##type { \
-    type *items; \
-    size_t capacity; \
-} su_hash_table__##type##__t; \
-\
-static void su_hash_table__##type##__init(su_hash_table__##type##__t *, const su_allocator_t *, size_t initial_size); \
-static void su_hash_table__##type##__fini(su_hash_table__##type##__t *, const su_allocator_t *); \
-static void su_hash_table__##type##__resize(su_hash_table__##type##__t *, const su_allocator_t *, size_t new_size); \
-static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *, const su_allocator_t *, key_type, type **out); \
-static su_bool32_t su_hash_table__##type##__get(su_hash_table__##type##__t *, key_type, type **out); \
-static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *, key_type, type *out)
-
-#define SU_HASH_TABLE_FIELDS(key_type) \
-    key_type key; \
-    su_bool32_t occupied; \
-    su_bool32_t tombstone
-
 /* ? TODO: argc, argv as params */
 #define SU_ARGPARSE_LOOP_BEGIN \
     for (argv++, argc--; \
@@ -451,6 +432,7 @@ typedef struct su_page_allocator_header {
 
 #define SU_ARRAY_ALLOC(dst, alloc_, capacity)  SU_ALLOCTS(dst, alloc_, (sizeof(dst[0]) * capacity))
 #define SU_ARRAY_ALLOCC(dst, alloc_, capacity) SU_ALLOCCTS(dst, alloc_, (sizeof(dst[0]) * capacity))
+#define SU_ARRAY_ALLOCA(dst, alloc_, capacity, alignment) SU_ALLOCCTSA(dst, alloc_, (sizeof(dst[0]) * capacity), alignment)
 /* ? TODO: ARRAY_CPY, ARRAY_RESIZE */
 
 typedef struct su_string {
@@ -475,13 +457,17 @@ typedef struct su_arena {
 } su_arena_t;
 
 typedef struct su_file_cache {
-    SU_HASH_TABLE_FIELDS(su_string_t);
+    su_string_t key;
+    su_bool32_t occupied;
+    su_bool32_t tombstone;
     struct timespec st_mtim;
     su_fat_ptr_t data;
 } su_file_cache_t;
 
-/* TODO: better hash function */
-SU_HASH_TABLE_DECLARE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, SU_MEMCPY, 16);
+typedef struct su_file_cache_hash_table {
+    su_file_cache_t *items;
+    size_t capacity;
+} su_file_cache_hash_table_t;
 
 typedef struct su_json_buffer {
     char *data;
@@ -716,8 +702,18 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
 
 static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t);
 static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *);
+
+static void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, size_t initial_capacity);
+static void su_file_cache_hash_table_fini(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc);
+static void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc);
+static su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, su_string_t key, su_file_cache_t **out);
+static su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
+        su_string_t key, su_file_cache_t *out);
+
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
-    const su_allocator_t *, su_hash_table__su_file_cache_t__t *cache);
+    const su_allocator_t *, su_file_cache_hash_table_t *);
 
 static su_bool32_t su_fd_set_nonblock(int);
 static su_bool32_t su_fd_set_cloexec(int);
@@ -855,11 +851,6 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 #define LLIST_APPEND_TAIL SU_LLIST_APPEND_TAIL
 #define LLIST_POP SU_LLIST_POP
 
-#define HASH_TABLE_DECLARE SU_HASH_TABLE_DECLARE
-#define HASH_TABLE_DEFINE SU_HASH_TABLE_DEFINE
-#define HASH_TABLE_DECLARE_DEFINE SU_HASH_TABLE_DECLARE_DEFINE
-#define HASH_TABLE_FIELDS SU_HASH_TABLE_FIELDS
-
 #define ARGPARSE_LOOP_BEGIN SU_ARGPARSE_LOOP_BEGIN
 #define ARGPARSE_LOOP_END SU_ARGPARSE_LOOP_END
 #define ARGPARSE_KEY SU_ARGPARSE_KEY
@@ -879,6 +870,7 @@ typedef su_page_allocator_header_t page_allocator_header_t;
 typedef su_arena_block_t arena_block_t;
 typedef su_arena_t arena_t;
 
+typedef su_file_cache_hash_table_t file_cache_hash_table_t;
 typedef su_file_cache_t file_cache_t;
 
 typedef su_json_buffer_t json_buffer_t;
@@ -986,6 +978,7 @@ typedef su_json_ast_t json_ast_t;
 #define FREE SU_FREE
 #define ARRAY_ALLOC SU_ARRAY_ALLOC
 #define ARRAY_ALLOCC SU_ARRAY_ALLOCC
+#define ARRAY_ALLOCA SU_ARRAY_ALLOCA
 
 #define libc_alloc su_libc_alloc
 #define libc_free su_libc_free
@@ -1021,6 +1014,13 @@ typedef su_json_ast_t json_ast_t;
 
 #define write_entire_file su_write_entire_file
 #define read_entire_file su_read_entire_file
+
+#define file_cache_hash_table_init su_file_cache_hash_table_init
+#define file_cache_hash_table_fini su_file_cache_hash_table_fini
+#define file_cache_hash_table_grow su_file_cache_hash_table_grow
+#define file_cache_hash_table_add su_file_cache_hash_table_add
+#define file_cache_hash_table_del su_file_cache_hash_table_del
+
 #define read_entire_file_with_cache su_read_entire_file_with_cache
 
 #define fd_set_nonblock su_fd_set_nonblock
@@ -1072,111 +1072,6 @@ typedef su_json_ast_t json_ast_t;
 #define STB_SPRINTF_NOUNALIGNED
 
 #include <stb_sprintf.h>
-
-/* TODO: rework */
-#define SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize) \
-\
-static void su_hash_table__##type##__init(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, size_t initial_size) { \
-    SU_ASSERT(initial_size > 0); \
-    SU_ARRAY_ALLOCC(ht->items, alloc, initial_size); \
-    ht->capacity = initial_size; \
-} \
-\
-static void su_hash_table__##type##__fini(su_hash_table__##type##__t *ht, const su_allocator_t *alloc) { \
-    SU_FREE(alloc, ht->items); \
-} \
-\
-static void su_hash_table__##type##__resize(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, size_t new_size) { \
-    size_t i; \
-    su_hash_table__##type##__t new_ht; \
-    su_hash_table__##type##__init(&new_ht, alloc, new_size); \
-    for ( i = 0; i < ht->capacity; ++i) { \
-        type *it = &ht->items[i]; \
-        if (it->occupied && !it->tombstone) { \
-            type *new_it; \
-            su_hash_table__##type##__add(&new_ht, alloc, it->key, &new_it); \
-            move_item_func(new_it, it, sizeof(type)); \
-        } \
-    } \
-    su_hash_table__##type##__fini(ht, alloc); \
-    *ht = new_ht; \
-} \
-\
-static su_bool32_t su_hash_table__##type##__add(su_hash_table__##type##__t *ht, const su_allocator_t *alloc, key_type key, type **out) { \
-    size_t h = (hash_key_func(key) % ht->capacity); \
-    type *it = &ht->items[h]; \
-    size_t c = 0; \
-    for ( ; \
-            it->occupied && !keys_equal_func(it->key, key) && (c < ht->capacity); \
-            ++c) { \
-        it = &ht->items[++h % ht->capacity]; \
-    } \
-    if (c >= collisions_to_resize) { \
-        su_hash_table__##type##__resize(ht, alloc, ht->capacity * 2); \
-        return su_hash_table__##type##__add(ht, alloc, key, out); \
-    } else if (it->occupied) { \
-        if (keys_equal_func(it->key, key)) { \
-            if (out) { \
-                *out = it; \
-            } \
-            return SU_FALSE; \
-        } \
-        su_hash_table__##type##__resize(ht, alloc, ht->capacity * 2); \
-        return su_hash_table__##type##__add(ht, alloc, key, out); \
-    } else { \
-        it->key = key; \
-        it->occupied = SU_TRUE; \
-        /*it->tombstone = SU_FALSE;*/ \
-        if (out) { \
-            *out = it; \
-        } \
-        return SU_TRUE; \
-    } \
-} \
-\
-static su_bool32_t su_hash_table__##type##__get(su_hash_table__##type##__t *ht, key_type key, type **out) { \
-    size_t h = (hash_key_func(key) % ht->capacity); \
-    type *it = &ht->items[h]; \
-    size_t c = 0; \
-    for ( ; \
-            it->occupied && !keys_equal_func(it->key, key) && (c < ht->capacity); \
-            ++c) { \
-        it = &ht->items[++h % ht->capacity]; \
-    } \
-    if (it->occupied && keys_equal_func(it->key, key)) { \
-        *out = it; \
-        return SU_TRUE; \
-    } else { \
-        return SU_FALSE; \
-    } \
-} \
-\
-static su_bool32_t su_hash_table__##type##__del(su_hash_table__##type##__t *ht, key_type key, type *out) { \
-    size_t h = (hash_key_func(key) % ht->capacity); \
-    type *it = &ht->items[h]; \
-    size_t c = 0; \
-    for ( ; \
-            it->occupied && !keys_equal_func(it->key, key) && (c < ht->capacity); \
-            ++c) { \
-        it = &ht->items[++h % ht->capacity]; \
-    } \
-    if (it->occupied && keys_equal_func(it->key, key)) { \
-        if (out) { \
-            *out = *it; \
-        } \
-        it->occupied = SU_TRUE; \
-        it->tombstone = SU_TRUE; \
-        return SU_TRUE; \
-    } else { \
-        return SU_FALSE; \
-    } \
-}
-
-/* TODO: tombstone threshold, shrink */
-#define SU_HASH_TABLE_DECLARE_DEFINE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize) \
-    SU_HASH_TABLE_DECLARE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize); \
-    SU_HASH_TABLE_DEFINE(type, key_type, hash_key_func, keys_equal_func, move_item_func, collisions_to_resize)
-
 
 static void *su_libc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
     void *ptr;
@@ -3135,7 +3030,6 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
             c01_8x32 = _mm256_i32gather_epi32((void *)row1, ix0_8x32, 4);
             c11_8x32 = _mm256_i32gather_epi32((void *)row1, ix1_8x32, 4);
 
-            /* ? TODO: unpack+permute */
             c00_lo_4x32 = _mm256_extracti128_si256(c00_8x32, 0);
             c00_hi_4x32 = _mm256_extracti128_si256(c00_8x32, 1);
             c00_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c00_lo_4x32));
@@ -3707,13 +3601,68 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
     }
 }
 
+static size_t su_convert_valid_utf8_to_utf32(su_string_t input, uint32_t *output) {
+    /* TODO: simd */
+
+    size_t pos = 0;
+    uint32_t *start = output;
+    while (pos < input.len) {
+        if ((pos + 8) <= input.len) {
+            uint64_t v;
+            SU_MEMCPY(&v, &input.s[pos], sizeof(v));
+            if ((v & 0x8080808080808080) == 0) {
+                output[0] = (uint32_t)input.s[pos+0];
+                output[1] = (uint32_t)input.s[pos+1];
+                output[2] = (uint32_t)input.s[pos+2];
+                output[3] = (uint32_t)input.s[pos+3];
+                output[4] = (uint32_t)input.s[pos+4];
+                output[5] = (uint32_t)input.s[pos+5];
+                output[6] = (uint32_t)input.s[pos+6];
+                output[7] = (uint32_t)input.s[pos+7];
+                pos += 8;
+                output += 8;
+                continue;
+            }
+        }
+        {
+            uint32_t leading_byte = (uint32_t)input.s[pos];
+            if (leading_byte < 0x80) {
+                *output++ = (uint32_t)leading_byte;
+                pos++;
+            } else if ((leading_byte & 0xE0) == 0xC0) {
+                SU_ASSERT(((pos + 1) < input.len));
+                *output++ = ((uint32_t)((leading_byte & 0x1F) << 6)
+                    | (uint32_t)((uint8_t)input.s[pos + 1] & 0x3F));
+                pos += 2;
+            } else if ((leading_byte & 0xF0) == 0xE0) {
+                SU_ASSERT(((pos + 2) < input.len));
+                *output++ = (((uint32_t)(leading_byte & 0xF) << 12)
+                    | ((uint32_t)((uint8_t)input.s[pos + 1] & 0x3F) << 6)
+                    | ((uint32_t)(uint8_t)input.s[pos + 2] & 0x3F));
+                pos += 3;
+            } else if ((leading_byte & 0xF8) == 0xF0) {
+                SU_ASSERT(((pos + 3) < input.len));
+                *output++ = (((uint32_t)(leading_byte & 0x7) << 18)
+                    |   ((uint32_t)((uint8_t)input.s[pos + 1] & 0x3F) << 12)
+                    |   ((uint32_t)((uint8_t)input.s[pos + 2] & 0x3F) << 6)
+                    |   ((uint32_t)(uint8_t)input.s[pos + 3] & 0x3F));
+                pos += 4;
+            } else {
+                SU_ASSERT_UNREACHABLE;
+            }
+        }
+    }
+
+    return (size_t)(output - start);
+}
+
 static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t data) {
     int fd;
     size_t bytes_written;
 
     SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
 
-    if ((fd = open(path.s, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC)) == -1) {
+    if ((fd = open(path.s, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666)) == -1) {
         return SU_FALSE;
     }
 
@@ -3724,6 +3673,7 @@ static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t data) {
             if ((r == -1) && (errno == EINTR)) {
                 continue;
             }
+            /* ? TODO: delete file */
             close(fd);
             return SU_FALSE;
         }
@@ -3776,11 +3726,100 @@ error:
     return SU_FALSE;
 }
 
-/* TODO: better hash function */
-SU_HASH_TABLE_DEFINE(su_file_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, SU_MEMCPY, 16)
+static void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, size_t initial_capacity) {
+    /* must be power of 2 */
+    SU_ASSERT((initial_capacity > 1) && ((initial_capacity & (initial_capacity - 1)) == 0));
+
+    ht->capacity = initial_capacity;
+    SU_ARRAY_ALLOCC(ht->items, alloc, initial_capacity);
+}
+
+static void su_file_cache_hash_table_fini(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc) {
+    SU_FREE(alloc, ht->items);
+}
+
+static void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc) {
+    const size_t max_capacity = 32768;
+
+    if (SU_LIKELY(ht->capacity < max_capacity)) {
+        size_t i;
+        su_file_cache_hash_table_t new_ht;
+
+        su_file_cache_hash_table_init(&new_ht, alloc, (ht->capacity * 2));
+
+        for ( i = 0; i < ht->capacity; ++i) {
+            su_file_cache_t *it = &ht->items[i];
+            if (it->occupied && !it->tombstone) {
+                su_file_cache_t *new_it;
+                su_bool32_t r = su_file_cache_hash_table_add(&new_ht, alloc, it->key, &new_it);
+                SU_ASSERT(r == SU_TRUE); SU_NOTUSED(r);
+                new_it->st_mtim = it->st_mtim;
+                new_it->data = it->data;
+            }
+        }
+
+        su_file_cache_hash_table_fini(ht, alloc);
+        *ht = new_ht;
+    } else {
+        /* TODO: free items */
+        SU_MEMSET(ht->items, 0, sizeof(ht->items[0]) * max_capacity);
+    }
+}
+
+static su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, su_string_t key, su_file_cache_t **out) {
+    size_t h = (su_stbds_hash_string(key) & (ht->capacity - 1));
+    su_file_cache_t *it = &ht->items[h];
+    size_t c = 0;
+    const size_t collisions_to_resize = 16;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_string_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (SU_UNLIKELY((c >= collisions_to_resize) || (c == ht->capacity))) {
+        su_file_cache_hash_table_grow(ht, alloc);
+        return su_file_cache_hash_table_add(ht, alloc, key, out);
+    } else if (it->occupied) {
+        *out = it;
+        return SU_FALSE;
+    } else {
+        it->key = key;
+        it->occupied = SU_TRUE;
+        *out = it;
+        return SU_TRUE;
+    }
+}
+
+static su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
+        su_string_t key, su_file_cache_t *out) {
+    size_t h = (su_stbds_hash_string(key) & (ht->capacity - 1));
+    su_file_cache_t *it = &ht->items[h];
+    size_t c = 0;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_string_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (!it->occupied || SU_UNLIKELY(c == ht->capacity)) {
+        return SU_FALSE;
+    } else {
+        *out = *it;
+        it->occupied = SU_TRUE;
+        it->tombstone = SU_TRUE;
+        return SU_TRUE;
+    }
+}
 
 static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
-        const su_allocator_t *alloc, su_hash_table__su_file_cache_t__t *cache) {
+        const su_allocator_t *alloc, su_file_cache_hash_table_t *ht) {
     su_file_cache_t *e = NULL;
     static char buf[PATH_MAX];
     struct stat sb;
@@ -3800,14 +3839,13 @@ static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t
         goto error;
     }
 
-    if (su_hash_table__su_file_cache_t__get(cache, path, &e)) {
+    if (!su_file_cache_hash_table_add(ht, alloc, path, &e)) {
         if (SU_MEMCMP(&sb.st_mtim, &e->st_mtim, sizeof(sb.st_mtim)) == 0) {
             goto out;
         }
         SU_FREE(alloc, e->data.ptr);
         SU_MEMSET(&e->data, 0, sizeof(e->data));
     } else {
-        su_hash_table__su_file_cache_t__add(cache, alloc, path, &e);
         su_string_init_string(&e->key, alloc, path);
     }
 
@@ -3822,7 +3860,7 @@ out:
     return SU_TRUE;
 error: {
         su_file_cache_t del;
-        if (su_hash_table__su_file_cache_t__del(cache, path, &del)) {
+        if (su_file_cache_hash_table_del(ht, path, &del)) {
             su_string_fini(&del.key, alloc);
             SU_FREE(alloc, del.data.ptr);
         }

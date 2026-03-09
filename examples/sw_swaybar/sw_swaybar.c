@@ -296,7 +296,7 @@ typedef struct state {
     bool32_t visible_by_modifier;
     bool32_t visible_by_mode;
     bool32_t running;
-    su_hash_table__su_file_cache_t__t icon_cache;
+    file_cache_hash_table_t icon_cache; /* ? TODO: arena for content */
 } state_t;
 
 
@@ -3101,7 +3101,7 @@ static void setup(int argc, char *argv[]) {
     }
 
     arena_init(&state.scratch_arena, &page_allocator, 16384);
-    su_hash_table__su_file_cache_t__init(&state.icon_cache, &gp_alloc, 512);
+    file_cache_hash_table_init(&state.icon_cache, &gp_alloc, 512);
 
     state.poll_fds[POLL_FD_STATUS].fd = -1;
     state.poll_fds[POLL_FD_STATUS].events = POLLIN;
@@ -3243,7 +3243,7 @@ static void cleanup(void) {
             FREE(&gp_alloc, c->data.ptr);
             string_fini(&c->key, &gp_alloc);
         }
-        su_hash_table__su_file_cache_t__fini(&state.icon_cache, &gp_alloc);
+        file_cache_hash_table_fini(&state.icon_cache, &gp_alloc);
 
         for ( i = 0; i < config->bindings_count; ++i) {
             string_fini(&config->bindings[i].command, &gp_alloc);

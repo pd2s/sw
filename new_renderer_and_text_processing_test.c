@@ -45,21 +45,9 @@ typedef enum sw_glyph_hinting_algorithm {
     SW_GLYPH_HINTING_ALGORITHM_LCD_V = 0x40000
 } sw_glyph_hinting_algorithm_t;
 
-typedef struct sw_font_in {
-    su_fat_ptr_t data;
-    size_t idx;
-    uint32_t pixel_size; /* ? TODO: pointsize,dpi */
-    sw_glyph_render_mode_t glyph_render_mode;
-    /* ? TODO: lcd filter params */
-    sw_glyph_load_flag_mask_t glyph_load_flags;
-    sw_glyph_hinting_algorithm_t hinting_algorithm;
-    su_string_t *features; /* ? TODO: parsed form */
-    size_t features_count;
-    /* ? TODO: format-specific stuff (e.g fontvariations) */
-} sw_font_in_t;
-
 typedef struct sw__cached_glyph {
     uint8_t *data;
+    size_t data_size;
     uint32_t width, height, pitch;
     FT_Pixel_Mode pixel_mode;
     int32_t left, top;
@@ -67,10 +55,15 @@ typedef struct sw__cached_glyph {
     uint32_t pixel_size;
     sw_glyph_render_mode_t render_mode;
     sw_glyph_load_flag_mask_t load_flags;
+    /* ? TODO: cache hb_feature_t */
 } sw__cached_glyph_t;
 
 typedef struct sw__font {
-    su_fat_ptr_t data;
+    su_allocator_t alloc; /* must be first */
+    su_arena_t arena;
+    su_fat_ptr_t key;
+    su_bool32_t occupied;
+    SU_PAD32;
     FT_Face face;
     hb_font_t *hb_font;
     size_t idx;
@@ -86,9 +79,23 @@ typedef struct sw__font {
     uint32_t underline_thickness, strikeout_thickness;
 } sw__font_t;
 
+typedef struct sw__font_hash_table {
+    sw__font_t *items;
+    size_t capacity;
+} sw__font_hash_table_t;
+
 typedef struct sw_font {
-    sw_font_in_t in;
-    SW__PRIVATE_FIELDS(sizeof(sw__font_t));
+    su_fat_ptr_t data;
+    size_t idx;
+    uint32_t pixel_size;
+    sw_glyph_render_mode_t glyph_render_mode;
+    /* ? TODO: lcd filter params */
+    sw_glyph_load_flag_mask_t glyph_load_flags;
+    sw_glyph_hinting_algorithm_t hinting_algorithm;
+    su_string_t *features; /* ? TODO: parsed form */
+    size_t features_count;
+    /* ? TODO: format-specific stuff (e.g fontvariations) */
+    void *priv;
 } sw_font_t;
 
 typedef struct sw_text {
@@ -103,7 +110,7 @@ typedef struct sw_layout_block_text {
     su_bool32_t vertical;
     uint32_t letter_spacing;
     SU_PAD32;
-    /* TODO: sw_color_t */
+    /* ? TODO: sw_color_t */
     sw_color_argb32_t text_color;
     sw_color_argb32_t underline_color;
     sw_color_argb32_t strikeout_color;
@@ -142,19 +149,26 @@ typedef struct sw__text_run {
 } sw__text_run_t;
 
 typedef struct sw__text_run_cache {
-    SU_HASH_TABLE_FIELDS(sw_text_t);
+    sw_text_t key;
+    su_bool32_t occupied;
+    SU_PAD32;
     sw__text_run_t text_run; /* ? TODO: cache multiple runs for different font combinations */
     FT_Face *faces;
     size_t faces_count;
 } sw__text_run_cache_t;
 
-SU_HASH_TABLE_DECLARE(sw__text_run_cache_t, sw_text_t, sw__stbds_hash_codepoints, sw__codepoints_equal, SU_MEMCPY, 16);
+typedef struct sw__text_run_cache_hash_table {
+    sw__text_run_cache_t *items;
+    size_t capacity;
+} sw__text_run_cache_hash_table_t;
 
 typedef struct state {
     FT_Library ft;
     hb_buffer_t *hb_buf;
     hb_unicode_funcs_t *hb_unicode_funcs;
-    su_hash_table__sw__text_run_cache_t__t text_cache;
+    sw__font_hash_table_t font_cache;
+    sw__text_run_cache_hash_table_t text_cache;
+    su_arena_t font_cache_arena;
     su_arena_t text_cache_arena;
     su_arena_t scratch_arena;
     su_bool32_t running;
@@ -210,19 +224,22 @@ static su_bool32_t sw__text_equal(sw_text_t a, sw_text_t b) {
     return (SU_MEMCMP(a.codepoints, b.codepoints, a.codepoints_count) == 0);
 }
 
-/* TODO: better hash function */
-SU_HASH_TABLE_DEFINE(sw__text_run_cache_t, sw_text_t, sw__stbds_hash_text, sw__text_equal, SU_MEMCPY, 16)
+static void *sw__font_cache_alloc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
+    SU_NOTUSED(alloc);
+    return su_arena_alloc(&state.font_cache_arena, &gp_alloc, size, alignment);
+}
 
 static void *sw__text_cache_alloc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
     SU_NOTUSED(alloc);
     return su_arena_alloc(&state.text_cache_arena, &gp_alloc, size, alignment);
 }
 
-static void sw__text_cache_alloc_free(const su_allocator_t *alloc, void *ptr) {
+static void sw__noop_free(const su_allocator_t *alloc, void *ptr) {
     SU_NOTUSED(alloc); SU_NOTUSED(ptr);
 }
 
-static const su_allocator_t text_cache_alloc = { sw__text_cache_alloc_alloc, sw__text_cache_alloc_free };
+static const su_allocator_t font_cache_alloc = { sw__font_cache_alloc_alloc, sw__noop_free };
+static const su_allocator_t text_cache_alloc = { sw__text_cache_alloc_alloc, sw__noop_free };
 
 static void *scratch_alloc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
     void *ret = su_arena_alloc(&state.scratch_arena, &gp_alloc, size, alignment);
@@ -271,6 +288,8 @@ static void *alloc_realloc_ft(FT_Memory memory, long old_size, long new_size, vo
 
     return ret;
 }
+
+static struct FT_MemoryRec_ alloc_ft = { NULL, alloc_alloc_ft, alloc_free_ft, alloc_realloc_ft };
 
 void *hb_malloc_impl(size_t size) {
     void *ret;
@@ -518,6 +537,8 @@ out:
     return ret;
 }
 
+static SVG_RendererHooks resvg_hooks_ft = { resvg_init_ft, resvg_free_ft, resvg_render_ft, resvg_preset_slot_ft };
+
 static sw_color_argb32_t color(uint32_t raw) {
     sw_color_argb32_t ret;
 
@@ -535,9 +556,6 @@ static sw_color_argb32_t color(uint32_t raw) {
 }
 
 static su_bool32_t init(void) {
-    static SVG_RendererHooks resvg_hooks_ft = { resvg_init_ft, resvg_free_ft, resvg_render_ft, resvg_preset_slot_ft };
-    static struct FT_MemoryRec_ alloc_ft = { NULL, alloc_alloc_ft, alloc_free_ft, alloc_realloc_ft };
-
     FT_Error error = FT_New_Library(&alloc_ft, &state.ft);
     if (error != FT_Err_Ok) {
         return SU_FALSE;
@@ -551,36 +569,176 @@ static su_bool32_t init(void) {
 
     state.hb_unicode_funcs = hb_unicode_funcs_get_default();
     state.hb_buf = hb_buffer_create();
+
+    su_arena_init(&state.font_cache_arena, &gp_alloc, 131072);
+    state.font_cache.capacity = 256;
+    SU_ARRAY_ALLOCC(state.font_cache.items, &font_cache_alloc, state.font_cache.capacity);
+
     su_arena_init(&state.text_cache_arena, &gp_alloc, 131072);
-    su_hash_table__sw__text_run_cache_t__init(&state.text_cache, &text_cache_alloc, 1024);
+    state.text_cache.capacity = 1024;
+    SU_ARRAY_ALLOCC(state.text_cache.items, &text_cache_alloc, state.text_cache.capacity);
 
     return SU_TRUE;
-} 
+}
+
+static void face_on_destroy_ft(void *data) {
+    FT_Face face = (FT_Face)data;
+    sw__font_t *font_priv = (sw__font_t *)face->generic.data;
+
+    hb_font_destroy(font_priv->hb_font);
+
+    su_arena_fini(&font_priv->arena, &gp_alloc);
+}
 
 static void fini(void) {
-    su_arena_fini(&state.text_cache_arena, &gp_alloc);
-
     hb_buffer_destroy(state.hb_buf);
     /*hb_unicode_funcs_destroy(state.hb_unicode_funcs);*/
 
     FT_Done_Library(state.ft);
+
+    su_arena_fini(&state.text_cache_arena, &gp_alloc);
+    su_arena_fini(&state.font_cache_arena, &gp_alloc);
 }
 
-static void face_on_destroy_ft(void *data) {
-    FT_Long i;
-    FT_Face face = (FT_Face)data;
-    sw_font_t *font = (sw_font_t *)face->generic.data;
-    sw__font_t *font_priv = (sw__font_t *)&font->sw__private;
-    hb_font_destroy((hb_font_t *)font_priv->hb_font);
-    for ( i = 0; i < face->num_glyphs; ++i) {
-        sw__cached_glyph_t *g = font_priv->glyph_cache[i];
-        if (g) {
-            SU_FREE(&gp_alloc, g->data);
-            SU_FREE(&gp_alloc, g);
+static su_bool32_t sw__font_hash_table_add(sw__font_hash_table_t *ht,
+        su_fat_ptr_t key, sw__font_t **out);
+
+static void sw__font_hash_table_grow(sw__font_hash_table_t *ht) {
+    const size_t max_capacity = 1024;
+
+    if (SU_LIKELY(ht->capacity < max_capacity)) {
+        size_t i;
+        sw__font_hash_table_t new_ht;
+
+        SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+        new_ht.capacity = (ht->capacity * 2);
+        SU_ARRAY_ALLOCC(new_ht.items, &font_cache_alloc, new_ht.capacity);
+
+        for ( i = 0; i < ht->capacity; ++i) {
+            sw__font_t *it = &ht->items[i];
+            if (it->occupied) {
+                sw__font_t *new_it;
+                su_bool32_t r = sw__font_hash_table_add(&new_ht, it->key, &new_it);
+                SU_ASSERT(r == SU_TRUE); SU_NOTUSED(r);
+                new_it->face = it->face;
+                new_it->hb_font = it->hb_font;
+                new_it->idx = it->idx;
+                new_it->pixel_size = it->pixel_size;
+                new_it->glyph_load_flags = it->glyph_load_flags;
+                new_it->features = it->features;
+                new_it->features_count = it->features_count;
+                new_it->glyph_cache = it->glyph_cache;
+                new_it->underline_offset = it->underline_offset;
+                new_it->underline_thickness = it->underline_thickness;
+                new_it->strikeout_offset = it->strikeout_offset;
+                new_it->strikeout_thickness = it->strikeout_thickness;
+            }
         }
+
+        *ht = new_ht;
+    } else {
+        /* ? TODO: error check */
+        FT_Done_Library(state.ft);
+        FT_New_Library(&alloc_ft, &state.ft);
+        FT_Add_Default_Modules(state.ft);
+        FT_Property_Set(state.ft, "ot-svg", "svg-hooks", &resvg_hooks_ft);
+        su_arena_reset(&state.font_cache_arena, &gp_alloc);
+        SU_MEMSET(ht->items, 0, sizeof(ht->items[0]) * max_capacity);
     }
-    SU_FREE(&gp_alloc, font_priv->features);
-    SU_FREE(&gp_alloc, font_priv->glyph_cache);
+}
+
+static su_bool32_t sw__font_hash_table_add(sw__font_hash_table_t *ht,
+        su_fat_ptr_t key, sw__font_t **out) {
+    size_t h = (su_stbds_hash(key) & (ht->capacity - 1));
+    sw__font_t *it = &ht->items[h];
+    size_t c = 0;
+    const size_t collisions_to_resize = 16;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_fat_ptr_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (SU_UNLIKELY((c >= collisions_to_resize) || (c == ht->capacity))) {
+        sw__font_hash_table_grow(ht);
+        return sw__font_hash_table_add(ht, key, out);
+    } else if (it->occupied) {
+        *out = it;
+        return SU_FALSE;
+    } else {
+        it->key = key;
+        it->occupied = SU_TRUE;
+        *out = it;
+        return SU_TRUE;
+    }
+}
+
+static su_bool32_t sw__text_run_cache_hash_table_add(sw__text_run_cache_hash_table_t *ht,
+        sw_text_t key, sw__text_run_cache_t **out);
+
+static void sw__text_run_cache_hash_table_grow(sw__text_run_cache_hash_table_t *ht) {
+    const size_t max_capacity = 32768;
+
+    if (SU_LIKELY(ht->capacity < max_capacity)) {
+        size_t i;
+        sw__text_run_cache_hash_table_t new_ht;
+
+        SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+        new_ht.capacity = (ht->capacity * 2);
+        SU_ARRAY_ALLOCC(new_ht.items, &text_cache_alloc, new_ht.capacity);
+
+        for ( i = 0; i < ht->capacity; ++i) {
+            sw__text_run_cache_t *it = &ht->items[i];
+            if (it->occupied) {
+                sw__text_run_cache_t *new_it;
+                su_bool32_t r = sw__text_run_cache_hash_table_add(&new_ht, it->key, &new_it);
+                SU_ASSERT(r == SU_TRUE); SU_NOTUSED(r);
+                new_it->text_run = it->text_run;
+                new_it->faces = it->faces;
+                new_it->faces_count = it->faces_count;
+            }
+        }
+
+        *ht = new_ht;
+    } else {
+        su_arena_reset(&state.text_cache_arena, &gp_alloc);
+        SU_MEMSET(ht->items, 0, sizeof(ht->items[0]) * max_capacity);
+    }
+}
+
+static su_bool32_t sw__text_run_cache_hash_table_add(sw__text_run_cache_hash_table_t *ht,
+        sw_text_t key, sw__text_run_cache_t **out) {
+    size_t h = (sw__stbds_hash_text(key) & (ht->capacity - 1));
+    sw__text_run_cache_t *it = &ht->items[h];
+    size_t c = 0;
+    const size_t collisions_to_resize = 16;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !sw__text_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (SU_UNLIKELY((c >= collisions_to_resize) || (c == ht->capacity))) {
+        sw__text_run_cache_hash_table_grow(ht);
+        return sw__text_run_cache_hash_table_add(ht, key, out);
+    } else if (it->occupied) {
+        *out = it;
+        return SU_FALSE;
+    } else {
+        it->key = key;
+        it->occupied = SU_TRUE;
+        *out = it;
+        return SU_TRUE;
+    }
+}
+
+static void *sw__font_alloc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
+    sw__font_t *font_priv = (sw__font_t *)(uintptr_t)alloc;
+    return su_arena_alloc(&font_priv->arena, &gp_alloc, size, alignment);
 }
 
 static sw_pixmap_t *render(sw_layout_block_text_t *block) {
@@ -604,42 +762,48 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
 
     for ( f = 0; f < block->fonts_count; ++f) {
         sw_font_t *font = &block->fonts[f];
-        /* ? TODO: hash table instead of private field */
-        sw__font_t *font_priv = (sw__font_t *)&font->sw__private;
+        sw__font_t *font_priv;
 
-        SU_ASSERT(font->in.pixel_size > 0);
-        SU_ASSERT(font->in.data.len > 0);
+        SU_ASSERT(font->pixel_size > 0);
+        SU_ASSERT(font->data.len > 0);
 
-        if ((font_priv->idx != font->in.idx)
-            || (font->in.data.len != font_priv->data.len)
-            /* || (SU_MEMCMP(font_priv->data.ptr, font->in.data.ptr, font->in.data.len) != 0)*/) {
+        if (sw__font_hash_table_add(&state.font_cache, font->data, &font_priv)) {
+            su_arena_init(&font_priv->arena, &gp_alloc, 131072);
+            font_priv->alloc.alloc = sw__font_alloc_alloc;
+
+            font_priv->key.len = font->data.len;
+            font_priv->key.ptr = font_priv->alloc.alloc(&font_priv->alloc, font_priv->key.len, 32);
+            SU_MEMCPY(font_priv->key.ptr, font->data.ptr, font->data.len);
+            font_priv->idx = SIZE_MAX;
+        }
+        font->priv = (void *)font_priv;
+
+        if (font_priv->idx != font->idx) {
             FT_Done_Face(font_priv->face);
-
-            c = FT_New_Memory_Face(state.ft, (FT_Byte *)font->in.data.ptr,
-                (FT_Long)font->in.data.len, (FT_Long)font->in.idx, &font_priv->face);
+            c = FT_New_Memory_Face(state.ft, (FT_Byte *)font->data.ptr,
+                (FT_Long)font->data.len, (FT_Long)font->idx, &font_priv->face);
             SU_ASSERT(c == FT_Err_Ok);
             SU_ASSERT(font_priv->face->num_glyphs > 0);
 
-            SU_ARRAY_ALLOCC(font_priv->glyph_cache, &gp_alloc, (size_t)font_priv->face->num_glyphs);
+            SU_ARRAY_ALLOCC(font_priv->glyph_cache, &font_priv->alloc, (size_t)font_priv->face->num_glyphs);
 
             font_priv->face->generic.finalizer = face_on_destroy_ft;
-            font_priv->face->generic.data = font;
-            font_priv->idx = font->in.idx;
-            font_priv->data.len = font->in.data.len;
+            font_priv->face->generic.data = font_priv;
+            font_priv->idx = font->idx;
             fonts_changed = SU_TRUE;
         }
 
-        if ((font->in.pixel_size != font_priv->pixel_size) ||
-                ((font->in.glyph_load_flags | font->in.hinting_algorithm) != font_priv->glyph_load_flags)) {
+        if ((font->pixel_size != font_priv->pixel_size) ||
+                ((font->glyph_load_flags | font->hinting_algorithm) != font_priv->glyph_load_flags)) {
             float y_scale, ascent, descent;
             float underline_position, underline_thickness;
             float strikeout_position = 0.f, strikeout_thickness = 0.f;
             TT_OS2 *os2;
 
-            font_priv->glyph_load_flags = (font->in.glyph_load_flags | font->in.hinting_algorithm);
-            c = FT_Set_Pixel_Sizes(font_priv->face, 0, (FT_UInt)font->in.pixel_size);
+            font_priv->glyph_load_flags = (font->glyph_load_flags | font->hinting_algorithm);
+            c = FT_Set_Pixel_Sizes(font_priv->face, 0, (FT_UInt)font->pixel_size);
             if (c != FT_Err_Ok) {
-                FT_Pos target = ((FT_Pos)font->in.pixel_size * 64);
+                FT_Pos target = ((FT_Pos)font->pixel_size * 64);
                 FT_Int best = 0;
                 int best_err = INT_MAX;
                 SU_ASSERT(c == FT_Err_Invalid_Pixel_Size);
@@ -688,18 +852,19 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
             font_priv->strikeout_offset = (int32_t)(strikeout_position + strikeout_thickness / 2.f);
             font_priv->strikeout_thickness = (uint32_t)(SU_MAX(1.f, strikeout_thickness) + 0.5f);
 
-            font_priv->pixel_size = font->in.pixel_size;
+            font_priv->pixel_size = font->pixel_size;
             fonts_changed = SU_TRUE;
         }
 
-        if (font->in.features_count != font_priv->features_count) {
-            SU_FREE(&gp_alloc, font_priv->features);
-            SU_ARRAY_ALLOCC(font_priv->features, &gp_alloc, font->in.features_count);
-            font_priv->features_count = font->in.features_count;
+        if (font->features_count != font_priv->features_count) {
+            if (font->features_count > font_priv->features_count) {
+                SU_ARRAY_ALLOCC(font_priv->features, &font_priv->alloc, font->features_count);
+            }
+            font_priv->features_count = font->features_count;
             fonts_changed = SU_TRUE;
         }
-        for ( i = 0; i < font->in.features_count; ++i) {
-            su_string_t str = font->in.features[i];
+        for ( i = 0; i < font->features_count; ++i) {
+            su_string_t str = font->features[i];
             hb_feature_t feat;
             hb_feature_from_string(str.s, (int)str.len, &feat);
             if (SU_MEMCMP(&feat, &font_priv->features[i], sizeof(feat)) != 0) {
@@ -709,10 +874,10 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
         }
     }
 
-    if (!su_hash_table__sw__text_run_cache_t__add(&state.text_cache, &text_cache_alloc, block->text, &cache)) {
+    if (!sw__text_run_cache_hash_table_add(&state.text_cache, block->text, &cache)) {
         if (!fonts_changed && (cache->faces_count == block->fonts_count) && (block->vertical == cache->text_run.vertical)) {
             for ( i = 0; i < block->fonts_count; ++i) {
-                if (((sw__font_t *)block->fonts[i].sw__private)->face != cache->faces[i]) {
+                if (((sw__font_t *)block->fonts[i].priv)->face != cache->faces[i]) {
                     goto shape;
                 }
             }
@@ -769,7 +934,7 @@ shape:
 
     for ( f = 0; f < block->fonts_count; ++f) {
         sw_font_t *font = &block->fonts[f];
-        sw__font_t *font_priv = (sw__font_t *)&font->sw__private;
+        sw__font_t *font_priv = (sw__font_t *)font->priv;
         size_t pc = pruns_count;
 
         /* TODO: properly handle pruns with partial font coverage */
@@ -841,9 +1006,9 @@ shape:
                     glyph_priv = (sw__glyph_t *)&glyph->sw__private;
                     glyph_advance = (int32_t *)(void *)((uint8_t *)glyph_priv + glyph_advance_field_offset);
                     glyph->font = &block->fonts[0];
-                    glyph_cache = ((sw__font_t *)glyph->font->sw__private)->glyph_cache;
-                    face = ((sw__font_t *)glyph->font->sw__private)->face;
-                    load_flags = ((sw__font_t *)glyph->font->sw__private)->glyph_load_flags;
+                    glyph_cache = ((sw__font_t *)glyph->font->priv)->glyph_cache;
+                    face = ((sw__font_t *)glyph->font->priv)->face;
+                    load_flags = ((sw__font_t *)glyph->font->priv)->glyph_load_flags;
                     glyph->cluster = --next_notdef_cluster;
                     glyph->codepoint = 0;
                     if (SU_UNLIKELY(glyph_priv->idx != 0)) {
@@ -872,18 +1037,11 @@ shape:
                 if (!glyph_priv->valid) {
                     sw__cached_glyph_t *cached_glyph = glyph_cache[idx];
                     if ( !cached_glyph
-                            || (cached_glyph->pixel_size != glyph->font->in.pixel_size)
+                            || (cached_glyph->pixel_size != glyph->font->pixel_size)
                             || (cached_glyph->load_flags != load_flags)
-                            || (cached_glyph->render_mode != glyph->font->in.glyph_render_mode)) {
+                            || (cached_glyph->render_mode != glyph->font->glyph_render_mode)) {
                         FT_Bitmap *ft_bitmap;
                         su_bool32_t scale;
-
-                        if (cached_glyph) {
-                            SU_FREE(&gp_alloc, cached_glyph->data);
-                        } else {
-                            SU_ALLOCT(glyph_cache[idx], &gp_alloc);
-                            cached_glyph = glyph_cache[idx];
-                        }
 
                         c = FT_Load_Glyph(face, idx, (FT_Int32)load_flags);
                         SU_ASSERT(c == FT_Err_Ok);
@@ -891,16 +1049,30 @@ shape:
 
                         /* TODO: FT_GlyphSlot_AdjustWeight, FT_GlyphSlot_Slant */
 
-                        c = FT_Render_Glyph(face->glyph, (FT_Render_Mode)glyph->font->in.glyph_render_mode);
+                        c = FT_Render_Glyph(face->glyph, (FT_Render_Mode)glyph->font->glyph_render_mode);
                         SU_ASSERT(c == FT_Err_Ok);
                         SU_ASSERT(face->glyph->format == FT_GLYPH_FORMAT_BITMAP);
+
+                        if (!cached_glyph) {
+                            SU_ALLOCT(glyph_cache[idx], &font_priv->alloc);
+                            cached_glyph = glyph_cache[idx];
+                            cached_glyph->data_size = 0;
+                        }
 
                         ft_bitmap = &face->glyph->bitmap;
                         SU_ASSERT(ft_bitmap->pitch >= 0); /* ? TODO: handle negative */
 
-                        /* very dangerous */
-                        cached_glyph->data = (uint8_t *)ft_bitmap->buffer;
-                        ft_bitmap->buffer = NULL;
+                        if ((ft_bitmap->rows * (unsigned int)ft_bitmap->pitch) > cached_glyph->data_size) {
+                            cached_glyph->data_size = (ft_bitmap->rows * (unsigned int)ft_bitmap->pitch);
+                            SU_ARRAY_ALLOCA(cached_glyph->data, &font_priv->alloc, cached_glyph->data_size, 32);
+                        }
+
+                        if (!ft_bitmap->buffer) {
+                            /* TODO */
+                            SU_ASSERT(cached_glyph->data == NULL);
+                        }
+
+                        SU_MEMCPY(cached_glyph->data, ft_bitmap->buffer, cached_glyph->data_size);
 
                         cached_glyph->width = ft_bitmap->width;
                         cached_glyph->height = ft_bitmap->rows;
@@ -908,13 +1080,13 @@ shape:
                         cached_glyph->pixel_mode = (FT_Pixel_Mode)ft_bitmap->pixel_mode;
                         cached_glyph->left = face->glyph->bitmap_left;
                         cached_glyph->top = face->glyph->bitmap_top;
-                        cached_glyph->pixel_size = glyph->font->in.pixel_size;
+                        cached_glyph->pixel_size = glyph->font->pixel_size;
                         cached_glyph->load_flags = load_flags;
-                        cached_glyph->render_mode = glyph->font->in.glyph_render_mode;
+                        cached_glyph->render_mode = glyph->font->glyph_render_mode;
                         cached_glyph->scale_factor = ((scale && (ft_bitmap->width > 0) && (ft_bitmap->rows > 0))
                             ? SU_MIN(
-                                (float)glyph->font->in.pixel_size / (float)ft_bitmap->width,
-                                (float)glyph->font->in.pixel_size / (float)ft_bitmap->rows)
+                                (float)glyph->font->pixel_size / (float)ft_bitmap->width,
+                                (float)glyph->font->pixel_size / (float)ft_bitmap->rows)
                             : 1.f);
                     }
 
@@ -927,7 +1099,7 @@ shape:
                     
                     if (SU_UNLIKELY((*glyph_advance == 0) && (cached_glyph->scale_factor != 1.f))) {
                         /* TODO: rework */
-                        *glyph_advance = (int32_t)font->in.pixel_size;
+                        *glyph_advance = (int32_t)font->pixel_size;
                     }
 
                     if (glyph->cluster != prev_cluster) {
@@ -946,20 +1118,22 @@ shape:
     }
     cache->text_run = new_text_run;
     for ( i = 0; i < block->fonts_count; ++i) {
-        cache->faces[i] = ((sw__font_t *)block->fonts[i].sw__private)->face;
+        cache->faces[i] = ((sw__font_t *)block->fonts[i].priv)->face;
     }
     cache->faces_count = block->fonts_count;
 
+    /* TODO: remove invalid glyphs */
+
 render:
     if (block->vertical) {
-        FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].sw__private)->face->size->metrics;
+        FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].priv)->face->size->metrics;
         cache->text_run.width = (uint32_t)(((float)metrics->height / 64.f) + 0.5f); /* TODO: width analog */
         cache->text_run.height += block->letter_spacing * (cache->text_run.clusters_count - 1);
         pen_x = (cache->text_run.width / 2);
         axis = &pen_y;
         glyph_advance_field_offset = SU_OFFSETOF(sw__glyph_t, y_advance);
     } else {
-        FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].sw__private)->face->size->metrics;
+        FT_Size_Metrics *metrics = &((sw__font_t *)block->fonts[0].priv)->face->size->metrics;
         cache->text_run.width += block->letter_spacing * (cache->text_run.clusters_count - 1);
         cache->text_run.height = (uint32_t)(((float)metrics->height / 64.f) + 0.5f);
         pen_y = (int32_t)((float)cache->text_run.height + ((float)metrics->descender / 64.f) + 0.5f);
@@ -1005,7 +1179,7 @@ render:
             *axis += (int32_t)block->letter_spacing;
         }
 
-        font_priv = (sw__font_t *)font->sw__private;
+        font_priv = (sw__font_t *)font->priv;
         SU_ASSERT(glyph_priv->idx < font_priv->face->num_glyphs);
 
         cached_glyph = font_priv->glyph_cache[glyph_priv->idx];
@@ -1108,14 +1282,14 @@ render:
             glyph->y = dst_y;
             glyph->width = width;
             glyph->height = height;
-        } /* ? TODO: else,next_glyph: set glyph->x = pen_x, glyph->y = pen_y, glyph->width = glyph_priv->x_advance, glyph->height = glyph_priv->y_advance */
+        } /* ? TODO: else set glyph->x = pen_x, glyph->y = pen_y, glyph->width = glyph_priv->x_advance, glyph->height = glyph_priv->y_advance */
         *axis += *glyph_advance;
     }
 
     /* ? TODO: draw before glyps */
     {
         sw_font_t *font = &block->fonts[0];
-        sw__font_t *font_priv = (sw__font_t *)&font->sw__private;
+        sw__font_t *font_priv = (sw__font_t *)font->priv;
         int32_t x, y;
         uint32_t width, height;
 
@@ -1275,27 +1449,16 @@ int main(void) {
     c = init();
     SU_ASSERT(c == SU_TRUE);
 
-    {
-        /* TODO: simd, comptime utf8 -> utf32 */
-        hb_glyph_info_t *infos;
-        unsigned int count;
-        SU_ARRAY_ALLOC(block.text.codepoints, &scratch_alloc, text.len);
-        hb_buffer_reset(state.hb_buf);
-        hb_buffer_add_utf8(state.hb_buf, text.s, (int)text.len, 0, -1);
-        infos = hb_buffer_get_glyph_infos(state.hb_buf, &count);
-        block.text.codepoints_count = count;
-        for ( i = 0; i < count; ++i) {
-            block.text.codepoints[i] = infos[i].codepoint;
-        }
-    }
+    SU_ARRAY_ALLOC(block.text.codepoints, &scratch_alloc, text.len);
+    block.text.codepoints_count = su_convert_valid_utf8_to_utf32(text, block.text.codepoints);
 
     for ( i = 0; i < SU_LENGTH(font_files); ++i) {
         sw_font_t *font = &block.fonts[i];
-        su_read_entire_file(su_string_(font_files[i]), &font->in.data, &gp_alloc);
-        font->in.pixel_size = 48;
-        font->in.idx = 0;
-        font->in.glyph_load_flags = SW_GLYPH_LOAD_FLAG_COLOR;
-        font->in.glyph_render_mode = SW_GLYPH_RENDER_MODE_NORMAL;
+        su_read_entire_file(su_string_(font_files[i]), &font->data, &gp_alloc);
+        font->pixel_size = 48;
+        font->idx = 0;
+        font->glyph_load_flags = SW_GLYPH_LOAD_FLAG_COLOR;
+        font->glyph_render_mode = SW_GLYPH_RENDER_MODE_NORMAL;
     }
 
     sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
@@ -1308,6 +1471,7 @@ int main(void) {
     state.running = SU_TRUE;
 
     pm = render(&block);
+    pm = render(&block);
 
 #if 0
     {
@@ -1319,9 +1483,8 @@ int main(void) {
         data.len = len;
         su_write_entire_file(path, data);
 #else
-        su_read_entire_file(path, &data, &gp_alloc);
+        su_read_entire_file(path, &data, &scratch_alloc);
         SU_ASSERT(SU_MEMCMP(pm, data.ptr, len) == 0);
-        SU_FREE(&gp_alloc, data.ptr);
 #endif
     }
 #endif
@@ -1373,7 +1536,7 @@ cleanup:
     su_arena_fini(&state.scratch_arena, &gp_alloc);
 
     for ( i = 0; i < SU_LENGTH(font_files); ++i) {
-        SU_FREE(&gp_alloc, block.fonts[i].in.data.ptr);
+        SU_FREE(&gp_alloc, block.fonts[i].data.ptr);
     }
 
     SU_FREE(&gp_alloc, pm);

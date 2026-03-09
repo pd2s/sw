@@ -20,7 +20,7 @@ In the future, this project will be rebranded to "sl"(simple/suckless libraries)
 # External dependencies
 * libc
 * libm
-* [wayland-client] (only if wayland backend is enabled)
+* [freeway] (preferred) OR [wayland] (only if wayland backend is enabled)
 * [pixman]
 * [fcft] (only if text blocks feature is enabled)
 
@@ -62,7 +62,8 @@ Full list of features with their default values is located at the top of swidget
 * replace pixman dependency with SIMD software renderer
 * glue .h dependencies with ```cc -P -E -dD -dU input.h -o output.h``` to produce a real single-header library
 
-[wayland-client]: https://gitlab.freedesktop.org/wayland/wayland
+[freeway]: https://git.sr.ht/~shrub900/freeway
+[wayland]: https://gitlab.freedesktop.org/wayland/wayland
 [pixman]: https://gitlab.freedesktop.org/pixman/pixman
 [fcft]: https://codeberg.org/dnkl/fcft
 [wayland-protocols]: https://gitlab.freedesktop.org/wayland/wayland-protocols

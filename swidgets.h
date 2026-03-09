@@ -73,7 +73,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *);
 
 
 typedef struct sw_layout_block sw_layout_block_t;
-#define SW__PRIVATE_FIELDS(size) size_t sw__private[size / sizeof(size_t)]
+#define SW__PRIVATE_FIELDS(size) size_t sw__private[size / sizeof(size_t)] /* ASSERT((size % sizeof(size_t)) == 0) */
 
 #if SW_WITH_WAYLAND_BACKEND
 
@@ -1699,12 +1699,16 @@ typedef struct sw__image_data {
 } sw__image_data_t;
 
 typedef struct sw__image_cache {
-    SU_HASH_TABLE_FIELDS(su_fat_ptr_t);
+    su_fat_ptr_t key;
+    su_bool32_t occupied;
+    SU_PAD32;
     pixman_image_t *image; /* bits */
 } sw__image_cache_t;
 
-/* TODO: better hash function */
-SU_HASH_TABLE_DECLARE_DEFINE(sw__image_cache_t, su_fat_ptr_t, su_stbds_hash, su_fat_ptr_equal, SU_MEMCPY, 16)
+typedef struct sw__image_cache_hash_table {
+    sw__image_cache_t *items;
+    size_t capacity;
+} sw__image_cache_hash_table_t;
 
 #if SW_WITH_TEXT
 typedef struct sw__text_run_cache_entry {
@@ -1713,13 +1717,17 @@ typedef struct sw__text_run_cache_entry {
 } sw__text_run_cache_entry_t;
 
 typedef struct sw__text_run_cache {
-    SU_HASH_TABLE_FIELDS(su_string_t);
+    su_string_t key;
+    su_bool32_t occupied;
+    SU_PAD32;
     sw__text_run_cache_entry_t items[8]; /* ? TODO: dynamic */
     size_t items_count;
 } sw__text_run_cache_t;
 
-/* TODO: better hash function */
-SU_HASH_TABLE_DECLARE_DEFINE(sw__text_run_cache_t, su_string_t, su_stbds_hash_string, su_string_equal, SU_MEMCPY, 16)
+typedef struct sw__text_run_cache_hash_table {
+    sw__text_run_cache_t *items;
+    size_t capacity;
+} sw__text_run_cache_hash_table_t;
 #endif /* SW_WITH_TEXT */
 
 #if SW_WITH_MEMORY_BACKEND
@@ -1759,10 +1767,11 @@ typedef struct sw__context {
     sw_backend_type_t backend_type;
     su_bool32_t check_events;
     size_t events_capacity;
+
     /* ? TODO: arena for content: */
-    su_hash_table__sw__image_cache_t__t image_cache;
+    sw__image_cache_hash_table_t image_cache;
 #if SW_WITH_TEXT
-    su_hash_table__sw__text_run_cache_t__t text_run_cache;
+    sw__text_run_cache_hash_table_t text_run_cache;
 #endif /* SW_WITH_TEXT */
 } sw__context_t;
 
@@ -2411,6 +2420,173 @@ static su_bool32_t sw__layout_block_fini(sw_layout_block_t *block, su_bool32_t d
     return ret;
 }
 
+static su_bool32_t sw__image_cache_hash_table_add(sw__image_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, su_fat_ptr_t key, sw__image_cache_t **out);
+
+static void sw__image_cache_hash_table_grow(sw__image_cache_hash_table_t *ht,
+        const su_allocator_t *alloc) {
+    const size_t max_capacity = 32768;
+
+    if (SU_LIKELY(ht->capacity < max_capacity)) {
+        size_t i;
+        sw__image_cache_hash_table_t new_ht;
+
+        SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+        new_ht.capacity = (ht->capacity * 2);
+        SU_ARRAY_ALLOCC(new_ht.items, alloc, new_ht.capacity);
+
+        for ( i = 0; i < ht->capacity; ++i) {
+            sw__image_cache_t *it = &ht->items[i];
+            if (it->occupied) {
+                sw__image_cache_t *new_it;
+                su_bool32_t r = sw__image_cache_hash_table_add(&new_ht, alloc, it->key, &new_it);
+                SU_ASSERT(r == SU_TRUE); SU_NOTUSED(r);
+                new_it->image = it->image;
+            }
+        }
+
+        SU_FREE(alloc, new_ht.items);
+        *ht = new_ht;
+    } else {
+        /* TODO: free items */
+        SU_MEMSET(ht->items, 0, sizeof(ht->items[0]) * max_capacity);
+    }
+}
+
+static su_bool32_t sw__image_cache_hash_table_add(sw__image_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, su_fat_ptr_t key, sw__image_cache_t **out) {
+    size_t h = (su_stbds_hash(key) & (ht->capacity - 1));
+    sw__image_cache_t *it = &ht->items[h];
+    size_t c = 0;
+    const size_t collisions_to_resize = 16;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_fat_ptr_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (SU_UNLIKELY((c >= collisions_to_resize) || (c == ht->capacity))) {
+        sw__image_cache_hash_table_grow(ht, alloc);
+        return sw__image_cache_hash_table_add(ht, alloc, key, out);
+    } else if (it->occupied) {
+        *out = it;
+        return SU_FALSE;
+    } else {
+        it->key = key;
+        it->occupied = SU_TRUE;
+        *out = it;
+        return SU_TRUE;
+    }
+}
+
+static su_bool32_t sw__image_cache_hash_table_get(sw__image_cache_hash_table_t *ht,
+        su_fat_ptr_t key, sw__image_cache_t **out) {
+    size_t h = (su_stbds_hash(key) & (ht->capacity - 1));
+    sw__image_cache_t *it = &ht->items[h];
+    size_t c = 0;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_fat_ptr_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (!it->occupied || SU_UNLIKELY(c == ht->capacity)) {
+        return SU_FALSE;
+    } else {
+        *out = it;
+        return SU_TRUE;
+    }
+}
+
+#if SW_WITH_TEXT
+static su_bool32_t sw__text_run_cache_hash_table_add(sw__text_run_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, su_string_t key, sw__text_run_cache_t **out);
+
+static void sw__text_run_cache_hash_table_grow(sw__text_run_cache_hash_table_t *ht,
+        const su_allocator_t *alloc) {
+    const size_t max_capacity = 32768;
+
+    if (SU_LIKELY(ht->capacity < max_capacity)) {
+        size_t i;
+        sw__text_run_cache_hash_table_t new_ht;
+
+        SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+        new_ht.capacity = (ht->capacity * 2);
+        SU_ARRAY_ALLOCC(new_ht.items, alloc, new_ht.capacity);
+
+        for ( i = 0; i < ht->capacity; ++i) {
+            sw__text_run_cache_t *it = &ht->items[i];
+            if (it->occupied) {
+                sw__text_run_cache_t *new_it;
+                su_bool32_t r = sw__text_run_cache_hash_table_add(&new_ht, alloc, it->key, &new_it);
+                SU_ASSERT(r == SU_TRUE); SU_NOTUSED(r);
+                new_it->items_count = it->items_count;
+                SU_MEMCPY(new_it->items, it->items, sizeof(it->items));
+            }
+        }
+
+        SU_FREE(alloc, new_ht.items);
+        *ht = new_ht;
+    } else {
+        /* TODO: free items */
+        SU_MEMSET(ht->items, 0, sizeof(ht->items[0]) * max_capacity);
+    }
+}
+
+static su_bool32_t sw__text_run_cache_hash_table_add(sw__text_run_cache_hash_table_t *ht,
+        const su_allocator_t *alloc, su_string_t key, sw__text_run_cache_t **out) {
+    size_t h = (su_stbds_hash_string(key) & (ht->capacity - 1));
+    sw__text_run_cache_t *it = &ht->items[h];
+    size_t c = 0;
+    const size_t collisions_to_resize = 16;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_string_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (SU_UNLIKELY((c >= collisions_to_resize) || (c == ht->capacity))) {
+        sw__text_run_cache_hash_table_grow(ht, alloc);
+        return sw__text_run_cache_hash_table_add(ht, alloc, key, out);
+    } else if (it->occupied) {
+        *out = it;
+        return SU_FALSE;
+    } else {
+        it->key = key;
+        it->occupied = SU_TRUE;
+        *out = it;
+        return SU_TRUE;
+    }
+}
+
+static su_bool32_t sw__text_run_cache_hash_table_get(sw__text_run_cache_hash_table_t *ht,
+        su_string_t key, sw__text_run_cache_t **out) {
+    size_t h = (su_stbds_hash_string(key) & (ht->capacity - 1));
+    sw__text_run_cache_t *it = &ht->items[h];
+    size_t c = 0;
+
+    SU_ASSERT((ht->capacity > 1) && ((ht->capacity & (ht->capacity - 1)) == 0));
+    for ( ;
+            it->occupied && !su_string_equal(it->key, key) && (c < ht->capacity);
+            ++c) {
+        it = &ht->items[(++h) & (ht->capacity - 1)];
+    }
+
+    if (!it->occupied || SU_UNLIKELY(c == ht->capacity)) {
+        return SU_FALSE;
+    } else {
+        *out = it;
+        return SU_TRUE;
+    }
+}
+#endif /* SW_WITH_TEXT */
+
 static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
     /* TODO: remove recursion */
 
@@ -2457,7 +2633,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
             goto error;
         }
 
-        if (su_hash_table__sw__text_run_cache_t__get(&sw_priv->text_run_cache,
+        if (sw__text_run_cache_hash_table_get(&sw_priv->text_run_cache,
                 text.text, &cache)) {
             size_t j = 0;
             for ( ; j < cache->items_count; ++j) {
@@ -2502,7 +2678,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
                 goto error;
             }
 
-            if (su_hash_table__sw__text_run_cache_t__add(&sw_priv->text_run_cache,
+            if (sw__text_run_cache_hash_table_add(&sw_priv->text_run_cache,
                     gp_alloc, text.text, &cache)) {
                 su_string_init_string(&cache->key, gp_alloc, cache->key);
             }
@@ -2558,7 +2734,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
         su_fat_ptr_t data = image.data;
         sw__image_cache_t *cache;
 
-        if (su_hash_table__sw__image_cache_t__get(&sw_priv->image_cache, data, &cache)) {
+        if (sw__image_cache_hash_table_get(&sw_priv->image_cache, data, &cache)) {
 #if SW_WITH_GIF
             sw__image_data_t *d = (sw__image_data_t *)pixman_image_get_destroy_data(cache->image);
             if (d->type == SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF) {
@@ -2699,7 +2875,7 @@ process_content_image:
 
             pixman_image_set_filter(block_priv->content_image, PIXMAN_FILTER_BEST, NULL, 0);
 
-            su_hash_table__sw__image_cache_t__add(&sw_priv->image_cache, gp_alloc, data, &cache);
+            sw__image_cache_hash_table_add(&sw_priv->image_cache, gp_alloc, data, &cache);
 
             SU_ALLOCTSA(cache->key.ptr, gp_alloc, data.len, 32);
             SU_MEMCPY(cache->key.ptr, data.ptr, data.len);
@@ -5609,7 +5785,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                 pixman_image_unref(cache->image);
             }
         }
-        su_hash_table__sw__image_cache_t__fini(&sw_priv->image_cache, gp_alloc);
+        SU_FREE(gp_alloc, sw_priv->image_cache.items);
 
 #if SW_WITH_TEXT
         for ( i = 0; i < sw_priv->text_run_cache.capacity; ++i) {
@@ -5622,7 +5798,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                 fcft_destroy(entry.font);
             }
         }
-        su_hash_table__sw__text_run_cache_t__fini(&sw_priv->text_run_cache, gp_alloc);
+        SU_FREE(gp_alloc, sw_priv->text_run_cache.items);
 
         fcft_fini();
 #endif /* SW_WITH_TEXT */
@@ -5646,7 +5822,8 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
 
         /* ? TODO: resvg_init_log(); */
 
-        su_hash_table__sw__image_cache_t__init(&sw_priv->image_cache, gp_alloc, 512);
+        sw_priv->image_cache.capacity = 512;
+        SU_ARRAY_ALLOCC(sw_priv->image_cache.items, gp_alloc, sw_priv->image_cache.capacity);
 
 #if SW_WITH_TEXT
         if (!fcft_init(FCFT_LOG_COLORIZE_NEVER, SU_FALSE, FCFT_LOG_CLASS_ERROR)) {
@@ -5654,7 +5831,8 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
             goto out;
         }
 
-        su_hash_table__sw__text_run_cache_t__init(&sw_priv->text_run_cache, gp_alloc, 1024);
+        sw_priv->text_run_cache.capacity = 1024;
+        SU_ARRAY_ALLOCC(sw_priv->text_run_cache.items, gp_alloc, sw_priv->text_run_cache.capacity);
 #endif /* SW_WITH_TEXT */
     }
 
@@ -5826,9 +6004,8 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                         }
                     }
                 }
-                if ((data_device->in.copy.data.len != data_device_priv->copy.data.len) ||
-                        !su_string_equal(data_device->in.copy.mime_type, data_device_priv->copy.mime_type) ||
-                        SU_MEMCMP(data_device->in.copy.data.ptr, data_device_priv->copy.data.ptr, data_device->in.copy.data.len)) {
+                if (!su_string_equal(data_device->in.copy.mime_type, data_device_priv->copy.mime_type)
+                        || !su_fat_ptr_equal(data_device->in.copy.data, data_device_priv->copy.data)) {
                     sw__wayland_data_device_fini_copy(data_device);
 
                     if ((data_device->in.copy.mime_type.len > 0) && (data_device->in.copy.data.len > 0)
