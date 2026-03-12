@@ -2445,7 +2445,7 @@ static void sw__image_cache_hash_table_grow(sw__image_cache_hash_table_t *ht,
             }
         }
 
-        SU_FREE(alloc, new_ht.items);
+        SU_FREE(alloc, ht->items);
         *ht = new_ht;
     } else {
         /* TODO: free items */
@@ -2529,7 +2529,7 @@ static void sw__text_run_cache_hash_table_grow(sw__text_run_cache_hash_table_t *
             }
         }
 
-        SU_FREE(alloc, new_ht.items);
+        SU_FREE(alloc, ht->items);
         *ht = new_ht;
     } else {
         /* TODO: free items */

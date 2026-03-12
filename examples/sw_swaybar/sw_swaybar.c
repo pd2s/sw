@@ -302,7 +302,7 @@ typedef struct state {
 
 static state_t state;
 
-static const allocator_t gp_alloc = { libc_alloc, libc_free };
+static const allocator_t gp_allocator = { libc_alloc, libc_free };
 static const allocator_t page_allocator = { page_alloc, page_free };
 
 static void *scratch_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
@@ -452,7 +452,7 @@ static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
             size_t j = (svgs_count - 1);
             for ( ; j != SIZE_MAX; --j) {
                 if (read_entire_file_with_cache(svgs[j],
-                        &out->data, &gp_alloc, &state.icon_cache)) {
+                        &out->data, &gp_allocator, &state.icon_cache)) {
                     out->type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
                     return TRUE;
                 }
@@ -467,7 +467,7 @@ static bool32_t tray_find_icon(string_t name, sw_layout_block_image_t *out) {
             size_t j = (pngs_count - 1);
             for ( ; j != SIZE_MAX; --j) {
                 if (read_entire_file_with_cache(pngs[j],
-                        &out->data, &gp_alloc, &state.icon_cache)) {
+                        &out->data, &gp_allocator, &state.icon_cache)) {
                     out->type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG;
                     return TRUE;
                 }
@@ -508,7 +508,7 @@ static void tray_describe_sni_items(bar_t *bar) {
             string_t icon_name;
 
             layout_block_t *block;
-            ALLOCCT(block, &gp_alloc);
+            ALLOCCT(block, &gp_allocator);
             block->type = LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM;
             block->_.in.prepare = layout_block_handle_prepare;
             block->data = item;
@@ -564,7 +564,7 @@ static void tray_describe_sni_items(bar_t *bar) {
 
             if (icon.type) {
                 layout_block_t *image;
-                ALLOCCT(image, &gp_alloc);
+                ALLOCCT(image, &gp_allocator);
                 image->type = LAYOUT_BLOCK_TYPE_TRAY_SNI_ITEM_IMAGE;
                 image->_.in.prepare = layout_block_handle_prepare;
                 image->sample_block = (layout_block_t *)bar->_.in.root->in._.composite.children.head;
@@ -589,7 +589,7 @@ static void tray_dbusmenu_menu_popup_destroy(tray_dbusmenu_menu_popup_t *popup) 
     if (popup == state.tray.popup) {
         state.tray.popup = NULL;
     }
-    FREE(&gp_alloc, popup);
+    FREE(&gp_allocator, popup);
 }
 
 static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(
@@ -710,7 +710,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
         LLIST_APPEND_TAIL(&state.sw.in.blocks_to_destroy, popup->_.in.root);
     }
 
-    ALLOCCT(root, &gp_alloc);
+    ALLOCCT(root, &gp_allocator);
     root->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
     root->_.in._.composite.layout = SW_LAYOUT_BLOCK_COMPOSITE_CHILDREN_LAYOUT_VERTICAL;
     root->_.in.color._.argb32 = state.config.colors.focused_background;
@@ -725,7 +725,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
             continue;
         }
 
-        ALLOCCT(block, &gp_alloc);
+        ALLOCCT(block, &gp_allocator);
         block->data = menu_item;
         block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_LEFT | SW_LAYOUT_BLOCK_FILL_RIGHT);
         if (menu_item->type == SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) {
@@ -739,7 +739,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
             block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
 
             if (menu_item->label.len > 0) {
-                ALLOCCT(label, &gp_alloc);
+                ALLOCCT(label, &gp_allocator);
                 layout_block_init_text(label, &menu_item->label);
                 label->_.in._.text.color._.argb32 = color;
                 label->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
@@ -766,7 +766,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                             &page_allocator, dbusmenu->properties->icon_theme_path[j]);
                     }
                 }
-                ALLOCCT(icon, &gp_alloc);
+                ALLOCCT(icon, &gp_allocator);
                 icon->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
                 icon->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
                 tray_find_icon(menu_item->icon_name, &icon->_.in._.image);
@@ -786,7 +786,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 #if SW_WITH_PNG
             if (menu_item->icon_data.len > 0) {
                 layout_block_t *icon;
-                ALLOCCT(icon, &gp_alloc);
+                ALLOCCT(icon, &gp_allocator);
                 icon->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
                 icon->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_PNG;
                 icon->_.in._.image.data = menu_item->icon_data;
@@ -811,17 +811,17 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
             case SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO: {
                 string_t svg;
                 layout_block_t *toggle;
-                ALLOCCT(toggle, &gp_alloc);
+                ALLOCCT(toggle, &gp_allocator);
                 toggle->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
                 toggle->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
                 if (menu_item->toggle_state == 1) {
-                    string_init_format( &svg, &gp_alloc,
+                    string_init_format( &svg, &gp_allocator,
                         (menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
                         ? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02x%02x%02x%02x\" stroke-width=\"1.92\"/><circle cx=\"16\" cy=\"16\" r=\"6.4\" fill=\"#%02x%02x%02x%02x\"/></svg>"
                         : "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><mask id=\"a\"><rect width=\"32\" height=\"32\" fill=\"#fff\"/><polyline points=\"8,17 13,22 24,10\" fill=\"none\" stroke=\"#000\" stroke-width=\"3\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"/></mask><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02x%02x%02x%02x\" mask=\"url(#a)\"/></svg>",
                         color.c.r, color.c.g, color.c.b, color.c.a, color.c.r, color.c.g, color.c.b, color.c.a);
                 } else {
-                    string_init_format( &svg, &gp_alloc,
+                    string_init_format( &svg, &gp_allocator,
                         (menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_RADIO)
                         ? "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><circle cx=\"16\" cy=\"16\" r=\"12.8\" fill=\"none\" stroke=\"#%02x%02x%02x%02x\" stroke-width=\"1.92\"/></svg>"
                         : "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><rect x=\"2\" y=\"2\" width=\"28\" height=\"28\" fill=\"#%02x%02x%02x%02x\"/></svg>",
@@ -854,10 +854,10 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
             if (menu_item->submenu) {
                 string_t svg;
                 layout_block_t *submenu;
-                ALLOCCT(submenu, &gp_alloc);
+                ALLOCCT(submenu, &gp_allocator);
                 submenu->_.in.type = SW_LAYOUT_BLOCK_TYPE_IMAGE;
                 submenu->_.in._.image.type = SW_LAYOUT_BLOCK_IMAGE_IMAGE_TYPE_SVG;
-                string_init_format( &svg, &gp_alloc,
+                string_init_format( &svg, &gp_allocator,
                     "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\"><polygon points=\"25.6,3.2 25.6,28.8 6.4,16\" fill=\"#%02x%02x%02x%02x\"/></svg>",
                     color.c.r, color.c.g, color.c.b, color.c.a);
                 submenu->_.in._.image.data.ptr = svg.s;
@@ -891,7 +891,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     && (menu_item->toggle_type == SNI_DBUSMENU_MENU_ITEM_TOGGLE_TYPE_NONE)) {
                 if (block->in._.composite.children.head) {
                     layout_block_t *spacer;
-                    ALLOCCT(spacer, &gp_alloc);
+                    ALLOCCT(spacer, &gp_allocator);
                     spacer->type = LAYOUT_BLOCK_TYPE_TRAY_DBUSMENU_MENU_ITEM_DECORATOR;
                     spacer->_.in.prepare = layout_block_handle_prepare;
                     spacer->sample_block = (layout_block_t *)block->in._.composite.children.head;
@@ -917,7 +917,7 @@ static tray_dbusmenu_menu_popup_t *tray_dbusmenu_menu_popup_create(sni_dbusmenu_
 
     sni_dbusmenu_menu_about_to_show(menu, TRUE);
 
-    ALLOCCT(surface, &gp_alloc);
+    ALLOCCT(surface, &gp_allocator);
     surface->item = menu->dbusmenu->item;
     surface->seat = seat;
     surface->_.in.type = SW_WAYLAND_SURFACE_TYPE_POPUP;
@@ -1040,7 +1040,7 @@ static void tray_sni_item_destroy(sni_item_t *item) {
         LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
     }
 
-    FREE(&gp_alloc, item);
+    FREE(&gp_allocator, item);
 
     {
         bar_t *bar = (bar_t *)state.sw.in.backend.wayland.layers.head;
@@ -1054,7 +1054,7 @@ static void tray_sni_item_destroy(sni_item_t *item) {
 
 static sni_item_t *tray_sni_item_create(void) {
     sni_item_t *item;
-    ALLOCCT(item, &gp_alloc);
+    ALLOCCT(item, &gp_allocator);
     return item;
 }
 
@@ -1115,7 +1115,7 @@ static void tray_init(void) {
     xdg_icon_theme_cache_init(&state.tray.cache, &page_allocator);
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
-    sni_server.in.alloc = &gp_alloc;
+    sni_server.in.alloc = &gp_allocator;
 
     ret = sni_server_init();
     if (ret < 0) {
@@ -1132,7 +1132,7 @@ static void tray_fini(void) {
     sni_server_fini();
 
     tray_process_events();
-    FREE(&gp_alloc, sni_server.out.events);
+    FREE(&gp_allocator, sni_server.out.events);
 
 #if SW_WITH_SVG || SW_WITH_PNG
     xdg_icon_theme_cache_fini(&tray->cache, &page_allocator);
@@ -1165,7 +1165,7 @@ static void bar_destroy(bar_t *bar) {
     if (status->active && (state.sw.in.backend.wayland.layers.count == 0)) {
         kill(-status->pid, status->stop_signal);
     }
-    FREE(&gp_alloc, bar);
+    FREE(&gp_allocator, bar);
 }
 
 static void status_init(void) {
@@ -1260,7 +1260,7 @@ static void status_fini(void) {
         for ( ; i < status->blocks_count; ++i) {
             status_i3bar_block_fini(&status->blocks[i]);
         }
-        FREE(&gp_alloc, status->blocks);
+        FREE(&gp_allocator, status->blocks);
     }
 
     MEMSET(status, 0, sizeof(*status));
@@ -1276,7 +1276,7 @@ static void status_set_error(string_t text) {
         for ( ; i < status->blocks_count; ++i) {
             status_i3bar_block_fini(&status->blocks[i]);
         }
-        FREE(&gp_alloc, status->blocks);
+        FREE(&gp_allocator, status->blocks);
     }
 
     FREE(&page_allocator, status->buf.data);
@@ -1409,7 +1409,7 @@ static void status_describe(bar_t *bar) {
             text.len = status->buf.idx;
             text.free_contents = FALSE;
             text.nul_terminated = FALSE;
-            ALLOCCT(block, &gp_alloc);
+            ALLOCCT(block, &gp_allocator);
             layout_block_init_text(block, &text);
             if (status->protocol == STATUS_PROTOCOL_TEXT) {
                 block->_.in._.text.color._.argb32 = output->focused ?
@@ -1434,8 +1434,8 @@ static void status_describe(bar_t *bar) {
             status_i3bar_block_t *i3bar_block = &status->blocks[i];
             layout_block_t *block;
             layout_block_t *text;
-            ALLOCCT(block, &gp_alloc);
-            ALLOCCT(text, &gp_alloc);
+            ALLOCCT(block, &gp_allocator);
+            ALLOCCT(text, &gp_allocator);
             if (status->click_events && (i3bar_block->name.len > 0)) {
                 block->data = i3bar_block;
                 block->type = LAYOUT_BLOCK_TYPE_STATUS_LINE_I3BAR;
@@ -1467,7 +1467,7 @@ static void status_describe(bar_t *bar) {
 
             if (edge && (config->status_edge_padding > 0)) {
                 layout_block_t *spacer;
-                ALLOCCT(spacer, &gp_alloc);
+                ALLOCCT(spacer, &gp_allocator);
                 spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
                 spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
                 spacer->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
@@ -1476,7 +1476,7 @@ static void status_describe(bar_t *bar) {
                 LLIST_APPEND_TAIL(&root->in._.composite.children, &spacer->_);
             } else if (!edge && ((i3bar_block->separator_block_width > 0) || i3bar_block->separator)) {
                 layout_block_t *separator;
-                ALLOCCT(separator, &gp_alloc);
+                ALLOCCT(separator, &gp_allocator);
                 separator->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
                 separator->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
                 if (i3bar_block->separator) {
@@ -1512,7 +1512,7 @@ static void status_describe(bar_t *bar) {
             if (i3bar_block->min_width_str.len > 0) {
                 /* TODO: rework */
                 layout_block_t *min_width;
-                ALLOCCT(min_width, &gp_alloc);
+                ALLOCCT(min_width, &gp_allocator);
                 layout_block_init_text(min_width, &i3bar_block->min_width_str);
                 min_width->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
                 LLIST_APPEND_TAIL(&root->in._.composite.children, &min_width->_);
@@ -1596,11 +1596,11 @@ static bool32_t status_i3bar_block_init(status_i3bar_block_t *block, json_ast_no
         json_ast_key_value_t *key_value = &json->value.o.kvs[i];
         if (string_equal(key_value->key, string("full_text"))) {
             if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
-                string_init_string(&block->full_text, &gp_alloc, key_value->value.value.s);
+                string_init_string(&block->full_text, &gp_allocator, key_value->value.value.s);
             }
         } else if (string_equal(key_value->key, string("short_text"))) {
             if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
-                string_init_string(&block->short_text, &gp_alloc, key_value->value.value.s);
+                string_init_string(&block->short_text, &gp_allocator, key_value->value.value.s);
             }
         } else if (string_equal(key_value->key, string("color"))) {
             if (key_value->value.type == JSON_AST_NODE_TYPE_STRING) {
@@ -1638,7 +1638,7 @@ static bool32_t status_i3bar_block_init(status_i3bar_block_t *block, json_ast_no
                 block->min_width = (int32_t)key_value->value.value.u;
             } else if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
                 string_init_string(
-                    &block->min_width_str, &gp_alloc, key_value->value.value.s);
+                    &block->min_width_str, &gp_allocator, key_value->value.value.s);
             }
         } else if (string_equal(key_value->key, string("align"))) {
             if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
@@ -1650,11 +1650,11 @@ static bool32_t status_i3bar_block_init(status_i3bar_block_t *block, json_ast_no
             }
         } else if (string_equal(key_value->key, string("name"))) {
             if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
-                string_init_string(&block->name, &gp_alloc, key_value->value.value.s);
+                string_init_string(&block->name, &gp_allocator, key_value->value.value.s);
             }
         } else if (string_equal(key_value->key, string("instance"))) {
             if ((key_value->value.type == JSON_AST_NODE_TYPE_STRING) && (key_value->value.value.s.len > 0)) {
-                string_init_string(&block->instance, &gp_alloc, key_value->value.value.s);
+                string_init_string(&block->instance, &gp_allocator, key_value->value.value.s);
             }
         } else if (string_equal(key_value->key, string("urgent"))) {
             if (key_value->value.type == JSON_AST_NODE_TYPE_BOOL) {
@@ -1681,11 +1681,11 @@ static bool32_t status_i3bar_block_init(status_i3bar_block_t *block, json_ast_no
 }
 
 static void status_i3bar_block_fini(status_i3bar_block_t *block) {
-    string_fini(&block->full_text, &gp_alloc);
-    string_fini(&block->short_text, &gp_alloc);
-    string_fini(&block->min_width_str, &gp_alloc);
-    string_fini(&block->name, &gp_alloc);
-    string_fini(&block->instance, &gp_alloc);
+    string_fini(&block->full_text, &gp_allocator);
+    string_fini(&block->short_text, &gp_allocator);
+    string_fini(&block->min_width_str, &gp_allocator);
+    string_fini(&block->name, &gp_allocator);
+    string_fini(&block->instance, &gp_allocator);
 }
 
 static void status_i3bar_parse_json(json_ast_node_t *json) {
@@ -1700,8 +1700,8 @@ static void status_i3bar_parse_json(json_ast_node_t *json) {
         status_i3bar_block_fini(&status->blocks[i]);
     }
     if (status->blocks_count != json->value.a.count) {
-        FREE(&gp_alloc, status->blocks);
-        ARRAY_ALLOC(status->blocks, &gp_alloc, json->value.a.count);
+        FREE(&gp_allocator, status->blocks);
+        ARRAY_ALLOC(status->blocks, &gp_allocator, json->value.a.count);
     }
     status->blocks_count = 0;
 
@@ -1888,8 +1888,8 @@ static void describe_workspaces(bar_t *bar) {
             colors = config->colors.inactive_workspace;
         }
 
-        ALLOCCT(block, &gp_alloc);
-        ALLOCCT(text, &gp_alloc);
+        ALLOCCT(block, &gp_allocator);
+        ALLOCCT(text, &gp_allocator);
 
         block->type = LAYOUT_BLOCK_TYPE_WORKSPACE;
         block->data = workspace;
@@ -1913,7 +1913,7 @@ static void describe_workspaces(bar_t *bar) {
         text->_.in.borders[2].width = text->_.in.borders[3].width = 1;
         if (workspace->num != -1) {
             if (config->strip_workspace_name) {
-                string_init_format(&text->_.in._.text.text, &gp_alloc, "%d", workspace->num);
+                string_init_format(&text->_.in._.text.text, &gp_allocator, "%d", workspace->num);
                 text->destroy = LAYOUT_BLOCK_DESTROY_TEXT;
             } else if (config->strip_workspace_numbers) {
                 int num_len = su_snprintf(NULL, 0, "%d", workspace->num);
@@ -1946,7 +1946,7 @@ static void describe_binding_mode_indicator(bar_t *bar) {
         return;
     }
 
-    ALLOCCT(block, &gp_alloc);
+    ALLOCCT(block, &gp_allocator);
     block->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
     block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
     if (config->workspace_min_width > 0) {
@@ -1960,7 +1960,7 @@ static void describe_binding_mode_indicator(bar_t *bar) {
         block->_.in.borders[2].color._.argb32 = block->_.in.borders[3].color._.argb32 =
         config->colors.binding_mode.border;
 
-    ALLOCCT(text, &gp_alloc);
+    ALLOCCT(text, &gp_allocator);
     layout_block_init_text(text, &state.binding_mode_indicator_text);
     text->_.in._.text.color._.argb32 = config->colors.binding_mode.text;
     text->_.in.borders[0].width = text->_.in.borders[1].width = 5;
@@ -2001,13 +2001,13 @@ static void bar_update(bar_t *bar) {
         layer->exclusive_zone = INT_MIN;
     }
 
-    ALLOCCT(root, &gp_alloc);
+    ALLOCCT(root, &gp_allocator);
     root->_.in.type = SW_LAYOUT_BLOCK_TYPE_COMPOSITE;
     root->_.in.fill = SW_LAYOUT_BLOCK_FILL_ALL_SIDES_CONTENT;
     root->_.in.color._.argb32 = (((output_t *)layer->output)->focused
         ? config->colors.focused_background : config->colors.background);
 
-    ALLOCCT(min_height, &gp_alloc);
+    ALLOCCT(min_height, &gp_allocator);
     layout_block_init_text(min_height, &min_height_str);
     min_height->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
     LLIST_APPEND_TAIL(&root->_.in._.composite.children, &min_height->_);
@@ -2072,23 +2072,23 @@ static void update_config(string_t str) {
     old_status_command = config->status_command;
     MEMSET(&new_status_command, 0, sizeof(new_status_command));
 
-    string_fini(&config->font, &gp_alloc);
-    string_fini(&config->separator_symbol, &gp_alloc);
+    string_fini(&config->font, &gp_allocator);
+    string_fini(&config->separator_symbol, &gp_allocator);
     for ( i = 0; i < config->bindings_count; ++i) {
-        string_fini(&config->bindings[i].command, &gp_alloc);
+        string_fini(&config->bindings[i].command, &gp_allocator);
     }
-    FREE(&gp_alloc, config->bindings);
+    FREE(&gp_allocator, config->bindings);
     for ( i = 0; i < config->outputs_count; ++i) {
-        string_fini(&config->outputs[i], &gp_alloc);
+        string_fini(&config->outputs[i], &gp_allocator);
     }
-    FREE(&gp_alloc, config->outputs);
+    FREE(&gp_allocator, config->outputs);
 #if WITH_TRAY
     for ( i = 0; i < config->tray_outputs_count; ++i) {
-        string_fini(&config->tray_outputs[i], &gp_alloc);
+        string_fini(&config->tray_outputs[i], &gp_allocator);
     }
-    FREE(&gp_alloc, config->tray_outputs);
-    FREE(&gp_alloc, config->tray_bindings);
-    string_fini(&config->tray_icon_theme, &gp_alloc);
+    FREE(&gp_allocator, config->tray_outputs);
+    FREE(&gp_allocator, config->tray_bindings);
+    string_fini(&config->tray_icon_theme, &gp_allocator);
 #endif /* WITH_TRAY */
 
     MEMSET(config, 0, sizeof(*config));
@@ -2148,12 +2148,12 @@ static void update_config(string_t str) {
                     }
                 }
                 if (tray_enabled) {
-                    ARRAY_ALLOC(config->tray_outputs, &gp_alloc, node->value.a.count);
+                    ARRAY_ALLOC(config->tray_outputs, &gp_allocator, node->value.a.count);
                     for ( i = 0; i < node->value.a.count; ++i) {
                         json_ast_node_t *v = &node->value.a.nodes[i];
                         if (v->value.s.len > 0) {
                             string_init_string( &config->tray_outputs[config->tray_outputs_count++],
-                                &gp_alloc, v->value.s);
+                                &gp_allocator, v->value.s);
                         }
                     }
                 }
@@ -2170,7 +2170,7 @@ static void update_config(string_t str) {
         if ((node = json_ast_node_object_get(&ast.root, string("tray_bindings")))) {
             ASSERT(node->type == JSON_AST_NODE_TYPE_ARRAY);
             if (node->value.a.count > 0) {
-                ARRAY_ALLOC(config->tray_bindings, &gp_alloc, node->value.a.count);
+                ARRAY_ALLOC(config->tray_bindings, &gp_allocator, node->value.a.count);
                 for ( i = 0; i < node->value.a.count; ++i) {
                     json_ast_node_t *obj = &node->value.a.nodes[i];
                     json_ast_node_t *v;
@@ -2209,7 +2209,7 @@ static void update_config(string_t str) {
         if ((node = json_ast_node_object_get(&ast.root, string("icon_theme")))) {
             ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
             if (node->value.s.len > 0) {
-                string_init_string(&config->tray_icon_theme, &gp_alloc, node->value.s);
+                string_init_string(&config->tray_icon_theme, &gp_allocator, node->value.s);
             }
         }
 
@@ -2222,7 +2222,7 @@ static void update_config(string_t str) {
 
     if ((node = json_ast_node_object_get(&ast.root, string("status_command")))) {
         if ((node->type == JSON_AST_NODE_TYPE_STRING) && (node->value.s.len > 0)) {
-            string_init_string(&new_status_command, &gp_alloc, node->value.s);
+            string_init_string(&new_status_command, &gp_allocator, node->value.s);
         }
     }
 
@@ -2230,7 +2230,7 @@ static void update_config(string_t str) {
             !string_equal(new_status_command, old_status_command))) {
         status_fini();
     }
-    string_fini(&old_status_command, &gp_alloc);
+    string_fini(&old_status_command, &gp_allocator);
     config->status_command = new_status_command;
     if (!state.status.active && (new_status_command.len > 0)) {
         status_init();
@@ -2265,7 +2265,7 @@ static void update_config(string_t str) {
     if ((node = json_ast_node_object_get(&ast.root, string("font")))) {
         ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
         if (node->value.s.len > 0) {
-            string_init_string(&config->font, &gp_alloc, node->value.s);
+            string_init_string(&config->font, &gp_allocator, node->value.s);
         }
     }
 
@@ -2293,7 +2293,7 @@ static void update_config(string_t str) {
     if ((node = json_ast_node_object_get(&ast.root, string("separator_symbol")))) {
         ASSERT(node->type == JSON_AST_NODE_TYPE_STRING);
         if (node->value.s.len > 0) {
-            string_init_string(&config->separator_symbol, &gp_alloc, node->value.s);
+            string_init_string(&config->separator_symbol, &gp_allocator, node->value.s);
         }
     }
 
@@ -2444,7 +2444,7 @@ static void update_config(string_t str) {
     if ((node = json_ast_node_object_get(&ast.root, string("bindings")))) {
         ASSERT(node->type == JSON_AST_NODE_TYPE_ARRAY);
         if (node->value.a.count > 0) {
-            ARRAY_ALLOC(config->bindings, &gp_alloc, node->value.a.count);
+            ARRAY_ALLOC(config->bindings, &gp_allocator, node->value.a.count);
             for ( i = 0; i < node->value.a.count; ++i) {
                 json_ast_node_t *obj = &node->value.a.nodes[i];
                 json_ast_node_t *v;
@@ -2458,7 +2458,7 @@ static void update_config(string_t str) {
                 {
                     v = json_ast_node_object_get(obj, string("command"));
                     ASSERT((v->type == JSON_AST_NODE_TYPE_STRING) && (v->value.s.len > 0));
-                    string_init_string(&binding->command, &gp_alloc, v->value.s);
+                    string_init_string(&binding->command, &gp_allocator, v->value.s);
                 }
                 {
                     v = json_ast_node_object_get(obj, string("release"));
@@ -2482,12 +2482,12 @@ static void update_config(string_t str) {
                 }
             }
             if (!all) {
-                ARRAY_ALLOC(config->outputs, &gp_alloc, node->value.a.count);
+                ARRAY_ALLOC(config->outputs, &gp_allocator, node->value.a.count);
                 for ( i = 0; i < node->value.a.count; ++i) {
                     json_ast_node_t *v = &node->value.a.nodes[i];
                     if (v->value.s.len > 0) {
                         string_init_string( &config->outputs[config->outputs_count++],
-                            &gp_alloc, v->value.s);
+                            &gp_allocator, v->value.s);
                     }
                 }
             }
@@ -2587,7 +2587,7 @@ static bar_t *bar_create(output_t *output) {
         kill(-state.status.pid, state.status.cont_signal);
     }
 
-    ALLOCCT(bar, &gp_alloc);
+    ALLOCCT(bar, &gp_allocator);
     bar->dirty = TRUE;
     bar->_.in.type = SW_WAYLAND_SURFACE_TYPE_LAYER;
     bar->_.in.height = -1;
@@ -2629,11 +2629,11 @@ static void process_ipc(void) {
 
         for ( output = (output_t *)state.sw.out.backend.wayland.outputs.head; output; output = (output_t *)output->_.next) {
             for ( i = 0; i < output->workspaces_count; ++i) {
-                string_fini(&output->workspaces[i].name, &gp_alloc);
+                string_fini(&output->workspaces[i].name, &gp_allocator);
             }
             if (output->workspaces_count != ast.root.value.a.count) {
-                FREE(&gp_alloc, output->workspaces);
-                ARRAY_ALLOC(output->workspaces, &gp_alloc, ast.root.value.a.count);
+                FREE(&gp_allocator, output->workspaces);
+                ARRAY_ALLOC(output->workspaces, &gp_allocator, ast.root.value.a.count);
             }
             output->workspaces_count = 0;
             output->focused = FALSE;
@@ -2669,7 +2669,7 @@ static void process_ipc(void) {
 
             name = json_ast_node_object_get(node, string("name"));
             ASSERT((name != NULL) && (name->type == JSON_AST_NODE_TYPE_STRING));
-            string_init_string(&workspace->name, &gp_alloc, name->value.s);
+            string_init_string(&workspace->name, &gp_allocator, name->value.s);
 
             num = json_ast_node_object_get(node, string("num"));
             ASSERT((num != NULL) && ((num->type == JSON_AST_NODE_TYPE_INT) || (num->type == JSON_AST_NODE_TYPE_UINT)));
@@ -2744,12 +2744,12 @@ static void process_ipc(void) {
         state.visible_by_mode = TRUE;
 
         if ((token.value.s.len == 0) || string_equal(token.value.s, string("default"))) {
-            string_fini(text, &gp_alloc);
+            string_fini(text, &gp_allocator);
             MEMSET(text, 0, sizeof(*text));
             state.visible_by_mode = FALSE;
         } else if (!string_equal(token.value.s, *text)) {
-            string_fini(text, &gp_alloc);
-            string_init_string(text, &gp_alloc, token.value.s);
+            string_fini(text, &gp_allocator);
+            string_init_string(text, &gp_allocator, token.value.s);
         }
 
         update = TRUE;
@@ -2852,17 +2852,17 @@ static output_t *output_create(void) {
     if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES, NULL) == -1) {
         su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
     }
-    ALLOCCT(output, &gp_alloc);
+    ALLOCCT(output, &gp_allocator);
     return output;
 }
 
 static void output_destroy(output_t *output) {
     size_t i;
     for ( i = 0; i < output->workspaces_count; ++i) {
-        string_fini(&output->workspaces[i].name, &gp_alloc);
+        string_fini(&output->workspaces[i].name, &gp_allocator);
     }
-    FREE(&gp_alloc, output->workspaces);
-    FREE(&gp_alloc, output);
+    FREE(&gp_allocator, output->workspaces);
+    FREE(&gp_allocator, output);
 }
 
 static bool32_t process_sw_events(void) {
@@ -3025,17 +3025,17 @@ static bool32_t process_sw_events(void) {
             layout_block_t *block = (layout_block_t *)event->out._.layout_block;
             switch (block->destroy) {
             case LAYOUT_BLOCK_DESTROY_IMAGE:
-                FREE(&gp_alloc, block->_.in._.image.data.ptr);
+                FREE(&gp_allocator, block->_.in._.image.data.ptr);
                 break;
             case LAYOUT_BLOCK_DESTROY_TEXT:
-                string_fini(&block->_.in._.text.text, &gp_alloc);
+                string_fini(&block->_.in._.text.text, &gp_allocator);
                 break;
             case LAYOUT_BLOCK_DESTROY_NOTHING:
                 break;
             default:
                 ASSERT_UNREACHABLE;
             }
-            FREE(&gp_alloc, block);
+            FREE(&gp_allocator, block);
             break;
         }
         case SW_EVENT_WAYLAND_SURFACE_FAILED_TO_SET_CURSOR_SHAPE:
@@ -3101,7 +3101,7 @@ static void setup(int argc, char *argv[]) {
     }
 
     arena_init(&state.scratch_arena, &page_allocator, 16384);
-    file_cache_hash_table_init(&state.icon_cache, &gp_alloc, 512);
+    file_cache_hash_table_init(&state.icon_cache, &gp_allocator, 512);
 
     state.poll_fds[POLL_FD_STATUS].fd = -1;
     state.poll_fds[POLL_FD_STATUS].events = POLLIN;
@@ -3128,7 +3128,7 @@ static void setup(int argc, char *argv[]) {
     sigaction(SIGPIPE, &sigact, NULL);
 
     state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
-    state.sw.in.gp_alloc = &gp_alloc;
+    state.sw.in.gp_alloc = &gp_allocator;
     state.sw.in.scratch_alloc = &scratch_alloc;
     state.running = TRUE;
 }
@@ -3236,39 +3236,39 @@ static void cleanup(void) {
         config_t *config = &state.config;
 
         process_sw_events();
-        FREE(&gp_alloc, state.sw.out.events);
+        FREE(&gp_allocator, state.sw.out.events);
 
         for ( i = 0; i < state.icon_cache.capacity; ++i) {
             file_cache_t *c = &state.icon_cache.items[i];
-            FREE(&gp_alloc, c->data.ptr);
-            string_fini(&c->key, &gp_alloc);
+            FREE(&gp_allocator, c->data.ptr);
+            string_fini(&c->key, &gp_allocator);
         }
-        file_cache_hash_table_fini(&state.icon_cache, &gp_alloc);
+        file_cache_hash_table_fini(&state.icon_cache, &gp_allocator);
 
         for ( i = 0; i < config->bindings_count; ++i) {
-            string_fini(&config->bindings[i].command, &gp_alloc);
+            string_fini(&config->bindings[i].command, &gp_allocator);
         }
-        FREE(&gp_alloc, config->bindings);
-        string_fini(&config->font, &gp_alloc);
+        FREE(&gp_allocator, config->bindings);
+        string_fini(&config->font, &gp_allocator);
         for ( i = 0; i < config->outputs_count; ++i) {
-            string_fini(&config->outputs[i], &gp_alloc);
+            string_fini(&config->outputs[i], &gp_allocator);
         }
-        FREE(&gp_alloc, config->outputs);
+        FREE(&gp_allocator, config->outputs);
 
 #if WITH_TRAY
         for ( i = 0; i < config->tray_outputs_count; ++i) {
-            string_fini(&config->tray_outputs[i], &gp_alloc);
+            string_fini(&config->tray_outputs[i], &gp_allocator);
         }
-        FREE(&gp_alloc, config->tray_outputs);
-        FREE(&gp_alloc, config->tray_bindings);
-        string_fini(&config->tray_icon_theme, &gp_alloc);
+        FREE(&gp_allocator, config->tray_outputs);
+        FREE(&gp_allocator, config->tray_bindings);
+        string_fini(&config->tray_icon_theme, &gp_allocator);
 #endif /* WITH_TRAY */
 
-        string_fini(&config->status_command, &gp_alloc);
-        string_fini(&config->separator_symbol, &gp_alloc);
+        string_fini(&config->status_command, &gp_allocator);
+        string_fini(&config->separator_symbol, &gp_allocator);
 
-        string_fini(&state.binding_mode_indicator_text, &gp_alloc);
-        string_fini(&state.bar_id, &gp_alloc);
+        string_fini(&state.binding_mode_indicator_text, &gp_allocator);
+        string_fini(&state.bar_id, &gp_allocator);
 
         arena_fini(&state.scratch_arena, &page_allocator);
     }

@@ -13,6 +13,7 @@
 #include FT_MODULE_H
 #include FT_OTSVG_H
 #include FT_TRUETYPE_TABLES_H
+#include FT_SYNTHESIS_H
 #include <harfbuzz/hb-ft.h>
 
 typedef enum sw_glyph_load_flag {
@@ -56,6 +57,8 @@ typedef struct sw__cached_glyph {
     sw_glyph_render_mode_t render_mode;
     sw_glyph_load_flag_mask_t load_flags;
     /* ? TODO: cache hb_feature_t */
+    int64_t synthetic_slant_x, synthetic_slant_y;
+    int64_t synthetic_weight_dx, synthetic_weight_dy;
 } sw__cached_glyph_t;
 
 typedef struct sw__font {
@@ -89,12 +92,14 @@ typedef struct sw_font {
     size_t idx;
     uint32_t pixel_size;
     sw_glyph_render_mode_t glyph_render_mode;
-    /* ? TODO: lcd filter params */
+    /* TODO: lcd filter params */
     sw_glyph_load_flag_mask_t glyph_load_flags;
     sw_glyph_hinting_algorithm_t hinting_algorithm;
     su_string_t *features; /* ? TODO: parsed form */
     size_t features_count;
-    /* ? TODO: format-specific stuff (e.g fontvariations) */
+    /* TODO: fontvariations */
+    int64_t synthetic_slant_x, synthetic_slant_y;
+    int64_t synthetic_weight_dx, synthetic_weight_dy;
     void *priv;
 } sw_font_t;
 
@@ -793,7 +798,7 @@ static sw_pixmap_t *render(sw_layout_block_text_t *block) {
             fonts_changed = SU_TRUE;
         }
 
-        if ((font->pixel_size != font_priv->pixel_size) ||
+        if ( (font->pixel_size != font_priv->pixel_size) ||
                 ((font->glyph_load_flags | font->hinting_algorithm) != font_priv->glyph_load_flags)) {
             float y_scale, ascent, descent;
             float underline_position, underline_thickness;
@@ -1039,7 +1044,11 @@ shape:
                     if ( !cached_glyph
                             || (cached_glyph->pixel_size != glyph->font->pixel_size)
                             || (cached_glyph->load_flags != load_flags)
-                            || (cached_glyph->render_mode != glyph->font->glyph_render_mode)) {
+                            || (cached_glyph->render_mode != glyph->font->glyph_render_mode)
+                            || (cached_glyph->synthetic_weight_dx != glyph->font->synthetic_weight_dx)
+                            || (cached_glyph->synthetic_slant_x != glyph->font->synthetic_slant_x)
+                            || (cached_glyph->synthetic_weight_dy != glyph->font->synthetic_weight_dy)
+                            || (cached_glyph->synthetic_slant_y != glyph->font->synthetic_slant_y)) {
                         FT_Bitmap *ft_bitmap;
                         su_bool32_t scale;
 
@@ -1047,7 +1056,12 @@ shape:
                         SU_ASSERT(c == FT_Err_Ok);
                         scale = (face->glyph->format == FT_GLYPH_FORMAT_BITMAP);
 
-                        /* TODO: FT_GlyphSlot_AdjustWeight, FT_GlyphSlot_Slant */
+                        FT_GlyphSlot_AdjustWeight(face->glyph,
+                            (FT_Fixed)glyph->font->synthetic_weight_dx,
+                            (FT_Fixed)glyph->font->synthetic_weight_dy);
+                        FT_GlyphSlot_Slant(face->glyph,
+                            (FT_Fixed)glyph->font->synthetic_slant_x,
+                            (FT_Fixed)glyph->font->synthetic_slant_y);
 
                         c = FT_Render_Glyph(face->glyph, (FT_Render_Mode)glyph->font->glyph_render_mode);
                         SU_ASSERT(c == FT_Err_Ok);
@@ -1088,6 +1102,10 @@ shape:
                                 (float)glyph->font->pixel_size / (float)ft_bitmap->width,
                                 (float)glyph->font->pixel_size / (float)ft_bitmap->rows)
                             : 1.f);
+                        cached_glyph->synthetic_slant_x = glyph->font->synthetic_slant_x;
+                        cached_glyph->synthetic_slant_y = glyph->font->synthetic_slant_y;
+                        cached_glyph->synthetic_weight_dx = glyph->font->synthetic_weight_dx;
+                        cached_glyph->synthetic_weight_dy = glyph->font->synthetic_weight_dy;
                     }
 
                     glyph_priv->x_advance = SU_ABS((int)((((float)glyph_pos[g].x_advance / 64.f) + 0.5f) * cached_glyph->scale_factor));
@@ -1099,7 +1117,7 @@ shape:
                     
                     if (SU_UNLIKELY((*glyph_advance == 0) && (cached_glyph->scale_factor != 1.f))) {
                         /* TODO: rework */
-                        *glyph_advance = (int32_t)font->pixel_size;
+                        *glyph_advance = (int32_t)glyph->font->pixel_size;
                     }
 
                     if (glyph->cluster != prev_cluster) {
@@ -1405,7 +1423,11 @@ int main(void) {
         /*"/usr/share/fonts/nerdfonts/CaskaydiaCoveNerdFont-Regular.ttf", */
         /*"/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",*/
         "/usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf",
+#if 1
         "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
+#else
+        "/usr/share/fonts/cascadia-code/CascadiaMonoItalic.ttf",
+#endif
 #if 1
         "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
 #else

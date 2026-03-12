@@ -1351,9 +1351,9 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
             return ret;
         }
         for ( item = sni_server.out.items.tail; item; item = item->prev) {
-            LLIST_POP(&sni_server.out.items, item);
             sni__item_fini(item);
         }
+        MEMSET(&sni_server.out.items, 0, sizeof(sni_server.out.items));
     }
 
     return 0;

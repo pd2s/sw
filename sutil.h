@@ -647,6 +647,7 @@ static void su_page_free(const su_allocator_t *, void *ptr);
 
 static void su_arena_init(su_arena_t *, const su_allocator_t *, size_t initial_block_size);
 static void su_arena_fini(su_arena_t *, const su_allocator_t *);
+/* TODO: functions for save and restore state */
 static su_arena_block_t *su_arena_add_block(su_arena_t *, const su_allocator_t *, size_t size);
 static void *su_arena_alloc(su_arena_t *, const su_allocator_t *, size_t size, size_t alignment);
 static size_t su_arena_alloc_get_size(void *ptr);
@@ -1731,8 +1732,6 @@ static void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
 static SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t s) {
 #define ROTATE_LEFT(val, n)  (((val) << (n)) | ((val) >> (((sizeof(size_t)) * 8) - (n))))
 #define ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (((sizeof(size_t)) * 8) - (n))))
-
-    /* TODO: simd */
 
     size_t hash = 0;
     size_t i = 0;
