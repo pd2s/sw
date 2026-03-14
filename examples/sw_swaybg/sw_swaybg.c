@@ -276,7 +276,7 @@ static void process_sw_events(void) {
         }
         case SW_EVENT_WAYLAND_SURFACE_ERROR_MISSING_PROTOCOL:
         case SW_EVENT_WAYLAND_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
-            /* TODO: string */
+            /* TODO: error string */
             su_abort(errno, "failed to create layer surface on output " STRING_FMT ": (%u)",
                 STRING_ARG(event->out._.wayland_surface->in._.layer.output->out.name), event->out.type);
         case SW_EVENT_WAYLAND_SURFACE_DESTROY:
@@ -346,7 +346,7 @@ static void setup(int argc, char *argv[]) {
     ARGPARSE_LOOP_BEGIN {
         switch (ARGPARSE_KEY) {
         case 'c':
-            /* TODO: gradient support */
+            /* ? TODO: gradient support */
             s = ARGPARSE_VALUE;
             if (!parse_sway_color(s, &config.color)) {
                 su_abort( 1,

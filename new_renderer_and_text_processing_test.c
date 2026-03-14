@@ -1,5 +1,6 @@
 #define _XOPEN_SOURCE 700
 /*#define SU_STRIP_PREFIXES*/
+#define SU_WITH_SIMD 1
 #define SU_IMPLEMENTATION
 #include "sutil.h"
 
@@ -1253,20 +1254,28 @@ render:
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height, cached_glyph->pitch,
                             dst_x, dst_y,
-                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
+                            width, height);
                     break;
                 case FT_PIXEL_MODE_BGRA:
+#if 1
                     su_argb32_blend_argb32((uint32_t *)result->pixels, result->width, result->height,
                             (uint32_t *)(void *)cached_glyph->data, cached_glyph->width, cached_glyph->height,
                             dst_x, dst_y, 0, 0,
-                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
+                            width, height);
+#else
+                    su_argb32_rotate_blend_argb32( SU_ROTATE_90,
+                            (uint32_t *)result->pixels, result->width, result->height,
+                            (uint32_t *)(void *)cached_glyph->data, cached_glyph->width, cached_glyph->height,
+                            dst_x, dst_y, 0, 0,
+                            width, height);
+#endif
                     break;
                 case FT_PIXEL_MODE_MONO:
                     su_argb32_mask1_blend_argb32((uint32_t *)result->pixels, result->width, result->height,
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height, cached_glyph->pitch,
                             dst_x, dst_y,
-                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
+                            width, height);
                     break;
                 case FT_PIXEL_MODE_LCD:
                     SU_ASSERT((cached_glyph->width % 3) == 0);
@@ -1274,7 +1283,7 @@ render:
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width / 3, cached_glyph->height, cached_glyph->pitch,
                             dst_x, dst_y,
-                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
+                            width, height);
                     break;
                 case FT_PIXEL_MODE_LCD_V:
                     SU_ASSERT((cached_glyph->height % 3) == 0);
@@ -1282,7 +1291,7 @@ render:
                             block->text_color.u32,
                             cached_glyph->data, cached_glyph->width, cached_glyph->height / 3, cached_glyph->pitch,
                             dst_x, dst_y,
-                            (uint32_t)(dst_x + (int32_t)width), (uint32_t)(dst_y + (int32_t)height));
+                            width, height);
                     break;
                 case FT_PIXEL_MODE_NONE:
                 case FT_PIXEL_MODE_GRAY2:
@@ -1409,18 +1418,18 @@ int main(void) {
     static sw_layout_block_text_t block;
 
     static char *font_files[] = {
+#if 0
+        "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
+#else
+        "/home/user/Downloads/tmp/TwitterColorEmoji-SVGinOT-Linux-15.1.0/TwitterColorEmoji-SVGinOT.ttf", /* svg */
+#endif
         /*"/usr/share/fonts/nerdfonts/CaskaydiaCoveNerdFont-Regular.ttf", */
         /*"/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",*/
-        "/usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf",
 #if 1
         "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
 #else
         "/usr/share/fonts/cascadia-code/CascadiaMonoItalic.ttf",
-#endif
-#if 1
-        "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
-#else
-        "/home/user/Downloads/tmp/TwitterColorEmoji-SVGinOT-Linux-15.1.0/TwitterColorEmoji-SVGinOT.ttf", /* svg */
 #endif
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",
@@ -1440,9 +1449,9 @@ int main(void) {
 #elif 0
     su_string_t text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80 | \xCC\x81 A\xCC\x81\xCC\x80 \xD9\x8E \xEF\xB7\xB2 \xE0\xA5\x98");
 #elif 1
-    su_string_t text = su_string_("р");
+    su_string_t text = su_string_("👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️");
 #endif
-    block.text_color = color(0x80808080);
+    block.text_color = color(0xFFFFFFFF);
     block.fonts = fonts;
     block.fonts_count = SU_LENGTH(font_files);
     block.letter_spacing = 0;
@@ -1480,13 +1489,13 @@ int main(void) {
     sw__context = &sw;
     state.running = SU_TRUE;
 
-    pm = render(&block);
-    pm = render(&block);
-    pm = render(&block);
-    pm = render(&block);
-    pm = render(&block);
-    
+    {
+        int64_t s = su_now_ms(CLOCK_MONOTONIC);
+        pm = render(&block);
+        su_log_stderr("%ld ms", su_now_ms(CLOCK_MONOTONIC) - s);
+    }
 
+    
 #if 0
     {
         su_fat_ptr_t data;

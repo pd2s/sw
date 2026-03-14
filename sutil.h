@@ -469,6 +469,16 @@ typedef struct su_file_cache_hash_table {
     size_t capacity;
 } su_file_cache_hash_table_t;
 
+typedef enum su_rotate {
+    SU_ROTATE_90 = 1,
+    SU_ROTATE_180 = 2,
+    SU_ROTATE_270 = 3,
+    SU_ROTATE_FLIP = 4,
+    SU_ROTATE_FLIP_90 = 5,
+    SU_ROTATE_FLIP_180 = 6,
+    SU_ROTATE_FLIP_270 = 7
+} su_rotate_t;
+
 typedef struct su_json_buffer {
     char *data;
     size_t size;
@@ -668,6 +678,11 @@ static void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count)
 static void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color, int32_t x, int32_t y, uint32_t w, uint32_t h);
 static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+        uint32_t *src, uint32_t src_w, uint32_t src_h,
+        int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
+        uint32_t w, uint32_t h);
+static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
+    uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
         uint32_t w, uint32_t h);
@@ -874,6 +889,15 @@ typedef su_arena_t arena_t;
 typedef su_file_cache_hash_table_t file_cache_hash_table_t;
 typedef su_file_cache_t file_cache_t;
 
+typedef su_rotate_t rotate_t;
+#define ROTATE_90 SU_ROTATE_90
+#define ROTATE_180 SU_ROTATE_180
+#define ROTATE_270 SU_ROTATE_270
+#define ROTATE_FLIP SU_ROTATE_FLIP
+#define ROTATE_FLIP_90 SU_ROTATE_FLIP_90
+#define ROTATE_FLIP_180 SU_ROTATE_FLIP_180
+#define ROTATE_FLIP_270 SU_ROTATE_FLIP_270
+
 typedef su_json_buffer_t json_buffer_t;
 typedef su_json_writer_t json_writer_t;
 typedef su_json_tokener_t json_tokener_t;
@@ -1007,6 +1031,7 @@ typedef su_json_ast_t json_ast_t;
 #define abgr32_convert_argb32 su_abgr32_convert_argb32
 #define argb32_rect_blend_argb32 su_argb32_rect_blend_argb32
 #define argb32_blend_argb32 su_argb32_blend_argb32
+#define argb32_rotate_blend_argb32 su_argb32_rotate_blend_argb32
 #define argb32_mask8_blend_argb32 su_argb32_mask8_blend_argb32
 #define argb32_mask1_blend_argb32 su_argb32_mask1_blend_argb32
 #define argb32_mask24_blend_argb32 su_argb32_mask24_blend_argb32
@@ -2274,6 +2299,252 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
             uint32_t s = src_row[x];
 
             uint32_t sa = ((s >> 24) & 0xFF);
+            if (sa == 0) {
+                continue;
+            } else if (sa == 255) {
+                dst_row[x] = s;
+            } else {
+                uint32_t sr = ((s >> 16) & 0xFF);
+                uint32_t sg = ((s >> 8) & 0xFF);
+                uint32_t sb = ((s >> 0) & 0xFF);
+
+                uint32_t inv_sa = (255 - sa);
+
+                uint32_t d = dst_row[x];
+
+                uint32_t da = ((d >> 24) & 0xFF);
+                uint32_t dr = ((d >> 16) & 0xFF);
+                uint32_t dg = ((d >> 8) & 0xFF);
+                uint32_t db = ((d >> 0) & 0xFF);
+
+                da = (sa + (((da * inv_sa + 128) * 257) >> 16));
+                dr = (sr + (((dr * inv_sa + 128) * 257) >> 16));
+                dg = (sg + (((dg * inv_sa + 128) * 257) >> 16));
+                db = (sb + (((db * inv_sa + 128) * 257) >> 16));
+
+                dst_row[x] = ((da << 24) | (dr << 16) | (dg << 8) | (db << 0));
+            }
+        }
+    }
+}
+
+static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
+        uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+        uint32_t *src, uint32_t src_w, uint32_t src_h,
+        int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
+        uint32_t w, uint32_t h) {
+    int32_t x, y;
+    uint32_t *src_ptr;
+    int32_t dx, dy;
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+    int32_t dx_mul_8;
+    __m256i const_0  = _mm256_setzero_si256();
+    __m256i const_128_16x16 = _mm256_set1_epi16(128);
+    __m256i const_257_16x16 = _mm256_set1_epi16(257);
+    __m256i const_255_32x8 = _mm256_set1_epi8((char)255);
+    __m256i a_mask = _mm256_setr_epi8(
+#define ZERO 0x80
+        3,  3,  3,  3,  7,  7,  7,  7,
+        11, 11, 11, 11, 15, 15, 15, 15,
+        19, 19, 19, 19, 23, 23, 23, 23,
+        27, 27, 27, 27, 31, 31, 31, 31
+#undef ZERO
+    );
+    __m256i src_idxs_8x32;
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+
+    if (dst_x < 0) {
+        int32_t shift = -dst_x;
+        if (shift >= (int32_t)w) {
+            return;
+        }
+        dst_x = 0;
+        w -= (uint32_t)shift;
+    }
+    if (dst_y < 0) {
+        int32_t shift = -dst_y;
+        if (shift >= (int32_t)h) {
+            return;
+        }
+        dst_y = 0;
+        h -= (uint32_t)shift;
+    }
+
+    if (((uint32_t)dst_x >= dst_w) || ((uint32_t)dst_y >= dst_h)) {
+        return;
+    }
+    if (w > (dst_w - (uint32_t)dst_x)) {
+        w = (dst_w - (uint32_t)dst_x);
+    }
+    if (h > (dst_h - (uint32_t)dst_y)) {
+        h = (dst_h - (uint32_t)dst_y);
+    }
+
+    switch (rotate) {
+    case SU_ROTATE_180:
+    case SU_ROTATE_FLIP:
+    case SU_ROTATE_FLIP_180:
+        if (src_x < 0) {
+            int32_t shift = -src_x;
+            if (shift >= (int32_t)w) {
+                return;
+            }
+            src_x = 0;
+            w -= (uint32_t)shift;
+        }
+        if (src_y < 0) {
+            int32_t shift = -src_y;
+            if (shift >= (int32_t)h) {
+                return;
+            }
+            src_y = 0;
+            h -= (uint32_t)shift;
+        }
+        if (((uint32_t)src_x + w) > src_w) {
+            w = (src_w - (uint32_t)src_x);
+        }
+        if (((uint32_t)src_y + h) > src_h) {
+            h = (src_h - (uint32_t)src_y);
+        }
+        break;
+    case SU_ROTATE_90:
+    case SU_ROTATE_270:
+    case SU_ROTATE_FLIP_90:
+    case SU_ROTATE_FLIP_270:
+        if (src_x < 0) {
+            int32_t shift = -src_x;
+            if (shift >= (int32_t)h) {
+                return;
+            }
+            src_x = 0;
+            h -= (uint32_t)shift;
+        }
+        if (src_y < 0) {
+            int32_t shift = -src_y;
+            if (shift >= (int32_t)w) {
+                return;
+            }
+            src_y = 0;
+            w -= (uint32_t)shift;
+        }
+        if (((uint32_t)src_x + h) > src_w) {
+            h = (src_w - (uint32_t)src_x);
+        }
+        if (((uint32_t)src_y + w) > src_h) {
+            w = (src_h - (uint32_t)src_y);
+        }
+        break;
+    default:
+        SU_ASSERT_UNREACHABLE;
+    }
+
+    if ((w == 0) || (h == 0)) {
+        return;
+    }
+
+    switch (rotate) {
+    case SU_ROTATE_90:
+        src_ptr = src + ((uint32_t)src_y + w - 1) * src_w + src_x;
+        dx = -(int32_t)src_w;
+        dy = 1;
+        break;
+    case SU_ROTATE_180:
+        src_ptr = src + ((uint32_t)src_y + h - 1) * src_w + ((uint32_t)src_x + w - 1);
+        dx = -1;
+        dy = -(int32_t)src_w;
+        break;
+    case SU_ROTATE_270:
+        src_ptr = src + (uint32_t)src_y * src_w + ((uint32_t)src_x + h - 1);
+        dx = (int32_t)src_w;
+        dy = -1;
+        break;
+    case SU_ROTATE_FLIP:
+        src_ptr = src + (uint32_t)src_y * src_w + ((uint32_t)src_x + w - 1);
+        dx = -1;
+        dy = (int32_t)src_w;
+        break;
+    case SU_ROTATE_FLIP_90:
+        src_ptr = src + (uint32_t)src_y * src_w + src_x;
+        dx = (int32_t)src_w;
+        dy = 1;
+        break;
+    case SU_ROTATE_FLIP_180:
+        src_ptr = src + ((uint32_t)src_y + h - 1) * src_w + src_x;
+        dx = 1;
+        dy = -(int32_t)src_w;
+        break;
+    case SU_ROTATE_FLIP_270:
+        src_ptr = src + ((uint32_t)src_y + w - 1) * src_w + ((uint32_t)src_x + h - 1);
+        dx = -(int32_t)src_w;
+        dy = -1;
+        break;
+    default:
+        SU_ASSERT_UNREACHABLE;
+    }
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+    src_idxs_8x32 = _mm256_setr_epi32(
+        dx * 0, dx * 1, dx * 2, dx * 3,
+        dx * 4, dx * 5, dx * 6, dx * 7);
+    dx_mul_8 = (dx * 8);
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+
+    for ( y = 0; y < (int32_t)h; ++y) {
+        uint32_t *dst_row = &dst[(dst_y + y) * (int32_t)dst_w + dst_x];
+        uint32_t *src_row = &src_ptr[y * dy];
+        uint32_t *src_p = src_row;
+
+        x = 0;
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+        for ( ; (x + 8) <= (int32_t)w; x += 8) {
+            __m256i src_8x32, src_a_8x32;
+
+            /* TODO: replace gather with load where pixels are contiguous */
+            src_8x32 = _mm256_i32gather_epi32(src_p, src_idxs_8x32, 4);
+            src_a_8x32 = _mm256_shuffle_epi8(src_8x32, a_mask);
+
+            src_p += dx_mul_8;
+
+            if (_mm256_testc_si256(const_0, src_a_8x32)) {
+                continue;
+            } else if (_mm256_testc_si256(src_a_8x32, const_255_32x8)) {
+                _mm256_storeu_si256((__m256i_u *)&dst_row[x], src_8x32);
+            } else {
+                __m256i dst_8x32, dst_16x16_lo, dst_16x16_hi;
+                __m256i inv_src_a_8x32, inv_src_a_16x16_lo, inv_src_a_16x16_hi;
+                __m256i result_8x32;
+
+                dst_8x32 = _mm256_loadu_si256((__m256i_u *)&dst_row[x]);
+                dst_16x16_lo = _mm256_unpacklo_epi8(dst_8x32, const_0);
+                dst_16x16_hi = _mm256_unpackhi_epi8(dst_8x32, const_0);
+
+                inv_src_a_8x32 = _mm256_sub_epi32(const_255_32x8, src_a_8x32);
+                inv_src_a_16x16_lo = _mm256_unpacklo_epi8(inv_src_a_8x32, const_0);
+                inv_src_a_16x16_hi = _mm256_unpackhi_epi8(inv_src_a_8x32, const_0);
+
+                dst_16x16_lo = _mm256_mullo_epi16(dst_16x16_lo, inv_src_a_16x16_lo);
+                dst_16x16_hi = _mm256_mullo_epi16(dst_16x16_hi, inv_src_a_16x16_hi);
+                dst_16x16_lo = _mm256_add_epi16(dst_16x16_lo, const_128_16x16);
+                dst_16x16_hi = _mm256_add_epi16(dst_16x16_hi, const_128_16x16);
+                dst_16x16_lo = _mm256_mulhi_epu16(dst_16x16_lo, const_257_16x16);
+                dst_16x16_hi = _mm256_mulhi_epu16(dst_16x16_hi, const_257_16x16);
+
+                result_8x32 = _mm256_packus_epi16(dst_16x16_lo, dst_16x16_hi);
+                result_8x32 = _mm256_adds_epu8(result_8x32, src_8x32);
+
+                _mm256_storeu_si256((__m256i_u *)&dst_row[x], result_8x32);
+            }
+        }
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+
+        for ( ; x < (int32_t)w; ++x) {
+            uint32_t s = *src_p;
+            uint32_t sa = ((s >> 24) & 0xFF);
+
+            src_p += dx;
+
             if (sa == 0) {
                 continue;
             } else if (sa == 255) {
