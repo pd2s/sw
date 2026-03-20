@@ -8,16 +8,6 @@
     #define WITH_PNG 1
 #endif /* !defined(WITH_PNG) */
 
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <pthread.h>
-
-#include <stddef.h>
-
 #if !defined(SU_IMPLEMENTATION)
     #define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
@@ -173,7 +163,7 @@ static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
     xdg_name.free_contents = FALSE;
     xdg_name.nul_terminated = FALSE;
 
-    pthread_mutex_lock(&theme->lock);
+    PTHREAD_MUTEX_LOCK(&theme->lock);
 
     if (xdg_icon_theme__icon_hash_table_add(&theme->icons, theme->user_alloc, xdg_name, &icon)) {
         string_init_string(&icon->key, &theme->alloc, xdg_name);
@@ -221,26 +211,24 @@ static bool32_t xdg_icon_theme__theme_add_icon(xdg_icon_theme__theme_t *theme,
     }
 #endif /* WITH_PNG */
 
-    pthread_mutex_unlock(&theme->lock);
+    PTHREAD_MUTEX_UNLOCK(&theme->lock);
 
     return TRUE;
 }
 
 static void xdg_icon_theme__theme_populate(xdg_icon_theme__theme_t *theme, string_t path) {
-    /* TODO: remove recursion */
-
-    DIR *dir;
+    dir_t *dir;
     int dir_fd;
-    struct dirent *e;
+    dirent_t *e;
 
     ASSERT(path.nul_terminated);
 
-    if (!(dir = opendir(path.s))) {
+    if (!(dir = OPENDIR(path.s))) {
         return;
     }
 
-    dir_fd = dirfd(dir);
-    while ((e = readdir(dir))) {
+    dir_fd = DIRFD(dir);
+    while ((e = READDIR(dir))) {
         char buf[PATH_MAX];
         string_t new_path, name;
         size_t d_name_len;
@@ -278,8 +266,8 @@ static void xdg_icon_theme__theme_populate(xdg_icon_theme__theme_t *theme, strin
             break;
         case DT_LNK:
         case DT_UNKNOWN: {
-            struct stat sb;
-            if (fstatat(dir_fd, e->d_name, &sb, 0) == 0) {
+            stat_t sb;
+            if (FSTATAT(dir_fd, e->d_name, &sb, 0) == 0) {
                 if (S_ISREG(sb.st_mode)) {
                     xdg_icon_theme__theme_add_icon(theme, new_path, name);
                 } else if (S_ISDIR(sb.st_mode)) {
@@ -293,7 +281,7 @@ static void xdg_icon_theme__theme_populate(xdg_icon_theme__theme_t *theme, strin
         }
     }
 
-    closedir(dir);
+    CLOSEDIR(dir);
 }
 
 static void *xdg_icon_theme__theme_alloc_alloc(const allocator_t *alloc, size_t size, size_t alignment) {
@@ -307,9 +295,9 @@ static void *xdg_icon_theme__theme_populate_thread(void *data) {
     string_t path;
 
     /* TODO: rework */
-    pthread_mutex_lock(&theme->lock);
+    PTHREAD_MUTEX_LOCK(&theme->lock);
     path = theme->path;
-    pthread_mutex_unlock(&theme->lock);
+    PTHREAD_MUTEX_UNLOCK(&theme->lock);
 
     xdg_icon_theme__theme_populate(theme, path);
     return NULL;
@@ -329,7 +317,7 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 
     if (!theme) {
         ALLOCT(theme, alloc);
-        pthread_mutex_init(&theme->lock, NULL);
+        CLEAR(&theme->lock);
         theme->user_alloc = alloc;
         theme->alloc.alloc = xdg_icon_theme__theme_alloc_alloc;
         arena_init(&theme->arena, alloc, 32768);
@@ -342,12 +330,12 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
     }
 
     /* TODO: rework */
-    pthread_mutex_lock(&theme->lock);
+    PTHREAD_MUTEX_LOCK(&theme->lock);
     string_init_string(&theme->path, &theme->alloc, path);
-    pthread_mutex_unlock(&theme->lock);
+    PTHREAD_MUTEX_UNLOCK(&theme->lock);
 
     if ((cache->threads_count < LENGTH(cache->threads)) &&
-            (0 == pthread_create(&th, NULL, xdg_icon_theme__theme_populate_thread, theme))) {
+            (0 == PTHREAD_CREATE(&th, NULL, xdg_icon_theme__theme_populate_thread, theme))) {
         cache->threads[cache->threads_count++] = th;
     } else {
         DEBUG_LOG("warning: failed to create thread / thread pool is full. threads_count = %lu", cache->threads_count);
@@ -360,18 +348,20 @@ static bool32_t xdg_icon_theme__cache_add_theme(xdg_icon_theme_cache_t *cache,
 static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
         const allocator_t *alloc, string_t path) {
     static char abspath_buf[PATH_MAX];
-    DIR *dir;
+    dir_t *dir;
     int dir_fd;
-    struct dirent *e;
+    dirent_t *e;
     size_t i;
 
-    ASSERT(path.nul_terminated);
-    
-    if (realpath(path.s, abspath_buf) == NULL) {
+    size_t len = real_path(path, abspath_buf);
+    if (len == 0) {
         return FALSE;
     }
 
-    path = string(abspath_buf);
+    path.s = abspath_buf;
+    path.len = len;
+    path.nul_terminated = TRUE;
+    path.free_contents = FALSE;
 
     for ( i = (cache->basedirs_count - 1); i != SIZE_MAX; --i) {
         if (string_equal(path, cache->basedirs[i])) {
@@ -379,7 +369,7 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
         }
     }
 
-    if (!(dir = opendir(path.s))) {
+    if (!(dir = OPENDIR(path.s))) {
         return FALSE;
     }
 
@@ -394,8 +384,8 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
     }
     string_init_string(&cache->basedirs[cache->basedirs_count++], alloc, path);
 
-    dir_fd = dirfd(dir);
-    while ((e = readdir(dir))) {
+    dir_fd = DIRFD(dir);
+    while ((e = READDIR(dir))) {
         char buf[PATH_MAX];
         string_t new_path, name;
         size_t d_name_len;
@@ -433,8 +423,8 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
             break;
         case DT_LNK:
         case DT_UNKNOWN: {
-            struct stat sb;
-            if (fstatat(dir_fd, e->d_name, &sb, 0) == 0) {
+            stat_t sb;
+            if (FSTATAT(dir_fd, e->d_name, &sb, 0) == 0) {
                 if (S_ISREG(sb.st_mode)) {
                     xdg_icon_theme__theme_add_icon(&cache->unthemed, new_path, name);
                 } else if (S_ISDIR(sb.st_mode)) {
@@ -450,23 +440,23 @@ static bool32_t xdg_icon_theme_cache_add_basedir(xdg_icon_theme_cache_t *cache,
 
     /* ? TODO: sort icons by size */
 
-    closedir(dir);
+    CLOSEDIR(dir);
     return TRUE;
 }
 
 static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, const allocator_t *alloc) {
-    char *data_home = getenv("XDG_DATA_HOME");
-    char *data_dirs = getenv("XDG_DATA_DIRS");
+    char *data_home = GETENV("XDG_DATA_HOME");
+    char *data_dirs = GETENV("XDG_DATA_DIRS");
     static char buf[PATH_MAX];
 
-    MEMSET(cache, 0, sizeof(*cache));
+    CLEAR(cache);
 
     arena_init(&cache->unthemed.arena, alloc, 16384);
     cache->unthemed.alloc.alloc = xdg_icon_theme__theme_alloc_alloc;
     cache->unthemed.user_alloc = alloc;
     cache->unthemed.icons.capacity = 1024;
     ARRAY_ALLOCC(cache->unthemed.icons.items, alloc, cache->unthemed.icons.capacity);
-    pthread_mutex_init(&cache->unthemed.lock, NULL);
+    CLEAR(&cache->unthemed.lock);
     cache->basedirs_capacity = 32;
     ARRAY_ALLOC(cache->basedirs, alloc, cache->basedirs_capacity);
 
@@ -483,7 +473,7 @@ static void xdg_icon_theme_cache_init(xdg_icon_theme_cache_t *cache, const alloc
             xdg_icon_theme_cache_add_basedir(cache, alloc, s);
         }
     } else {
-        char *home = getenv("HOME");
+        char *home = GETENV("HOME");
         if (home && *home) {
             size_t len = STRLEN(home);
             if ((len + STRING_LITERAL_LENGTH("/.local/share/icons") + 1) <= sizeof(buf)) {
@@ -530,7 +520,7 @@ static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, const alloc
     xdg_icon_theme__theme_t *theme;
 
     for ( i = 0; i < cache->threads_count; ++i) {
-        pthread_join(cache->threads[i], NULL); /* ? TODO: pthread_cancel */
+        PTHREAD_JOIN(cache->threads[i], NULL); /* ? TODO: PTHREAD_CANCEL */
     }
 
     for ( i = 0; i < cache->basedirs_count; ++i) {
@@ -539,13 +529,11 @@ static void xdg_icon_theme_cache_fini(xdg_icon_theme_cache_t *cache, const alloc
     FREE(alloc, cache->basedirs);
 
     arena_fini(&cache->unthemed.arena, alloc);
-    pthread_mutex_destroy(&cache->unthemed.lock);
     FREE(alloc, cache->unthemed.icons.items);
 
     for ( theme = cache->themes; theme; ) {
         xdg_icon_theme__theme_t *next = theme->next;
         arena_fini(&theme->arena, alloc);
-        pthread_mutex_destroy(&theme->lock);
         FREE(alloc, theme->icons.items);
         FREE(alloc, theme);
         theme = next;
@@ -605,7 +593,7 @@ static bool32_t xdg_icon_theme_cache_find_icon(xdg_icon_theme_cache_t *cache,
 
     size_t i = 0;
     for ( ; i < cache->threads_count; ++i) {
-        pthread_join(cache->threads[i], NULL);
+        PTHREAD_JOIN(cache->threads[i], NULL);
     }
     cache->threads_count = 0;
 

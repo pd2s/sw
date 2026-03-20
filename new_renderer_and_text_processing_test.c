@@ -7,9 +7,6 @@
 #define SW_IMPLEMENTATION
 #include "swidgets.h"
 
-#include <locale.h>
-#include <signal.h>
-
 #include <ft2build.h>
 #include FT_MODULE_H
 #include FT_OTSVG_H
@@ -320,7 +317,7 @@ void *hb_calloc_impl(size_t nmemb, size_t size) {
 }
 
 void *hb_realloc_impl(void *ptr, size_t size) {
-    return realloc(ptr, size); /* TODO: rework */
+    return SU_REALLOC(ptr, size);
 }
 
 void hb_free_impl(void *ptr) {
@@ -350,7 +347,7 @@ FT_Error Load_SBit_Png(FT_GlyphSlot slot, FT_Int x_offset, FT_Int y_offset, FT_I
         return FT_Err_Invalid_Argument;
     }
 
-    SU_MEMSET(&ri, 0, sizeof(ri));
+    SU_CLEAR(&ri);
     ri.bits_per_channel = 8;
     stbi__start_mem(&ctx, (stbi_uc *)data, (int)png_len);
 
@@ -442,7 +439,7 @@ out:
     if (resvg_render_ft_state.tree) {
         resvg_tree_destroy(resvg_render_ft_state.tree);
     }
-    SU_MEMSET(&resvg_render_ft_state, 0, sizeof(resvg_render_ft_state));
+    SU_CLEAR(&resvg_render_ft_state);
     return ret;
 }
 
@@ -466,7 +463,7 @@ static FT_Error resvg_preset_slot_ft(FT_GlyphSlot slot, FT_Bool cache, FT_Pointe
 
     if (RESVG_OK != resvg_parse_tree_from_data( (const char *)doc->svg_document,
             (uintptr_t)doc->svg_document_length, options, &render_state->tree)) {
-        SU_MEMSET(render_state, 0, sizeof(*render_state));
+        SU_CLEAR(render_state);
         ret = FT_Err_Invalid_SVG_Document;
         goto out;
     }
@@ -527,7 +524,7 @@ static FT_Error resvg_preset_slot_ft(FT_GlyphSlot slot, FT_Bool cache, FT_Pointe
     slot->metrics.vertBearingY = ((slot->metrics.vertAdvance / 2) - (FT_Pos)(h * 32.f));
 
     if (doc->start_glyph_id == doc->end_glyph_id) {
-        SU_MEMSET(render_state->id, 0, sizeof(render_state->id));
+        SU_CLEAR(render_state->id);
     } else {
         su_snprintf(render_state->id, sizeof(render_state->id), "#glyph%u", slot->glyph_index);
     }
@@ -921,7 +918,7 @@ shape:
     if (cache->text_run.glyphs &&
             (cache->text_run.glyphs_count >= new_text_run.glyphs_count)) {
         new_text_run.glyphs = cache->text_run.glyphs;
-        SU_MEMSET(new_text_run.glyphs, 0, new_text_run.glyphs_count);
+        SU_MEMSET(new_text_run.glyphs, 0, sizeof(new_text_run.glyphs[0]) * new_text_run.glyphs_count);
     } else {
         SU_ARRAY_ALLOCC(new_text_run.glyphs, &text_cache_alloc, new_text_run.glyphs_count);
     }
@@ -1227,10 +1224,40 @@ render:
                             width, height);
                     break;
                 case FT_PIXEL_MODE_BGRA:
+#if 1
                     su_argb32_bilinear_blend_argb32((uint32_t *)result->pixels, result->width, result->height,
                             (uint32_t *)(void *)cached_glyph->data, cached_glyph->width, cached_glyph->height,
                             dst_x, dst_y,
                             width, height);
+#elif 0
+                    su_argb32_bilinear_rotate_blend_argb32( SU_ROTATE_90,
+                            (uint32_t *)result->pixels, result->width, result->height,
+                            (uint32_t *)(void *)cached_glyph->data, cached_glyph->width, cached_glyph->height,
+                            dst_x, dst_y,
+                            width, height);
+#else
+                    {
+                        pixman_image_t *src = pixman_image_create_bits_no_clear( PIXMAN_a8r8g8b8,
+                            (int)cached_glyph->width, (int)cached_glyph->height,
+                            (uint32_t *)(void *)cached_glyph->data, (int)cached_glyph->width * 4);
+                        pixman_image_t *dst = pixman_image_create_bits_no_clear( PIXMAN_a8r8g8b8,
+                            (int)result->width, (int)result->height, &result->pixels->u32, (int)result->width * 4);
+                        pixman_transform_t transform;
+                        pixman_transform_init_identity(&transform);
+                        pixman_transform_scale(&transform, NULL,
+                            pixman_int_to_fixed((int)cached_glyph->width) / (int)width,
+                            pixman_int_to_fixed((int)cached_glyph->height) / (int)height);
+            
+                        /* 90 */
+                        pixman_transform_rotate(&transform, NULL, 0, pixman_fixed_1);
+                        pixman_transform_translate(&transform, NULL,
+                            pixman_int_to_fixed((int)cached_glyph->width), 0);
+        
+                        pixman_image_set_transform(src, &transform);
+                        pixman_image_set_filter(src, PIXMAN_FILTER_BILINEAR, NULL, 0);
+                        pixman_image_composite32(PIXMAN_OP_OVER, src, NULL, dst, 0, 0, 0, 0, dst_x, dst_y, (int)width, (int)height);
+                    }
+#endif
                     break;
                 case FT_PIXEL_MODE_NONE:
                 case FT_PIXEL_MODE_MONO:
@@ -1403,7 +1430,7 @@ static su_bool32_t process_sw_events(void) {
 }
 
 static void handle_signal(int sig) {
-    SU_DEBUG_LOG("%s: %d", strsignal(sig), sig);
+    SU_DEBUG_LOG("signal %d", sig);
     SU_NOTUSED(sig);
     state.running = SU_FALSE;
 }
@@ -1411,18 +1438,13 @@ static void handle_signal(int sig) {
 int main(void) {
     su_bool32_t c;
     sw_pixmap_t *pm;
-    static struct sigaction sigact;
+    static su_sigaction_t sigact;
     static sw_wayland_surface_t surface;
     static sw_layout_block_t root;
     size_t i;
     static sw_layout_block_text_t block;
 
     static char *font_files[] = {
-#if 0
-        "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
-#else
-        "/home/user/Downloads/tmp/TwitterColorEmoji-SVGinOT-Linux-15.1.0/TwitterColorEmoji-SVGinOT.ttf", /* svg */
-#endif
         /*"/usr/share/fonts/nerdfonts/CaskaydiaCoveNerdFont-Regular.ttf", */
         /*"/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",*/
          "/usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf",
@@ -1430,6 +1452,11 @@ int main(void) {
         "/usr/share/fonts/cascadia-code/CascadiaMono.ttf",
 #else
         "/usr/share/fonts/cascadia-code/CascadiaMonoItalic.ttf",
+#endif
+#if 1
+        "/usr/share/fonts/noto-emoji/NotoColorEmoji.ttf", /* png */
+#else
+        "/home/user/Downloads/tmp/TwitterColorEmoji-SVGinOT-Linux-15.1.0/TwitterColorEmoji-SVGinOT.ttf", /* svg */
 #endif
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto/NotoSansDevanagari-Regular.ttf",
@@ -1449,7 +1476,7 @@ int main(void) {
 #elif 0
     su_string_t text = su_string_("\xF0\x9D\xBC\x80 \xF0\xAB\xA0\x9D \xF0\x96\xBF\xA4 \xF0\x91\xBC\x82 \xF0\x90\xBB\xBD \xF0\x9A\xBF\xB0 \xF0\x93\x90\xB0     \x80 \xC0\xAF \xC3 \xE2\x28\xA1 \xF0\x9F\x92 \xF4\x90\x80\x80 \xED\xA0\x80 | \xCC\x81 A\xCC\x81\xCC\x80 \xD9\x8E \xEF\xB7\xB2 \xE0\xA5\x98");
 #elif 1
-    su_string_t text = su_string_("👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️👨‍👩‍👧‍👦🇸🇪🧍‍♀️");
+    su_string_t text = su_string_("👨‍👩‍👧‍👦🇸🇪🧍‍♀️");
 #endif
     block.text_color = color(0xFFFFFFFF);
     block.fonts = fonts;
@@ -1460,9 +1487,6 @@ int main(void) {
     block.strikeout_color = color(0x4400FF00); */
 
 
-
-    setlocale(LC_ALL, "");
-    SU_ASSERT(su_locale_is_utf8());
 
     su_arena_init(&state.scratch_arena, &gp_alloc, 16384);
 
@@ -1490,9 +1514,9 @@ int main(void) {
     state.running = SU_TRUE;
 
     {
-        int64_t s = su_now_ms(CLOCK_MONOTONIC);
+        int64_t s = su_now_msec(CLOCK_MONOTONIC);
         pm = render(&block);
-        su_log_stderr("%ld ms", su_now_ms(CLOCK_MONOTONIC) - s);
+        su_log_stderr("%ld ms", su_now_msec(CLOCK_MONOTONIC) - s);
     }
 
     
@@ -1527,9 +1551,9 @@ int main(void) {
     SU_LLIST_APPEND_TAIL(&sw.in.backend.wayland.toplevels, &surface);
 
     sigact.sa_handler = handle_signal;
-    sigaction(SIGINT, &sigact, NULL);
-    sigaction(SIGTERM, &sigact, NULL);
-    sigaction(SIGPIPE, &sigact, NULL);
+    SU_SIGACTION(SIGINT, &sigact, NULL);
+    SU_SIGACTION(SIGTERM, &sigact, NULL);
+    SU_SIGACTION(SIGPIPE, &sigact, NULL);
 
 main_loop:
     do {
@@ -1544,7 +1568,7 @@ main_loop:
 
     su_arena_reset(&state.scratch_arena, &gp_alloc);
 
-    poll(sw.out.backend.wayland.fds, sw.out.backend.wayland.fds_count, (int)(sw.out.t - su_now_ms(CLOCK_MONOTONIC)));
+    SU_POLL(sw.out.backend.wayland.fds, sw.out.backend.wayland.fds_count, (int)(sw.out.t - su_now_msec(CLOCK_MONOTONIC)));
     
     goto main_loop;
 

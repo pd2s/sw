@@ -54,9 +54,6 @@
 #define SW_IMPLEMENTATION
 #include <swidgets.h>
 
-#include <locale.h>
-#include <signal.h>
-
 typedef enum background_mode {
     BACKGROUND_MODE_STRETCH,
     BACKGROUND_MODE_FILL,
@@ -107,7 +104,6 @@ static void scratch_alloc_free(const allocator_t *alloc, void *ptr) {
 static const allocator_t scratch_alloc = { scratch_alloc_alloc, scratch_alloc_free };
 
 static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
-    char *p;
     size_t len;
     uint32_t rgba;
     uint32_t a, r, g ,b;
@@ -125,8 +121,7 @@ static bool32_t parse_sway_color(char *cstr, sw_color_argb32_t *dest) {
         return FALSE;
     }
 
-    rgba = (uint32_t)strtoul(cstr, &p, 16);
-    if (*p != '\0') {
+    if (!string_hex_to_uint32(string(cstr), &rgba)) {
         return FALSE;
     }
 
@@ -189,7 +184,7 @@ static void store_config(config_t *config) {
     MEMCPY(&state.configs[state.configs_count++], config, sizeof(*config));
 }
 
-static su_bool32_t layout_block_handle_prepare(sw_layout_block_t *block_, sw_context_t *ctx) {
+static bool32_t layout_block_handle_prepare(sw_layout_block_t *block_, sw_context_t *ctx) {
     layout_block_t *block = (layout_block_t *)block_;
     NOTUSED(ctx);
     block->_.in.content_width = block->surface->out.width;
@@ -216,7 +211,7 @@ static void configure_output(sw_wayland_output_t *output, config_t *config) {
 
     ALLOCCT(root, &gp_alloc);
 
-    surface->in.root = &root->_;
+    surface->in.root = (sw_layout_block_t *)root;
 
     switch (config->mode) {
     case BACKGROUND_MODE_FILL: /* TODO */
@@ -277,7 +272,7 @@ static void process_sw_events(void) {
         case SW_EVENT_WAYLAND_SURFACE_ERROR_MISSING_PROTOCOL:
         case SW_EVENT_WAYLAND_SURFACE_ERROR_FAILED_TO_CREATE_BUFFER:
             /* TODO: error string */
-            su_abort(errno, "failed to create layer surface on output " STRING_FMT ": (%u)",
+            su_abort(ERRNO, "failed to create layer surface on output " STRING_FMT ": (%u)",
                 STRING_ARG(event->out._.wayland_surface->in._.layer.output->out.name), event->out.type);
         case SW_EVENT_WAYLAND_SURFACE_DESTROY:
             LLIST_POP(&state.sw.in.backend.wayland.layers, event->out._.wayland_surface);
@@ -291,7 +286,7 @@ static void process_sw_events(void) {
             for ( ; j < state.configs_count; ++j) {
                 config_t *config = &state.configs[j];
                 if (config->loaded_image.ptr == event->out._.layout_block->in._.image.data.ptr) {
-                    su_abort(errno, "failed to load image: " STRING_FMT, STRING_ARG(config->image_path));
+                    su_abort(ERRNO, "failed to load image: " STRING_FMT, STRING_ARG(config->image_path));
                 }
             }
             break;
@@ -322,29 +317,26 @@ static void process_sw_events(void) {
 
 static void handle_signal(int sig) {
     NOTUSED(sig);
-    DEBUG_LOG("%d: %s", sig, strsignal(sig));
+    DEBUG_LOG("signal %d", sig);
     state.running = FALSE;
 }
 
 static void setup(int argc, char *argv[]) {
-    static struct sigaction sigact;
+    static sigaction_t sigact;
     config_t config;
     size_t i;
     char *s;
 
-    setlocale(LC_ALL, "");
-    if (!locale_is_utf8()) {
-        su_abort(1, "failed to set UTF-8 locale");
-    }
-
     ARRAY_ALLOC(state.configs, &gp_alloc, argc);
 
-    MEMSET(&config, 0, sizeof(config));
+    CLEAR(&config);
     config.mode = BACKGROUND_MODE_INVALID;
     config.output = string("*");
 
     ARGPARSE_LOOP_BEGIN {
         switch (ARGPARSE_KEY) {
+        case 'v':
+            su_abort(0, "sw_swaybg version"); /* TODO */
         case 'c':
             /* ? TODO: gradient support */
             s = ARGPARSE_VALUE;
@@ -353,27 +345,27 @@ static void setup(int argc, char *argv[]) {
                     "%s is not a valid color for sw_swaybg. Color should be specified as rrggbb or #rrggbb (no alpha).", s);
             }
             break;
-        case 'i':
-            if ((s = ARGPARSE_VALUE)) {
-                config.image_path = string(s);
-            }
-            break;
         case 'm':
             s = ARGPARSE_VALUE;
             if ((config.mode = parse_background_mode(s)) == BACKGROUND_MODE_INVALID) {
                  su_abort(1, "invalid mode: %s", s);
             }
             break;
+        case 'i':
+            if ((s = ARGPARSE_VALUE)) {
+                config.image_path = string(s);
+                break;
+            }
+            ATTRIBUTE_FALLTHROUGH;
         case 'o':
             if ((s = ARGPARSE_VALUE)) {
                 store_config(&config);
-                MEMSET(&config, 0, sizeof(config));
+                CLEAR(&config);
                 config.mode = BACKGROUND_MODE_INVALID;
                 config.output = string(s);
+                break;
             }
-            break;
-        case 'v':
-            su_abort(0, "sw_swaybg version"); /* TODO */
+            ATTRIBUTE_FALLTHROUGH;
         case 'h':
         default:
             su_abort( (ARGPARSE_KEY != 'h'),
@@ -406,7 +398,7 @@ static void setup(int argc, char *argv[]) {
         }
         if (c->image_path.len > 0) {
             if (!read_entire_file(c->image_path, &c->loaded_image, &gp_alloc)) {
-                su_abort(errno, "failed to read file: " STRING_FMT, STRING_ARG(c->image_path));
+                su_abort(ERRNO, "failed to read file: " STRING_FMT, STRING_ARG(c->image_path));
             }
         }
     }
@@ -415,9 +407,9 @@ static void setup(int argc, char *argv[]) {
 
     sigact.sa_handler = handle_signal;
     /* ? TODO: error check */
-    sigaction(SIGINT, &sigact, NULL);
-    sigaction(SIGTERM, &sigact, NULL);
-    sigaction(SIGPIPE, &sigact, NULL);
+    SIGACTION(SIGINT, &sigact, NULL);
+    SIGACTION(SIGTERM, &sigact, NULL);
+    SIGACTION(SIGPIPE, &sigact, NULL);
 
     state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
     state.sw.in.gp_alloc = &gp_alloc;
@@ -429,7 +421,7 @@ static void run(void) {
     while (state.running) {
         do {
             if (!sw_set(&state.sw)) {
-                su_abort(errno, "sw_set: %s", strerror(errno));
+                su_abort(ERRNO, "sw_set: error code = %d", ERRNO);
             }
             state.sw.in.update_and_render = FALSE;
             process_sw_events();
@@ -437,10 +429,10 @@ static void run(void) {
 
         arena_reset(&state.scratch_arena, &gp_alloc);
 
-        if (poll(state.sw.out.backend.wayland.fds, state.sw.out.backend.wayland.fds_count,
-                (int)(state.sw.out.t - now_ms(CLOCK_MONOTONIC))) == -1) {
-            if (errno != EINTR) {
-                su_abort(errno, "poll: %s", strerror(errno));
+        if (POLL(state.sw.out.backend.wayland.fds, state.sw.out.backend.wayland.fds_count,
+                (int)(state.sw.out.t - now_msec(CLOCK_MONOTONIC))) == -1) {
+            if (ERRNO != EINTR) {
+                su_abort(ERRNO, "poll: error code = %d", ERRNO);
             }
         }
     }

@@ -42,9 +42,6 @@
 #include "../../swidgets.h"
 
 #include <linux/input-event-codes.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <locale.h>
 
 #include "sway_ipc.h"
 
@@ -284,7 +281,7 @@ typedef struct config {
 typedef struct state {
     sw_context_t sw;
     arena_t scratch_arena;
-    struct pollfd poll_fds[POLL_FD_LAST];
+    pollfd_t poll_fds[POLL_FD_LAST];
     config_t config;
     string_t binding_mode_indicator_text;
     status_t status;
@@ -349,7 +346,7 @@ switch (block->type) {
 }
 
 static void layout_block_init_text(layout_block_t *block_, string_t *text) {
-    sw_layout_block_t *block = &block_->_;
+    sw_layout_block_t *block = (sw_layout_block_t *)block_;
     block->in.type = SW_LAYOUT_BLOCK_TYPE_TEXT;
     block->in._.text.font_names = &state.config.font;
     block->in._.text.font_names_count = 1;
@@ -432,7 +429,7 @@ static bool32_t workspace_block_pointer_button(layout_block_t *block,
     payload.nul_terminated = FALSE;
 
     if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_COMMAND, &payload) == -1) {
-        su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+        su_abort(ERRNO, "sway_ipc_send: write: error code = %d", ERRNO);
     }
 
     return TRUE;
@@ -516,14 +513,14 @@ static void tray_describe_sni_items(bar_t *bar) {
             block->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER;
             block->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
 
-            LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
+            LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, (sw_layout_block_t *)block);
 
             if (!props) {
                 continue;
             }
 
-            MEMSET(&icon_name, 0, sizeof(icon_name));
-            MEMSET(&icon, 0, sizeof(icon));
+            CLEAR(&icon_name);
+            CLEAR(&icon);
 
             switch (props->status) {
             case SNI_ITEM_STATUS_ACTIVE:
@@ -575,7 +572,7 @@ static void tray_describe_sni_items(bar_t *bar) {
                 block->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
                 block->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 
-                LLIST_APPEND_TAIL(&block->_.in._.composite.children, &image->_);
+                LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)image);
             }
         }
     }
@@ -604,9 +601,9 @@ static void tray_dbusmenu_menu_item_pointer_enter(sni_dbusmenu_menu_item_t *menu
 
     if (children->count > 0) {
         tray_dbusmenu_menu_popup_t *c = (tray_dbusmenu_menu_popup_t *)children->head;
-        MEMSET(children, 0, sizeof(*children));
         c->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
-        LLIST_APPEND_TAIL(c->list, &c->_);
+        LLIST_APPEND_TAIL(c->list, (sw_wayland_surface_t *)c);
+        CLEAR(children);
     }
 
     if (menu_item->enabled && (menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR)) {
@@ -615,7 +612,7 @@ static void tray_dbusmenu_menu_item_pointer_enter(sni_dbusmenu_menu_item_t *menu
                 menu_item->submenu, block->_.out.dim.x, block->_.out.dim.y + block->_.out.dim.height,
                 popup->seat);
             new_popup->list = children;
-            LLIST_APPEND_TAIL(children, &new_popup->_);
+            LLIST_APPEND_TAIL(children, (sw_wayland_surface_t *)new_popup);
         }
 
         block->_.in.color._.argb32 = state.config.colors.focused_separator;
@@ -633,9 +630,9 @@ static void tray_dbusmenu_menu_item_pointer_button(sni_dbusmenu_menu_item_t *men
     if ((menu_item->type != SNI_DBUSMENU_MENU_ITEM_TYPE_SEPARATOR) && menu_item->enabled) {
 #if 1
         tray_dbusmenu_menu_popup_t *root_popup = state.tray.popup;
-        MEMSET(root_popup->list, 0, sizeof(*root_popup->list));
+        CLEAR(root_popup->list);
         root_popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
-        LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
+        LLIST_APPEND_TAIL(root_popup->list, (sw_wayland_surface_t *)root_popup);
 #endif
         sni_dbusmenu_menu_item_event(menu_item,
             SNI_DBUSMENU_MENU_ITEM_EVENT_TYPE_CLICKED, TRUE);
@@ -701,9 +698,9 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
 
     if (children->count > 0) {
         tray_dbusmenu_menu_popup_t *c = (tray_dbusmenu_menu_popup_t *)children->head;
-        MEMSET(children, 0, sizeof(*children));
         c->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
-        LLIST_APPEND_TAIL(c->list, &c->_);
+        LLIST_APPEND_TAIL(c->list, (sw_wayland_surface_t *)c);
+        CLEAR(children);
     }
 
     if (LIKELY(popup->_.in.root)) { /* TODO: remove */
@@ -747,7 +744,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     label->_.in.borders[2].width = label->_.in.borders[3].width =
                     config->tray_padding;
 
-                LLIST_APPEND_TAIL(&block->_.in._.composite.children, &label->_);
+                LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)label);
             }
 
 #if SW_WITH_SVG || SW_WITH_PNG
@@ -779,7 +776,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     icon->sample_block = label;
                 }
 
-                LLIST_APPEND_TAIL(&block->_.in._.composite.children, &icon->_);
+                LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)icon);
             }
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
@@ -800,7 +797,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     icon->sample_block = label;
                 }
     
-                LLIST_APPEND_TAIL(&block->_.in._.composite.children, &icon->_);
+                LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)icon);
             }
 #endif /* SW_WITH_PNG */
 
@@ -841,7 +838,7 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     toggle->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
                 }
 
-                LLIST_APPEND_TAIL(&block->_.in._.composite.children, &toggle->_);
+                LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)toggle);
 
                 needs_spacer = TRUE;
                 break;
@@ -874,13 +871,13 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     submenu->_.in.content_anchor = SW_LAYOUT_BLOCK_CONTENT_ANCHOR_CENTER_CENTER;
                 }
 
-                LLIST_APPEND_TAIL(&block->_.in._.composite.children, &submenu->_);
+                LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)submenu);
 
                 needs_spacer = TRUE;
             }
 #endif /* SW_WITH_SVG */
         }
-        LLIST_APPEND_TAIL(&root->_.in._.composite.children, &block->_);
+        LLIST_APPEND_TAIL(&root->_.in._.composite.children, (sw_layout_block_t *)block);
     }
 
     if (needs_spacer) {
@@ -897,13 +894,13 @@ static void tray_dbusmenu_menu_popup_update(tray_dbusmenu_menu_popup_t *popup, s
                     spacer->sample_block = (layout_block_t *)block->in._.composite.children.head;
                     /*spacer->_.in.type = SW_LAYOUT_BLOCK_TYPE_SPACER; */
                     spacer->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_RIGHT;
-                    LLIST_APPEND_TAIL(&block->in._.composite.children, &spacer->_);
+                    LLIST_APPEND_TAIL(&block->in._.composite.children, (sw_layout_block_t *)spacer);
                 }
             }
         }
     }
 
-    popup->_.in.root = &root->_;
+    popup->_.in.root = (sw_layout_block_t *)root;
 
     state.sw.in.update_and_render = TRUE;
 }
@@ -1000,7 +997,7 @@ static void tray_sni_item_block_pointer_button(layout_block_t *block,
             state.tray.popup = tray_dbusmenu_menu_popup_create(
                 dbusmenu->menu->menu_items[0].submenu, x, y, seat);
             state.tray.popup->list = &bar->_.in.popups;
-            LLIST_APPEND_TAIL(state.tray.popup->list, &state.tray.popup->_);
+            LLIST_APPEND_TAIL(state.tray.popup->list, (sw_wayland_surface_t *)state.tray.popup);
         } else {
             sni_item_context_menu_async(item, 0, 0);
         }
@@ -1035,9 +1032,9 @@ static void tray_sni_item_destroy(sni_item_t *item) {
     tray_dbusmenu_menu_popup_t *root_popup = state.tray.popup;
     if (root_popup && (root_popup->item == item)) {
         root_popup->parent_menu_item = NULL;
-        MEMSET(root_popup->list, 0, sizeof(*root_popup->list));
+        CLEAR(root_popup->list);
         root_popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
-        LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
+        LLIST_APPEND_TAIL(root_popup->list, (sw_wayland_surface_t *)root_popup);
     }
 
     FREE(&gp_allocator, item);
@@ -1094,9 +1091,9 @@ static bool32_t tray_process_events(void) {
                     (menu->menu_items[0].submenu->menu_items_count > 0)) {
                 tray_dbusmenu_menu_popup_update(root_popup, menu->menu_items[0].submenu);
             } else {
-                MEMSET(root_popup->list, 0, sizeof(*root_popup->list));
+                CLEAR(root_popup->list);
                 root_popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
-                LLIST_APPEND_TAIL(root_popup->list, &root_popup->_);
+                LLIST_APPEND_TAIL(root_popup->list, (sw_wayland_surface_t *)root_popup);
             }
             break;
         }
@@ -1119,7 +1116,7 @@ static void tray_init(void) {
 
     ret = sni_server_init();
     if (ret < 0) {
-        su_abort(-ret, "sni_server_init: %s", strerror(-ret));
+        su_abort(-ret, "sni_server_init: error code = %d", -ret);
     }
 
     state.tray.popup = NULL;
@@ -1138,7 +1135,7 @@ static void tray_fini(void) {
     xdg_icon_theme_cache_fini(&tray->cache, &page_allocator);
 #endif /* SW_WITH_SVG || SW_WITH_PNG */
 
-    MEMSET(tray, 0, sizeof(*tray));
+    CLEAR(tray);
     state.poll_fds[POLL_FD_SNI_SERVER].fd = -1;
 }
 
@@ -1146,7 +1143,7 @@ static void tray_process(void) {
     do {
         int ret = sni_server_process();
         if (ret < 0) {
-            su_abort(-ret, "sni_server_process: %s", strerror(-ret));
+            su_abort(-ret, "sni_server_process: error code = %d", -ret);
         }
     } while (tray_process_events());
 }
@@ -1163,7 +1160,7 @@ static void tray_update(void) {
 static void bar_destroy(bar_t *bar) {
     status_t *status = &state.status;
     if (status->active && (state.sw.in.backend.wayland.layers.count == 0)) {
-        kill(-status->pid, status->stop_signal);
+        KILL(-status->pid, status->stop_signal);
     }
     FREE(&gp_allocator, bar);
 }
@@ -1175,25 +1172,25 @@ static void status_init(void) {
 
     ASSERT(state.config.status_command.nul_terminated);
 
-    if ((pipe(pipe_read_fd) == -1) || (pipe(pipe_write_fd) == -1)) {
-        su_abort(errno, "pipe: %s", strerror(errno));
+    if ((PIPE(pipe_read_fd) == -1) || (PIPE(pipe_write_fd) == -1)) {
+        su_abort(ERRNO, "pipe: error code = %d", ERRNO);
     }
 
-    pid = fork();
+    pid = FORK();
     if (pid == -1) {
-        su_abort(errno, "fork: %s", strerror(errno));
+        su_abort(ERRNO, "fork: error code = %d", ERRNO);
     } else if (pid == 0) {
         const char *cmd_[4];
 
-        setpgid(0, 0);
+        SETPGID(0, 0);
 
-        dup2(pipe_read_fd[1], STDOUT_FILENO);
-        close(pipe_read_fd[0]);
-        close(pipe_read_fd[1]);
+        DUP2(pipe_read_fd[1], 1); /* stdout */
+        CLOSE(pipe_read_fd[0]);
+        CLOSE(pipe_read_fd[1]);
 
-        dup2(pipe_write_fd[0], STDIN_FILENO);
-        close(pipe_write_fd[0]);
-        close(pipe_write_fd[1]);
+        DUP2(pipe_write_fd[0], 0); /* stdin */
+        CLOSE(pipe_write_fd[0]);
+        CLOSE(pipe_write_fd[1]);
 
         cmd_[0] = "sh";
         cmd_[1] = "-c";
@@ -1201,20 +1198,20 @@ static void status_init(void) {
         cmd_[3] = NULL;
 
         execvp(cmd_[0], (char * const *)(uintptr_t)cmd_);
-        exit(1);
+        EXIT(1);
     }
 
     if (!fd_set_nonblock(pipe_read_fd[0])) {
-        su_abort(errno, "fcntl: %s", strerror(errno));
+        su_abort(ERRNO, "fcntl: error code = %d", ERRNO);
     }
 
-    close(pipe_read_fd[1]);
-    close(pipe_write_fd[0]);
+    CLOSE(pipe_read_fd[1]);
+    CLOSE(pipe_write_fd[0]);
 
     fd_set_cloexec(pipe_read_fd[0]);
     fd_set_cloexec(pipe_write_fd[1]);
 
-    MEMSET(status, 0, sizeof(*status));
+    CLEAR(status);
     status->buf.size = 8192;
     ALLOCTS(status->buf.data, &page_allocator, 8192);
     status->stop_signal = SIGSTOP;
@@ -1231,13 +1228,13 @@ static void status_close_pipes(void) {
     status_t *status = &state.status;
 
     if (status->read_fd != -1) {
-        close(status->read_fd);
+        CLOSE(status->read_fd);
         status->read_fd = -1;
 
         state.poll_fds[POLL_FD_STATUS].fd = -1;
     }
     if (status->write_fd != -1) {
-        close(status->write_fd);
+        CLOSE(status->write_fd);
         status->write_fd = -1;
     }
 }
@@ -1247,9 +1244,9 @@ static void status_i3bar_block_fini(status_i3bar_block_t *block);
 static void status_fini(void) {
     status_t *status = &state.status;
 
-    kill(-status->pid, status->cont_signal);
-    kill(-status->pid, SIGTERM);
-    waitpid(status->pid, NULL, 0);
+    KILL(-status->pid, status->cont_signal);
+    KILL(-status->pid, SIGTERM);
+    WAITPID(status->pid, NULL, 0);
 
     status_close_pipes();
 
@@ -1263,7 +1260,7 @@ static void status_fini(void) {
         FREE(&gp_allocator, status->blocks);
     }
 
-    MEMSET(status, 0, sizeof(*status));
+    CLEAR(status);
 }
 
 static void status_set_error(string_t text) {
@@ -1387,7 +1384,7 @@ static void status_i3bar_block_pointer_button(layout_block_t *block,
 
     su__json_buffer_add_char(&writer.buf, &scratch_alloc, '\n');
 
-    if (write(status->write_fd, writer.buf.data, writer.buf.idx) <= 0) {
+    if (WRITE(status->write_fd, writer.buf.data, writer.buf.idx) <= 0) {
         status_set_error(string("[failed to write click event]"));
         set_bars_dirty();
     }
@@ -1422,7 +1419,7 @@ static void status_describe(bar_t *bar) {
             block->_.in.borders[0].width = block->_.in.borders[1].width = 5;
             block->_.in.borders[3].width = block->_.in.borders[2].width = config->status_padding;
 
-            LLIST_APPEND_TAIL(&root->in._.composite.children, &block->_);
+            LLIST_APPEND_TAIL(&root->in._.composite.children, (sw_layout_block_t *)block);
         }
         break;
     case STATUS_PROTOCOL_I3BAR: {
@@ -1473,7 +1470,7 @@ static void status_describe(bar_t *bar) {
                 spacer->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
                 spacer->_.in.min_width = config->status_edge_padding;
 
-                LLIST_APPEND_TAIL(&root->in._.composite.children, &spacer->_);
+                LLIST_APPEND_TAIL(&root->in._.composite.children, (sw_layout_block_t *)spacer);
             } else if (!edge && ((i3bar_block->separator_block_width > 0) || i3bar_block->separator)) {
                 layout_block_t *separator;
                 ALLOCCT(separator, &gp_allocator);
@@ -1506,7 +1503,7 @@ static void status_describe(bar_t *bar) {
                 }
                 separator->_.in.fill = (SW_LAYOUT_BLOCK_FILL_TOP | SW_LAYOUT_BLOCK_FILL_BOTTOM);
 
-                LLIST_APPEND_TAIL(&root->in._.composite.children, &separator->_);
+                LLIST_APPEND_TAIL(&root->in._.composite.children, (sw_layout_block_t *)separator);
             }
 
             if (i3bar_block->min_width_str.len > 0) {
@@ -1515,13 +1512,13 @@ static void status_describe(bar_t *bar) {
                 ALLOCCT(min_width, &gp_allocator);
                 layout_block_init_text(min_width, &i3bar_block->min_width_str);
                 min_width->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
-                LLIST_APPEND_TAIL(&root->in._.composite.children, &min_width->_);
+                LLIST_APPEND_TAIL(&root->in._.composite.children, (sw_layout_block_t *)min_width);
                 block->sample_block = min_width;
                 block->_.in.prepare = layout_block_handle_prepare;
             }
 
-            LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
-            LLIST_APPEND_TAIL(&root->in._.composite.children, &block->_);
+            LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)text);
+            LLIST_APPEND_TAIL(&root->in._.composite.children, (sw_layout_block_t *)block);
 
             edge = FALSE;
         }
@@ -1534,11 +1531,8 @@ static void status_describe(bar_t *bar) {
 }
 
 static bool32_t parse_sway_color(string_t str, sw_color_argb32_t *dest) {
-    char *p;
     uint32_t rgba;
     uint32_t a, r, g, b;
-
-    ASSERT(str.nul_terminated); /* TODO: handle properly */
 
     if (str.len == 0) {
         return FALSE;
@@ -1553,8 +1547,7 @@ static bool32_t parse_sway_color(string_t str, sw_color_argb32_t *dest) {
         return FALSE;
     }
 
-    rgba = (uint32_t)strtoul(str.s, &p, 16);
-    if (*p != '\0') {
+    if (!string_hex_to_uint32(str, &rgba)) {
         return FALSE;
     }
 
@@ -1570,7 +1563,7 @@ static bool32_t parse_sway_color(string_t str, sw_color_argb32_t *dest) {
         b = ((rgba >> 0) & 0xFF);
     }
 
-    dest->u32 = (a << 24) | (r << 16) | (g << 8) | (b << 0);
+    dest->u32 = ((a << 24) | (r << 16) | (g << 8) | (b << 0));
 
     return TRUE;
 }
@@ -1582,7 +1575,7 @@ static bool32_t status_i3bar_block_init(status_i3bar_block_t *block, json_ast_no
         return FALSE;
     }
 
-    MEMSET(block, 0, sizeof(*block));
+    CLEAR(block);
 
     block->border_widths[0] = block->border_widths[1] =
         block->border_widths[2] = block->border_widths[3] =
@@ -1717,15 +1710,15 @@ static bool32_t status_process(void) {
 
     status->buf.idx = 0;
     for (;;) {
-        ssize_t read_bytes = read(status->read_fd, &status->buf.data[status->buf.idx],
+        ssize_t read_bytes = READ(status->read_fd, &status->buf.data[status->buf.idx],
             status->buf.size - status->buf.idx);
         if (read_bytes <= 0) {
             if (read_bytes == 0) {
-                errno = EPIPE;
+                ERRNO = EPIPE;
             }
-            if (errno == EAGAIN) {
+            if (ERRNO == EAGAIN) {
                 break;
-            } else if (errno == EINTR) {
+            } else if (ERRNO == EINTR) {
                 continue;
             } else {
                 status_set_error(string("[error reading from status command]"));
@@ -1759,7 +1752,7 @@ static bool32_t status_process(void) {
             json_tokener_state_t s;
             size_t i;
 
-            MEMSET(&tok, 0, sizeof(tok));
+            CLEAR(&tok);
             json_ast_reset(&ast);
             json_tokener_set_string(&tok, &scratch_alloc, str);
 
@@ -1796,7 +1789,7 @@ static bool32_t status_process(void) {
             }
             if (i3bar) {
                 if (status->click_events) {
-                    if (write(status->write_fd, "[\n", 2) != 2) {
+                    if (WRITE(status->write_fd, "[\n", 2) != 2) {
                         status_set_error(string("[failed to write to status command]"));
                         return TRUE;
                     }
@@ -1825,7 +1818,7 @@ protocol_i3bar: {
         json_tokener_t tok;
         json_ast_t ast;
 
-        MEMSET(&tok, 0, sizeof(tok));
+        CLEAR(&tok);
         json_ast_reset(&ast);
 
         str.s = (char *)status->buf.data;
@@ -1932,9 +1925,9 @@ static void describe_workspaces(bar_t *bar) {
             text->_.in._.text.text = string_view(workspace->name);
         }
 
-        LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
+        LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)text);
 
-        LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
+        LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, (sw_layout_block_t *)block);
     }
 }
 
@@ -1966,9 +1959,9 @@ static void describe_binding_mode_indicator(bar_t *bar) {
     text->_.in.borders[0].width = text->_.in.borders[1].width = 5;
     text->_.in.borders[2].width = text->_.in.borders[3].width = 1;
 
-    LLIST_APPEND_TAIL(&block->_.in._.composite.children, &text->_);
+    LLIST_APPEND_TAIL(&block->_.in._.composite.children, (sw_layout_block_t *)text);
 
-    LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, &block->_);
+    LLIST_APPEND_TAIL(&bar->_.in.root->in._.composite.children, (sw_layout_block_t *)block);
 }
 
 static void bar_update(bar_t *bar) {
@@ -2010,9 +2003,9 @@ static void bar_update(bar_t *bar) {
     ALLOCCT(min_height, &gp_allocator);
     layout_block_init_text(min_height, &min_height_str);
     min_height->_.in.anchor = SW_LAYOUT_BLOCK_ANCHOR_NONE;
-    LLIST_APPEND_TAIL(&root->_.in._.composite.children, &min_height->_);
+    LLIST_APPEND_TAIL(&root->_.in._.composite.children, (sw_layout_block_t *)min_height);
 
-    bar->_.in.root = &root->_;
+    bar->_.in.root = (sw_layout_block_t *)root;
 
 #if WITH_TRAY
     if (state.tray.active) {
@@ -2043,7 +2036,7 @@ static void update_config(string_t str) {
     size_t i;
     json_tokener_state_t s;
 
-    MEMSET(&tok, 0, sizeof(tok));
+    CLEAR(&tok);
     json_tokener_set_string(&tok, &scratch_alloc, str);
 
     json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
@@ -2066,11 +2059,11 @@ static void update_config(string_t str) {
     }
 
     if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_BINDING_STATE, NULL) == -1) {
-        su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+        su_abort(ERRNO, "sway_ipc_send: write: error code = %d", ERRNO);
     }
 
     old_status_command = config->status_command;
-    MEMSET(&new_status_command, 0, sizeof(new_status_command));
+    CLEAR(&new_status_command);
 
     string_fini(&config->font, &gp_allocator);
     string_fini(&config->separator_symbol, &gp_allocator);
@@ -2091,7 +2084,7 @@ static void update_config(string_t str) {
     string_fini(&config->tray_icon_theme, &gp_allocator);
 #endif /* WITH_TRAY */
 
-    MEMSET(config, 0, sizeof(*config));
+    CLEAR(config);
     config->font = string("monospace:size=16");
     config->position = (SW_WAYLAND_SURFACE_LAYER_ANCHOR_BOTTOM |
         SW_WAYLAND_SURFACE_LAYER_ANCHOR_LEFT | SW_WAYLAND_SURFACE_LAYER_ANCHOR_RIGHT);
@@ -2126,7 +2119,7 @@ static void update_config(string_t str) {
 #endif /* WITH_TRAY */
 
     json_ast_reset(&ast);
-    MEMSET(&tok, 0, sizeof(tok));
+    CLEAR(&tok);
     json_tokener_set_string(&tok, &scratch_alloc, str);
     s = json_tokener_ast(&tok, &scratch_alloc, &ast, 0, FALSE);
     ASSERT(s == JSON_TOKENER_STATE_SUCCESS);
@@ -2525,9 +2518,9 @@ static bool32_t bar_process_button_event(bar_t *bar,
     tray_dbusmenu_menu_popup_t *popup = state.tray.popup;
     if (state.tray.active && popup && (popup->seat == seat)) {
         if (button_state == SW_WAYLAND_POINTER_BUTTON_STATE_PRESSED) {
-            MEMSET(popup->list, 0, sizeof(*popup->list));
+            CLEAR(popup->list);
             popup->list = &state.sw.in.backend.wayland.surfaces_to_destroy;
-            LLIST_APPEND_TAIL(popup->list, &popup->_);
+            LLIST_APPEND_TAIL(popup->list, (sw_wayland_surface_t *)popup);
         }
         return TRUE;
     }
@@ -2571,7 +2564,7 @@ static bool32_t bar_process_button_event(bar_t *bar,
         if ((binding->event_code == code) && (binding->release == released)) {
             if (sway_ipc_send( state.poll_fds[POLL_FD_SWAY_IPC].fd,
                     SWAY_IPC_MESSAGE_TYPE_COMMAND, &binding->command) == -1) {
-                su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+                su_abort(ERRNO, "sway_ipc_send: write: error code = %d", ERRNO);
             }
             return TRUE;
         }
@@ -2584,14 +2577,14 @@ static bar_t *bar_create(output_t *output) {
     bar_t *bar;
 
     if (state.status.active && (state.sw.in.backend.wayland.layers.count == 0)) {
-        kill(-state.status.pid, state.status.cont_signal);
+        KILL(-state.status.pid, state.status.cont_signal);
     }
 
     ALLOCCT(bar, &gp_allocator);
     bar->dirty = TRUE;
     bar->_.in.type = SW_WAYLAND_SURFACE_TYPE_LAYER;
     bar->_.in.height = -1;
-    bar->_.in._.layer.output = &output->_;
+    bar->_.in._.layer.output = (sw_wayland_output_t *)output;
     bar->_.in._.layer.exclusive_zone = INT_MIN;
 
     return bar;
@@ -2603,13 +2596,13 @@ static void process_ipc(void) {
     sway_ipc_response_t *response = sway_ipc_receive(
             state.poll_fds[POLL_FD_SWAY_IPC].fd, &scratch_alloc);
     if (!response) {
-        su_abort(errno, "sway_ipc_receive: read: %s", strerror(errno));
+        su_abort(ERRNO, "sway_ipc_receive: read: error code = %d", ERRNO);
     }
 
     switch (response->type) {
     case SWAY_IPC_MESSAGE_TYPE_EVENT_WORKSPACE:
         if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES, NULL) == -1) {
-            su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+            su_abort(ERRNO, "sway_ipc_send: write: error code = %d", ERRNO);
         }
         break;
     case SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES: {
@@ -2619,7 +2612,7 @@ static void process_ipc(void) {
         size_t i;
         output_t *output;
 
-        MEMSET(&tok, 0, sizeof(tok));
+        CLEAR(&tok);
         json_tokener_set_string(&tok, &scratch_alloc, response->payload);
 
         json_ast_reset(&ast);
@@ -2698,7 +2691,7 @@ static void process_ipc(void) {
         json_tokener_t tok;
         json_token_t token;
 
-        MEMSET(&tok, 0, sizeof(tok));
+        CLEAR(&tok);
         json_tokener_set_string(&tok, &scratch_alloc, response->payload);
 
         json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
@@ -2729,7 +2722,7 @@ static void process_ipc(void) {
         json_tokener_t tok;
         json_token_t token;
 
-        MEMSET(&tok, 0, sizeof(tok));
+        CLEAR(&tok);
         json_tokener_set_string(&tok, &scratch_alloc, response->payload);
 
         json_tokener_advance_assert_type(&tok, &scratch_alloc, &token, JSON_TOKEN_TYPE_OBJECT_START);
@@ -2745,7 +2738,7 @@ static void process_ipc(void) {
 
         if ((token.value.s.len == 0) || string_equal(token.value.s, string("default"))) {
             string_fini(text, &gp_allocator);
-            MEMSET(text, 0, sizeof(*text));
+            CLEAR(text);
             state.visible_by_mode = FALSE;
         } else if (!string_equal(token.value.s, *text)) {
             string_fini(text, &gp_allocator);
@@ -2797,7 +2790,7 @@ static void process_ipc(void) {
                 if (!bar) {
                     bar = bar_create((output_t *)output);
                     bar->list = &state.sw.in.backend.wayland.layers;
-                    LLIST_APPEND_TAIL(bar->list, &bar->_);
+                    LLIST_APPEND_TAIL(bar->list, (sw_wayland_surface_t *)bar);
                 } else {
                     bar->dirty = TRUE;
                 }
@@ -2843,14 +2836,14 @@ static bool32_t init_sway_ipc(int fd) {
 
 static void handle_signal(int sig) {
     NOTUSED(sig);
-    DEBUG_LOG("%d: %s", sig, strsignal(sig));
+    DEBUG_LOG("signal %d", sig);
     state.running = FALSE;
 }
 
 static output_t *output_create(void) {
     output_t *output;
     if (sway_ipc_send(state.poll_fds[POLL_FD_SWAY_IPC].fd, SWAY_IPC_MESSAGE_TYPE_GET_WORKSPACES, NULL) == -1) {
-        su_abort(errno, "sway_ipc_send: write: %s", strerror(errno));
+        su_abort(ERRNO, "sway_ipc_send: write: error code = %d", ERRNO);
     }
     ALLOCCT(output, &gp_allocator);
     return output;
@@ -2879,7 +2872,7 @@ static bool32_t process_sw_events(void) {
             case SW_WAYLAND_SURFACE_TYPE_LAYER: {
                 bar_t *bar = (bar_t *)surface;
                 if (bar->list->count > 0) {
-                    LLIST_POP(bar->list, &bar->_);
+                    LLIST_POP(bar->list, (sw_wayland_surface_t *)bar);
                 }
                 bar_destroy(bar);
                 break;
@@ -2888,7 +2881,7 @@ static bool32_t process_sw_events(void) {
 #if WITH_TRAY
                 tray_dbusmenu_menu_popup_t *popup = (tray_dbusmenu_menu_popup_t *)surface;
                 if (popup->list->count > 0) {
-                    LLIST_POP(popup->list, &popup->_);
+                    LLIST_POP(popup->list, (sw_wayland_surface_t *)popup);
                 }
                 tray_dbusmenu_menu_popup_destroy(popup);
                 break;
@@ -3057,30 +3050,27 @@ static bool32_t process_sw_events(void) {
 }
 
 static void setup(int argc, char *argv[]) {
-    static struct sigaction sigact;
+    static sigaction_t sigact;
     int sway_ipc_fd;
     static char sway_ipc_socket_path[PATH_MAX];
     char *s;
 
-    setlocale(LC_ALL, "");
-    if (!locale_is_utf8()) {
-        su_abort(1, "failed to set UTF-8 locale");
-    }
-
     ARGPARSE_LOOP_BEGIN {
         switch (ARGPARSE_KEY) {
+        case 'v':
+            su_abort(0, "sw_swaybar version" ); /* TODO */
         case 's':
             if ((s = ARGPARSE_VALUE)) {
                 STRNCPY(sway_ipc_socket_path, s, sizeof(sway_ipc_socket_path));
+                break;
             }
-            break;
+            ATTRIBUTE_FALLTHROUGH;
         case 'b':
             if ((s = ARGPARSE_VALUE)) {
                 state.bar_id = string(s);
+                break;
             }
-            break;
-        case 'v':
-            su_abort(0, "sw_swaybar version" ); /* TODO */
+            ATTRIBUTE_FALLTHROUGH;
         default:
             su_abort( (ARGPARSE_KEY != 'h'),
                 "Usage: sw_swaybar [options...]\n"
@@ -3115,17 +3105,17 @@ static void setup(int argc, char *argv[]) {
     }
     sway_ipc_fd = sway_ipc_connect(sway_ipc_socket_path);
     if (sway_ipc_fd == -1) {
-        su_abort(errno, "failed to connect to sway ipc socket '%s': %s", sway_ipc_socket_path, strerror(errno));
+        su_abort(ERRNO, "failed to connect to sway ipc socket '%s': error code = %d", sway_ipc_socket_path, ERRNO);
     }
     if (!init_sway_ipc(sway_ipc_fd)) {
-        su_abort(errno, "failed to initialize sway ipc: %s", strerror(errno));
+        su_abort(ERRNO, "failed to initialize sway ipc: error code = %d", ERRNO);
     }
 
     sigact.sa_handler = handle_signal;
     /* ? TODO: error check */
-    sigaction(SIGINT, &sigact, NULL);
-    sigaction(SIGTERM, &sigact, NULL);
-    sigaction(SIGPIPE, &sigact, NULL);
+    SIGACTION(SIGINT, &sigact, NULL);
+    SIGACTION(SIGTERM, &sigact, NULL);
+    SIGACTION(SIGPIPE, &sigact, NULL);
 
     state.sw.in.backend_type = SW_BACKEND_TYPE_WAYLAND;
     state.sw.in.gp_alloc = &gp_allocator;
@@ -3141,10 +3131,10 @@ static void run(void) {
 
         do {
             if (!sw_set(&state.sw)) {
-                su_abort(errno, "sw_set: %s", strerror(errno));
+                su_abort(ERRNO, "sw_set: error code = %d", ERRNO);
             }
-            MEMSET(&state.sw.in.blocks_to_destroy, 0, sizeof(state.sw.in.blocks_to_destroy));
-            MEMSET(&state.sw.in.backend.wayland.surfaces_to_destroy, 0, sizeof(state.sw.in.backend.wayland.surfaces_to_destroy));
+            CLEAR(&state.sw.in.blocks_to_destroy);
+            CLEAR(&state.sw.in.backend.wayland.surfaces_to_destroy);
             state.poll_fds[POLL_FD_SW] = state.sw.out.backend.wayland.fds[0];
             state.sw.in.update_and_render = FALSE;
         } while (process_sw_events());
@@ -3156,22 +3146,22 @@ static void run(void) {
             int64_t absolute_timeout_ms;
             int c = sni_server_get_poll_info(&state.poll_fds[POLL_FD_SNI_SERVER], &absolute_timeout_ms);
             if (c < 0) {
-                su_abort(-c, "sni_server_get_poll_info: %s", strerror(-c));
+                su_abort(-c, "sni_server_get_poll_info: error code = %d", -c);
             }
             tray_timeout = (absolute_timeout_ms > 0) ? 
-                (int)(absolute_timeout_ms - now_ms(CLOCK_MONOTONIC)) :
+                (int)(absolute_timeout_ms - now_msec(CLOCK_MONOTONIC)) :
                 (int)absolute_timeout_ms;
         }
 #endif /* WITH_TRAY */
 
-        sw_timeout = (int)(state.sw.out.t - now_ms(CLOCK_MONOTONIC));
+        sw_timeout = (int)(state.sw.out.t - now_msec(CLOCK_MONOTONIC));
 
         timeout = ((sw_timeout > 0) && (tray_timeout > 0))
             ? MIN(sw_timeout, tray_timeout) : MAX(sw_timeout, tray_timeout);
-        switch (poll(state.poll_fds, LENGTH(state.poll_fds), timeout)) {
+        switch (POLL(state.poll_fds, LENGTH(state.poll_fds), timeout)) {
         case -1:
-            if (errno != EINTR) {
-                su_abort(errno, "poll: %s", strerror(errno));
+            if (ERRNO != EINTR) {
+                su_abort(ERRNO, "poll: error code = %d", ERRNO);
             }
             break;
         case 0:
@@ -3225,7 +3215,7 @@ static void cleanup(void) {
     }
 #endif /* WITH_TRAY */
 
-    close(state.poll_fds[POLL_FD_SWAY_IPC].fd);
+    CLOSE(state.poll_fds[POLL_FD_SWAY_IPC].fd);
 
     state.sw.in.backend_type = SW_BACKEND_TYPE_NONE;
     sw_set(&state.sw);

@@ -1,15 +1,6 @@
 #if !defined(SNI_SERVER_H)
 #define SNI_SERVER_H
 
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <time.h>
-#include <poll.h>
-
-#include <stddef.h>
-#include <stdint.h>
-
 #if !defined(SU_IMPLEMENTATION)
     #define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
@@ -251,7 +242,7 @@ static sni_server_t sni_server;
 
 static int sni_server_init(void);
 static void sni_server_fini(void);
-static int sni_server_get_poll_info(struct pollfd *pollfd_out, int64_t *absolute_timeout_ms);
+static int sni_server_get_poll_info(pollfd_t *pollfd_out, int64_t *absolute_timeout_ms);
 static int sni_server_process(void);
 
 static int sni_item_context_menu(sni_item_t *, int x, int y);
@@ -310,7 +301,7 @@ static void sni__item_read_pixmap( sd_bus_message *msg,
     }
     sd_bus_message_exit_container(msg);
 
-    qsort(dest, *dest_count, sizeof(*dest), sni__item_pixmap_size_descending_qsort);
+    QSORT(dest, *dest_count, sizeof(*dest), sni__item_pixmap_size_descending_qsort);
 }
 
 static void sni__item_properties_destroy(sni_item_properties_t *properties) {
@@ -357,8 +348,6 @@ static void sni__slot_free(sni__slot_t *slot) {
 }
 
 static void sni__dbusmenu_menu_destroy(sni_dbusmenu_menu_t *menu) {
-    /* TODO: remove recursion */
-
     size_t i;
     const allocator_t *alloc;
 
@@ -407,7 +396,6 @@ static void sni__dbusmenu_destroy(sni_dbusmenu_t *dbusmenu) {
 
 static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
         sni_dbusmenu_t *dbusmenu, sni_dbusmenu_menu_item_t *parent_menu_item) {
-    /* TODO: remove recursion */
     const allocator_t *alloc = sni_server.in.alloc;
 
     sni_dbusmenu_menu_t *menu;
@@ -421,7 +409,7 @@ static sni_dbusmenu_menu_t *sni__dbusmenu_menu_create(sd_bus_message *msg,
         sni_dbusmenu_menu_item_t *menu_item = &menu->menu_items[menu->menu_items_count++];
         bool32_t children = FALSE;
 
-        MEMSET(menu_item, 0, sizeof(*menu_item));
+        CLEAR(menu_item);
         menu_item->parent_menu = menu;
         /*menu_item->type = SNI_DBUSMENU_MENU_ITEM_TYPE_STANDARD;*/
         menu_item->enabled = 1;
@@ -541,17 +529,17 @@ static sni_server_event_t *sni__server_event(sni_server_event_type_t type, sni_i
 
     const allocator_t *alloc = sni_server.in.alloc;
 
-    if (SU_UNLIKELY(sni_server.priv.events_capacity == sni_server.out.events_count)) {
+    if (UNLIKELY(sni_server.priv.events_capacity == sni_server.out.events_count)) {
         sni_server_event_t *new_events;
         sni_server.priv.events_capacity *= 2;
-        SU_ARRAY_ALLOC(new_events, alloc, sni_server.priv.events_capacity);
-        SU_MEMCPY(new_events, sni_server.out.events, sni_server.out.events_count * sizeof(sni_server.out.events[0]));
-        SU_FREE(alloc, sni_server.out.events);
+        ARRAY_ALLOC(new_events, alloc, sni_server.priv.events_capacity);
+        MEMCPY(new_events, sni_server.out.events, sni_server.out.events_count * sizeof(sni_server.out.events[0]));
+        FREE(alloc, sni_server.out.events);
         sni_server.out.events = new_events;
     }
 
     event = &sni_server.out.events[sni_server.out.events_count++];
-    /*SU_MEMSET(event, 0, sizeof(*event));*/
+    /*CLEAR(event);*/
     event->type = type;
     event->item = item;
 
@@ -664,9 +652,9 @@ static int sni__dbusmenu_handle_get_properties(sd_bus_message *msg, void *data,
                         string_init_len(&props->icon_theme_path[props->icon_theme_path_count++],
                             alloc, path, len, TRUE);
                     }
-                    free(path);
+                    FREE_(path);
                 }
-                free(icon_theme_path);
+                FREE_(icon_theme_path);
             }
         } else if (string_equal(s, string("Status"))) {
             sd_bus_message_read_basic(msg, 's', &s.s);
@@ -938,7 +926,7 @@ static void sni__item_fini(sni_item_t *item) {
 
     sni__item_properties_destroy(properties);
 
-    /*MEMSET(item, 0, sizeof(*item));*/
+    /*CLEAR(item);*/
 
     sni__server_event(SNI_SERVER_EVENT_TYPE_ITEM_DESTROY, item);
 }
@@ -956,7 +944,7 @@ static bool32_t sni__item_init(sni_item_t *item, string_t id) {
         return FALSE;
     }
 
-    MEMSET(item, 0, sizeof(*item));
+    CLEAR(item);
 
     string_init_len(&item->priv.service, alloc, id.s, (id.len - path.len), TRUE);
 
@@ -1256,9 +1244,9 @@ static int sni__host_handle_get_registered_items(sd_bus_message *msg, void *data
             str.free_contents = TRUE;
             str.nul_terminated = TRUE;
             sni__host_add_item(str);
-            free(id);
+            FREE_(id);
         }
-        free(ids);
+        FREE_(ids);
     }
 
     return 1;
@@ -1353,7 +1341,7 @@ static int sni__host_handle_new_watcher(sd_bus_message *msg, void *data,
         for ( item = sni_server.out.items.tail; item; item = item->prev) {
             sni__item_fini(item);
         }
-        MEMSET(&sni_server.out.items, 0, sizeof(sni_server.out.items));
+        CLEAR(&sni_server.out.items);
     }
 
     return 0;
@@ -1418,8 +1406,8 @@ static void sni_server_fini(void) {
     events = sni_server.out.events;
     events_count = sni_server.out.events_count;
 
-    MEMSET(&sni_server.out, 0, sizeof(sni_server.out));
-    MEMSET(&sni_server.priv, 0, sizeof(sni_server.priv));
+    CLEAR(&sni_server.out);
+    CLEAR(&sni_server.priv);
 
     sni_server.out.events = events;
     sni_server.out.events_count = events_count;
@@ -1432,8 +1420,8 @@ static int sni_server_init(void) {
 
     ASSERT(sni_server.in.alloc != NULL);
 
-    MEMSET(&sni_server.out, 0, sizeof(sni_server.out));
-    MEMSET(&sni_server.priv, 0, sizeof(sni_server.priv));
+    CLEAR(&sni_server.out);
+    CLEAR(&sni_server.priv);
 
     ret = sd_bus_open_user(&sni_server.priv.bus);
     if (ret < 0) {
@@ -1527,7 +1515,7 @@ static int sni_server_init(void) {
 
 
     string_init_format(&sni_server.priv.host_interface, alloc,
-        "org.kde.StatusNotifierHost-%d", getpid());
+        "org.kde.StatusNotifierHost-%d", GETPID());
     ret = sd_bus_request_name(sni_server.priv.bus, sni_server.priv.host_interface.s, 0); /* ? TODO: SD_BUS_NAME_QUEUE */
     if (ret < 0) {
         return ret;
@@ -1561,7 +1549,7 @@ static int sni_server_init(void) {
     return 1;
 }
 
-static int sni_server_get_poll_info(struct pollfd *pollfd_out, int64_t *absolute_timeout_ms) {
+static int sni_server_get_poll_info(pollfd_t *pollfd_out, int64_t *absolute_timeout_ms) {
     uint64_t usec;
     int fd, events, ret;
 
@@ -1771,7 +1759,7 @@ static int sni_dbusmenu_menu_item_event(sni_dbusmenu_menu_item_t *menu_item,
         ret = sd_bus_call_method_async(sni_server.priv.bus, &slot->slot, item->priv.service.s,
                 item->out.properties->menu.s, sni__dbusmenu_interface, "Event",
                 sni__item_handle_method, slot, "isvu",
-                menu_item->id, event_types[type], "y", 0, time(NULL));
+                menu_item->id, event_types[type], "y", 0, now_sec(CLOCK_REALTIME));
         if (ret < 0) {
             FREE(alloc, slot);
             return ret;
@@ -1782,7 +1770,7 @@ static int sni_dbusmenu_menu_item_event(sni_dbusmenu_menu_item_t *menu_item,
     } else {
         int ret = sd_bus_call_method(sni_server.priv.bus, item->priv.service.s,
                 item->out.properties->menu.s, sni__dbusmenu_interface, "Event",
-                NULL, NULL, "isvu", menu_item->id, event_types[type], "y", 0, time(NULL));
+                NULL, NULL, "isvu", menu_item->id, event_types[type], "y", 0, now_sec(CLOCK_REALTIME));
         if (ret < 0) {
             return ret;
         }

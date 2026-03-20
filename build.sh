@@ -88,15 +88,15 @@ case "$CFLAGS" in
     WAYLAND_SCANNER=$(pkg-config $PKGCONFIG_FLAGS --variable=wayland_scanner wayland-scanner)
     WAYLAND_PROTOCOLS_DIR=$(pkg-config $PKGCONFIG_FLAGS --variable=pkgdatadir wayland-protocols)
     # TODO: parallel
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.c"
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.c"
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/tablet/tablet-unstable-v2.xml" "${BUILD_PATH}/include/tablet-unstable-v2.c"
-    $WAYLAND_SCANNER private-code "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.c"
-    $WAYLAND_SCANNER private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" "${BUILD_PATH}/include/xdg-decoration-unstable-v1.c"
-    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.h"
-    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.h"
-    $WAYLAND_SCANNER client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.h"
-    $WAYLAND_SCANNER client-header "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" "${BUILD_PATH}/include/xdg-decoration-unstable-v1.h"
+    $WAYLAND_SCANNER -c private-code "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.c"
+    $WAYLAND_SCANNER -c private-code "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.c"
+    $WAYLAND_SCANNER -c private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/tablet/tablet-unstable-v2.xml" "${BUILD_PATH}/include/tablet-unstable-v2.c"
+    $WAYLAND_SCANNER -c private-code "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.c"
+    $WAYLAND_SCANNER -c private-code "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" "${BUILD_PATH}/include/xdg-decoration-unstable-v1.c"
+    $WAYLAND_SCANNER -c client-header "${WAYLAND_PROTOCOLS_DIR}/staging/cursor-shape/cursor-shape-v1.xml" "${BUILD_PATH}/include/cursor-shape-v1.h"
+    $WAYLAND_SCANNER -c client-header "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml" "${BUILD_PATH}/include/xdg-shell.h"
+    $WAYLAND_SCANNER -c client-header "${ROOT_PATH}/wlr-layer-shell-unstable-v1.xml" "${BUILD_PATH}/include/wlr-layer-shell-unstable-v1.h"
+    $WAYLAND_SCANNER -c client-header "${WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml" "${BUILD_PATH}/include/xdg-decoration-unstable-v1.h"
     ;;
 esac
 

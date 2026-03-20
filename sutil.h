@@ -1,12 +1,17 @@
+/* #define SU_IMPLEMENTATION */ /* TODO: remove */ 
+
 #if !defined(SU_HEADER)
 #define SU_HEADER
 
-#if !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE) && !(defined(_XOPEN_SOURCE) && (_XOPEN_SOURCE >= 700))
-    #error "_XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
-#endif
-
-#define SU_IMPLEMENTATION
-
+#if !defined(SU_WITH_LIBC)
+    #define SU_WITH_LIBC 1 /* TODO: 0 by default */
+#endif /* !defined(SU_WITH_LIBC) */
+#if !defined(SU_WITH_MATH)
+    #define SU_WITH_MATH 1 /* TODO: 0 by default */
+#endif /* !defined(SU_WITH_MATH) */
+#if !defined(SU_WITH_PTHREAD)
+    #define SU_WITH_PTHREAD 1 /* ? TODO: 0 by default */
+#endif /* !defined(SU_WITH_PTHREAD) */
 #if !defined(SU_WITH_SIMD)
     #define SU_WITH_SIMD 1
 #endif /* !defined(SU_WITH_SIMD) */
@@ -14,18 +19,24 @@
     #define SU_WITH_DEBUG 1
 #endif /* !defined(SU_WITH_DEBUG) */
 
-#include <time.h>
+#if !defined(SU_FUNC_DEF)
+    #define SU_FUNC_DEF static
+#endif
 
 #include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
 
-#include <math.h>
-
 #define SU__CONCAT(a, b) a##b
 #define SU_CONCAT(a, b) SU__CONCAT(a, b)
 
 #define SU_PRAGMA(x) _Pragma(#x)
+
+#if defined(__has_builtin)
+    #define SU_HAS_BUILTIN(x) __has_builtin(x)
+#else
+    #define SU_HAS_BUILTIN(x) 0
+#endif
 
 #if defined(__GNUC__)
 #define SU_IGNORE_WARNING(w) SU_PRAGMA(GCC diagnostic ignored w)
@@ -42,52 +53,43 @@
 #define SU_TYPEOF __typeof
 #define SU_THREAD_LOCAL __thread
 
-#if defined(_Static_assert)
-    #undef _Static_assert
-#endif
-/* ? TODO: with message */
-#define SU_STATIC_ASSERT(x) __extension__ _Static_assert(x, "")
-
-#if !defined(SU_MEMCPY)
+#if !defined(SU_MEMCPY) && SU_HAS_BUILTIN(__builtin_memcpy)
     #define SU_MEMCPY __builtin_memcpy
-#endif /* SU_MEMCPY */
-#if !defined(SU_MEMMOVE)
+#endif
+#if !defined(SU_MEMMOVE) && SU_HAS_BUILTIN(__builtin_memmove)
     #define SU_MEMMOVE __builtin_memmove
 #endif /* SU_MEMMOVE */
-#if !defined(SU_MEMSET)
+#if !defined(SU_MEMSET) && SU_HAS_BUILTIN(__builtin_memset)
     #define SU_MEMSET __builtin_memset
 #endif /* SU_MEMSET */
-#if !defined(SU_MEMCMP)
+#if !defined(SU_MEMCMP) && SU_HAS_BUILTIN(__builtin_memcmp)
     #define SU_MEMCMP __builtin_memcmp
 #endif /* SU_MEMCMP */
-#if !defined(SU_MEMCHR)
+#if !defined(SU_MEMCHR) && SU_HAS_BUILTIN(__builtin_memchr)
     #define SU_MEMCHR __builtin_memchr
 #endif /* SU_MEMCHR */
-#if !defined(SU_STRCPY)
+#if !defined(SU_STRCPY) && SU_HAS_BUILTIN(__builtin_strcpy)
     #define SU_STRCPY __builtin_strcpy
 #endif /* SU_STRCPY */
-#if !defined(SU_STRNCPY)
+#if !defined(SU_STRNCPY) && SU_HAS_BUILTIN(__builtin_strncpy)
     #define SU_STRNCPY __builtin_strncpy
 #endif /* SU_STRNCPY */
-#if !defined(SU_STRCMP)
+#if !defined(SU_STRCMP) && SU_HAS_BUILTIN(__builtin_strcmp)
     #define SU_STRCMP __builtin_strcmp
 #endif /* SU_STRCMP */
-#if !defined(SU_STRNCMP)
+#if !defined(SU_STRNCMP) && SU_HAS_BUILTIN(__builtin_strncmp)
     #define SU_STRNCMP __builtin_strncmp
 #endif /* SU_STRNCMP */
-#if !defined(SU_STRLEN)
+#if !defined(SU_STRLEN) && SU_HAS_BUILTIN(__builtin_strlen)
     #define SU_STRLEN __builtin_strlen
 #endif /* SU_STRLEN */
-#if !defined(SU_ABS)
+#if !defined(SU_ABS) && SU_HAS_BUILTIN(__builtin_abs)
     #define SU_ABS __builtin_abs
 #endif /* SU_ABS */
-#if !defined(SU_FABS)
-    #define SU_FABS __builtin_fabs
-#endif /* SU_FABS */
-#if !defined(SU_FABSF)
+#if !defined(SU_FABSF) && SU_HAS_BUILTIN(__builtin_fabsf)
     #define SU_FABSF __builtin_fabsf
 #endif /* SU_FABSF */
-#if !defined(SU_OFFSETOF)
+#if !defined(SU_OFFSETOF) && SU_HAS_BUILTIN(__builtin_offsetof)
     #define SU_OFFSETOF __builtin_offsetof
 #endif /* SU_OFFSETOF */
 
@@ -97,60 +99,449 @@
 #define SU_IGNORE_WARNINGS_START
 #define SU_IGNORE_WARNINGS_END
 
-#if defined(__TINYC__)
-    #define SU_ALIGNOF __alignof__
+#if 1 /* TODO */
+#define SU_ALIGNOF __alignof__
+#define SU_THREAD_LOCAL __thread
 #else
-    #define SU_ALIGNOF alignof
-#endif
+#define SU_ALIGNOF alignof
 #define SU_THREAD_LOCAL thread_local
-#define SU_TYPEOF typeof
-#define SU_STATIC_ASSERT(x) typedef char SU_CONCAT(static_assertion_, __LINE__)[(x) ? 1 : -1]
-
-/* ? TODO: default simd impls instead of libc ones */
-#if !defined(SU_MEMCPY)
-    #define SU_MEMCPY memcpy
-#endif /* SU_MEMCPY */
-#if !defined(SU_MEMMOVE)
-    #define SU_MEMMOVE memmove
-#endif /* SU_MEMMOVE */
-#if !defined(SU_MEMSET)
-    #define SU_MEMSET memset
-#endif /* SU_MEMSET */
-#if !defined(SU_MEMCMP)
-    #define SU_MEMCMP memcmp
-#endif /* SU_MEMCMP */
-#if !defined(SU_MEMCHR)
-    #define SU_MEMCHR memchr
-#endif /* SU_MEMCHR */
-#if !defined(SU_STRCPY)
-    #define SU_STRCPY strcpy
-#endif /* SU_STRCPY */
-#if !defined(SU_STRNCPY)
-    #define SU_STRNCPY strncpy
-#endif /* SU_STRNCPY */
-#if !defined(SU_STRCMP)
-    #define SU_STRCMP strcmp
-#endif /* SU_STRCMP */
-#if !defined(SU_STRNCMP)
-    #define SU_STRNCMP strncmp
-#endif /* SU_STRNCMP */
-#if !defined(SU_STRLEN)
-    #define SU_STRLEN strlen
-#endif /* SU_STRLEN */
-#if !defined(SU_ABS)
-    #define SU_ABS abs
-#endif /* SU_ABS */
-#if !defined(SU_OFFSETOF)
-    #define SU_OFFSETOF offsetof
-#endif /* SU_OFFSETOF */
-
-#if !defined(SU_FABS)
-    #define SU_FABS fabs
-#endif /* SU_FABS */
-#if !defined(SU_FABSF)
-    #define SU_FABSF fabsf
-#endif /* SU_FABSF */
 #endif
+
+#define SU_TYPEOF typeof
+
+#endif
+
+#if SU_WITH_LIBC
+    #if !defined(_GNU_SOURCE) && !defined(_DEFAULT_SOURCE) && (!defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE < 700))
+        #error "SU_WITH_LIBC == 0 or _XOPEN_SOURCE >= 700 or _GNU_SOURCE or _DEFAULT_SOURCE must be defined"
+    #endif
+
+    #include <time.h>
+    #include <sys/stat.h>
+    #include <sys/socket.h>
+    #include <sys/un.h>
+    #include <sys/types.h>
+
+    #if !defined(SU_MEMCPY) || !defined(SU_MEMMOVE) || !defined(SU_MEMSET) || !defined(SU_MEMCMP) || \
+            !defined(SU_MEMCHR) || !defined(SU_STRCPY) || !defined(SU_STRNCPY) || \
+            !defined(SU_STRCMP) || !defined(SU_STRNCMP) || !defined(SU_STRLEN)
+        #include <string.h>
+        #if !defined(SU_MEMCPY)
+            #define SU_MEMCPY memcpy
+        #endif /* SU_MEMCPY */
+        #if !defined(SU_MEMMOVE)
+            #define SU_MEMMOVE memmove
+        #endif /* SU_MEMMOVE */
+        #if !defined(SU_MEMSET)
+            #define SU_MEMSET memset
+        #endif /* SU_MEMSET */
+        #if !defined(SU_MEMCMP)
+            #define SU_MEMCMP memcmp
+        #endif /* SU_MEMCMP */
+        #if !defined(SU_MEMCHR)
+            #define SU_MEMCHR memchr
+        #endif /* SU_MEMCHR */
+        #if !defined(SU_STRCPY)
+            #define SU_STRCPY strcpy
+        #endif /* SU_STRCPY */
+        #if !defined(SU_STRNCPY)
+            #define SU_STRNCPY strncpy
+        #endif /* SU_STRNCPY */
+        #if !defined(SU_STRCMP)
+            #define SU_STRCMP strcmp
+        #endif /* SU_STRCMP */
+        #if !defined(SU_STRNCMP)
+            #define SU_STRNCMP strncmp
+        #endif /* SU_STRNCMP */
+        #if !defined(SU_STRLEN)
+            #define SU_STRLEN strlen
+        #endif /* SU_STRLEN */
+    #endif
+
+    #if !defined(SU_OFFSETOF)
+        #define SU_OFFSETOF offsetof
+    #endif /* SU_OFFSETOF */
+
+    #if SU_WITH_MATH && !defined(SU_FABSF)
+        #include <math.h>
+        #if !defined(SU_FABSF)
+            #define SU_FABSF fabsf
+        #endif /* !defined(SU_FABSF) */
+    #endif /* SU_WITH_MATH && !defined(SU_FABSF) */
+
+    #if !defined(SU_ABORT) || !defined(SU_POSIX_MEMALIGN) || \
+            !defined(SU_FREE_) || !defined(SU_REALLOC) || \
+            !defined(SU_GETENV) || !defined(SU_ABS) || \
+            !defined(SU_STRTOD) || !defined(SU_QSORT)
+        #include <stdlib.h>
+        #if !defined(SU_ABS)
+            #define SU_ABS abs
+        #endif /* SU_ABS */
+        #if !defined(SU_ABORT)
+            #define SU_ABORT abort
+        #endif /* !defined(SU_ABORT) */
+        #if !defined(SU_POSIX_MEMALIGN)
+            #define SU_POSIX_MEMALIGN posix_memalign
+        #endif /* !defined(SU_POSIX_MEMALIGN) */
+        #if !defined(SU_FREE_)
+            #define SU_FREE_ free
+        #endif /* !defined(SU_FREE_) */
+        #if !defined(SU_REALLOC)
+            #define SU_REALLOC realloc
+        #endif /* !defined(SU_REALLOC) */
+        #if !defined(SU_GETENV)
+            #define SU_GETENV getenv
+        #endif /* !defined(SU_GETENV) */
+
+        #if !defined(SU_STRTOD)
+            #define SU_STRTOD strtod
+        #endif /* !defined(SU_STRTOD) */
+        #if !defined(SU_QSORT)
+            #define SU_QSORT qsort
+        #endif /* !defined(SU_QSORT) */
+    #endif
+
+    #if !defined(SU_ERRNO)
+        #include <errno.h>
+        #define SU_ERRNO errno
+    #endif /* !defined(SU_ERRNO) */
+
+    #if !defined(SU_CLOCK_GETTIME)
+        #define SU_CLOCK_GETTIME clock_gettime
+    #endif /* !defined(SU_CLOCK_GETTIME) */
+
+    #if !defined(SU_OPEN) || !defined(SU_FCNTL)
+        #include <fcntl.h>
+        #if !defined(SU_OPEN)
+            #define SU_OPEN open
+        #endif /* !defined(SU_OPEN) */
+        #if !defined(SU_FCNTL)
+            #define SU_FCNTL fcntl
+        #endif /* !defined(SU_FCNTL) */
+    #endif /* !defined(SU_OPEN) || !defined(SU_FCNTL) */
+
+    #if !defined(SU_STAT)
+        #define SU_STAT stat
+    #endif /* !defined(SU_STAT) */
+    #if !defined(SU_FSTAT)
+        #define SU_FSTAT fstat
+    #endif /* !defined(SU_FSTAT) */
+    #if !defined(SU_FSTATAT)
+        #define SU_FSTATAT fstatat
+    #endif /* !defined(SU_FSTATAT) */
+
+    #if !defined(SU_WRITE) || !defined(SU_READ) || !defined(SU_CLOSE) || \
+            !defined(SU_EXIT) || !defined(SU_READLINK) || !defined(SU_GETCWD) || \
+            !defined(SU_FTRUNCATE) || !defined(SU_DUP2) || !defined(SU_GETPID) || \
+            !defined(SU_FORK) || !defined(SU_SETPGID) || !defined(SU_EXECVP) || \
+            !defined(SU_PIPE)
+        #include <unistd.h>
+        #if !defined(SU_WRITE)
+            #define SU_WRITE write
+        #endif /* !defined(SU_WRITE) */
+        #if !defined(SU_READ)
+            #define SU_READ read
+        #endif /* !defined(SU_READ) */
+        #if !defined(SU_CLOSE)
+            #define SU_CLOSE close
+        #endif /* !defined(SU_CLOSE) */
+        #if !defined(SU_EXIT)
+            #define SU_EXIT _exit
+        #endif /* !defined(SU_EXIT) */
+        #if !defined(SU_READLINK)
+            #define SU_READLINK readlink
+        #endif /* !defined(SU_READLINK) */
+        #if !defined(SU_GETCWD)
+            #define SU_GETCWD getcwd
+        #endif /* !defined(SU_GETCWD) */
+        #if !defined(SU_FTRUNCATE)
+            #define SU_FTRUNCATE ftruncate
+        #endif /* !defined(SU_FTRUNCATE) */
+        #if !defined(SU_DUP2)
+            #define SU_DUP2 dup2
+        #endif /* !defined(SU_DUP2) */
+        #if !defined(SU_GETPID)
+            #define SU_GETPID getpid
+        #endif /* !defined(SU_GETPID) */
+        #if !defined(SU_FORK)
+            #define SU_FORK fork
+        #endif /* !defined(SU_FORK) */
+        #if !defined(SU_SETPGID)
+            #define SU_SETPGID setpgid
+        #endif /* !defined(SU_SETPGID) */
+        #if !defined(SU_EXECVP)
+            #define SU_EXECVP execvp
+        #endif /* !defined(SU_EXECVP) */
+        #if !defined(SU_PIPE)
+            #define SU_PIPE pipe
+        #endif /* !defined(SU_PIPE) */
+    #endif
+
+    #if !defined(SU_MMAP) || !defined(SU_MUNMAP) || \
+            !defined(SU_SHM_OPEN) || !defined(SU_SHM_UNLINK)
+        #include <sys/mman.h>
+        #if !defined(SU_MMAP)
+            #define SU_MMAP mmap
+        #endif /* !defined(SU_MMAP) */
+        #if !defined(SU_MUNMAP)
+            #define SU_MUNMAP munmap
+        #endif /* !defined(SU_MUNMAP) */
+        #if !defined(SU_SHM_OPEN)
+            #define SU_SHM_OPEN shm_open
+        #endif /* !defined(SU_SHM_OPEN) */
+        #if !defined(SU_SHM_UNLINK)
+            #define SU_SHM_UNLINK shm_unlink
+        #endif /* !defined(SU_SHM_UNLINK) */
+    #endif /* !defined(SU_MMAP) || !defined(SU_MUNMAP) */
+
+    #if !defined(SU_SOCKET)
+        #define SU_SOCKET socket
+    #endif /* !defined(SU_SOCKET) */
+    #if !defined(SU_CONNECT)
+        #define SU_CONNECT connect
+    #endif /* !defined(SU_CONNECT) */
+
+    #if SU_WITH_PTHREAD && (!defined(SU_PTHREAD_CREATE) || !defined(SU_PTHREAD_JOIN) \
+            || !defined(SU_PTHREAD_MUTEX_LOCK) || !defined(SU_PTHREAD_MUTEX_UNLOCK))
+        #include <pthread.h>
+        #if !defined(SU_PTHREAD_CREATE)
+            #define SU_PTHREAD_CREATE pthread_create
+        #endif
+        #if !defined(SU_PTHREAD_JOIN)
+            #define SU_PTHREAD_JOIN pthread_join
+        #endif
+        #if !defined(SU_PTHREAD_MUTEX_LOCK)
+            #define SU_PTHREAD_MUTEX_LOCK pthread_mutex_lock
+        #endif
+        #if !defined(SU_PTHREAD_MUTEX_UNLOCK)
+            #define SU_PTHREAD_MUTEX_UNLOCK pthread_mutex_unlock
+        #endif
+    #endif
+
+    #if !defined(SU_POLL)
+        #include <poll.h>
+        #define SU_POLL poll
+    #endif
+
+    #if !defined(SU_SIGACTION) || !defined(SU_KILL)
+        #include <signal.h>
+        #if !defined(SU_SIGACTION)
+            #define SU_SIGACTION sigaction
+        #endif
+        #if !defined(SU_KILL)
+            #define SU_KILL kill
+        #endif
+    #endif
+
+    #if !defined(SU_OPENDIR) || !defined(SU_CLOSEDIR) || !defined(SU_DIRFD) || !defined(SU_READDIR)
+        #include <dirent.h>
+        #if !defined(SU_OPENDIR)
+            #define SU_OPENDIR opendir
+        #endif
+        #if !defined(SU_CLOSEDIR)
+            #define SU_CLOSEDIR closedir
+        #endif
+        #if !defined(SU_DIRFD)
+            #define SU_DIRFD dirfd
+        #endif
+        #if !defined(SU_READDIR)
+            #define SU_READDIR readdir
+        #endif
+    #endif
+
+    #if !defined(SU_WAITPID)
+        #include <sys/wait.h>
+        #define SU_WAITPID waitpid
+    #endif
+
+#endif /* SU_WITH_LIBC */
+
+typedef struct timespec su_timespec_t;
+typedef struct stat su_stat_t;
+typedef struct sockaddr_un su_sockaddr_un_t;
+typedef struct sockaddr su_sockaddr_t;
+typedef struct pollfd su_pollfd_t;
+typedef struct sigaction su_sigaction_t;
+typedef struct dirent su_dirent_t;
+typedef DIR su_dir_t;
+typedef pid_t su_pid_t;
+typedef ssize_t su_ssize_t;
+typedef nfds_t su_nfds_t;
+typedef socklen_t su_socklen_t;
+typedef off_t su_off_t;
+typedef clockid_t su_clockid_t;
+#if SU_WITH_PTHREAD
+typedef pthread_t su_pthread_t;
+typedef pthread_mutex_t su_pthread_mutex_t;
+typedef pthread_attr_t su_pthread_attr_t;
+#endif
+
+#if !defined(PATH_MAX)
+#define PATH_MAX 4096
+#endif /* !defined(PATH_MAX) */
+#if !defined(NAME_MAX)
+#define NAME_MAX 255
+#endif /* !defined(NAME_MAX) */
+#if !defined(SYMLOOP_MAX)
+#define SYMLOOP_MAX 40
+#endif /* !defined(SYMLOOP_MAX) */
+
+#if !defined(CLOCK_MONOTONIC)
+#define CLOCK_MONOTONIC 1
+#endif
+
+#if !defined(CLOCK_REALTIME)
+#define CLOCK_REALTIME 0
+#endif
+
+#if !defined(O_CREAT)
+#define O_CREAT 0100
+#endif
+#if !defined(O_TRUNC)
+#define O_TRUNC 01000
+#endif
+#if !defined(O_RDONLY)
+#define O_RDONLY 00
+#endif
+#if !defined(O_CLOEXEC)
+#define O_CLOEXEC 02000000
+#endif
+#if !defined(O_WRONLY)
+#define O_WRONLY 01
+#endif
+#if !defined(O_NONBLOCK)
+#define O_NONBLOCK 04000
+#endif
+#if !defined(O_RDWR)
+#define O_RDWR 02
+#endif
+#if !defined(O_EXCL)
+#define O_EXCL 0200
+#endif
+
+#if !defined(F_GETFL)
+#define F_GETFL 3
+#endif
+#if !defined(F_SETFL)
+#define F_SETFL 4
+#endif
+#if !defined(F_SETFD)
+#define F_SETFD 2
+#endif
+#if !defined(F_GETFD)
+#define F_GETFD 1
+#endif
+#if !defined(FD_CLOEXEC)
+#define FD_CLOEXEC 1
+#endif
+
+#if !defined(PROT_READ)
+#define PROT_READ 1
+#endif
+#if !defined(PROT_WRITE)
+#define PROT_WRITE 2
+#endif
+#if !defined(MAP_ANONYMOUS)
+#define MAP_ANONYMOUS 0x20
+#endif
+#if !defined(MAP_PRIVATE)
+#define MAP_PRIVATE 0x02
+#endif
+#if !defined(MAP_FAILED)
+#define MAP_FAILED ((void *) -1)
+#endif
+#if !defined(MAP_SHARED)
+#define MAP_SHARED 0x01
+#endif
+
+#if !defined(EINTR)
+#define EINTR 4
+#endif
+#if !defined(EPIPE)
+#define EPIPE 32
+#endif
+#if !defined(EINVAL)
+#define EINVAL 22
+#endif
+#if !defined(EAGAIN)
+#define EAGAIN 11
+#endif
+#if !defined(EEXIST)
+#define EEXIST 17
+#endif
+
+#if !defined(AF_UNIX)
+#define AF_UNIX 1
+#endif
+#if !defined(SOCK_STREAM)
+#define SOCK_STREAM 14
+#endif
+
+#if !defined(POLLIN)
+#define POLLIN 0x001
+#endif
+#if !defined(POLLOUT)
+#define POLLOUT 0x004
+#endif
+#if !defined(POLLERR)
+#define POLLERR 0x008
+#endif
+#if !defined(POLLHUP)
+#define POLLHUP 0x010
+#endif
+#if !defined(POLLNVAL)
+#define POLLNVAL 0x020
+#endif
+
+#if !defined(SIGINT)
+#define SIGINT 2 
+#endif
+#if !defined(SIGTERM)
+#define SIGTERM 15
+#endif
+#if !defined(SIGPIPE)
+#define SIGPIPE 13
+#endif
+#if !defined(SIGSTOP)
+#define SIGSTOP 19
+#endif
+#if !defined(SIGCONT)
+#define SIGCONT 17
+#endif
+
+#if !defined(DT_UNKNOWN)
+#define DT_UNKNOWN 0
+#endif
+#if !defined(DT_DIR)
+#define DT_DIR 4
+#endif
+#if !defined(DT_REG)
+#define DT_REG 8
+#endif
+#if !defined(DT_LNK)
+#define DT_LNK 10
+#endif
+
+#if !defined(S_ISDIR)
+#define S_ISDIR(mode) (((mode) & 0170000) == 0040000)
+#endif
+#if !defined(S_ISREG)
+#define S_ISREG(mode) (((mode) & 0170000) == 0100000)
+#endif
+
+#if defined(__mips__)
+#undef O_EXCL
+#define O_EXCL 02000
+#undef MAP_ANONYMOUS
+#define MAP_ANONYMOUS 0x800
+#undef SOCK_STREAM
+#define SOCK_STREAM 2
+#undef SIGSTOP
+#define SIGSTOP 23
+#undef SIGCONT
+#define SIGCONT 25
+#endif
+
 
 #define SU_UNREACHABLE 0
 
@@ -208,40 +599,10 @@
     #define SU_ATTRIBUTE_NORETURN
 #endif
 
-#if defined(__has_builtin)
-    #define SU_HAS_BUILTIN(x) __has_builtin(x)
+#if SU_HAS_BUILTIN(__builtin_ctz)
+    #define SU_CTZ32(x, fallback) ((x) ? __builtin_ctz(x) : (fallback))
 #else
-    #define SU_HAS_BUILTIN(x) 0
-#endif
-
-#if SU_HAS_BUILTIN(__builtin_ctzg)
-    #define SU_COUNT_TRAILING_ZEROS(x, fallback) __builtin_ctzg(x, fallback)
-#else
-    #error "TODO: implement __builtin_ctzg"
-#endif
-
-#if SU_HAS_BUILTIN(__builtin_clzg)
-    #define SU_COUNT_LEADING_ZEROS(x, fallback) __builtin_clzg(x, fallback)
-#else
-    #error "TODO: implement __builtin_clzg"
-#endif
-
-#if SU_HAS_BUILTIN(__builtin_bswap16)
-    #define SU_BSWAP16(x) __builtin_bswap16(x)
-#else
-    #error "TODO: implement __builtin_bswap16"
-#endif
-
-#if SU_HAS_BUILTIN(__builtin_bswap32)
-    #define SU_BSWAP32(x) __builtin_bswap32(x)
-#else
-    #error "TODO: implement __builtin_bswap32"
-#endif
-
-#if SU_HAS_BUILTIN(__builtin_bswap64)
-    #define SU_BSWAP64(x) __builtin_bswap64(x)
-#else
-    #error "TODO: implement __builtin_bswap64"
+    #define SU_CTZ32(x, fallback) ((x) ? su_ctz32(x) : (fallback))
 #endif
 
 #if SU_HAS_BUILTIN(__builtin_unreachable)
@@ -263,6 +624,7 @@
 
 #define SU_MIN(a, b) (((a) > (b)) ? (b) : (a))
 #define SU_MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define SU_CLAMP(v, a, b) ((v) < (a) ? (a) : ((v) > (b) ? (b) : (v)))
 #define SU_SWAP(a, b) SU_STMT_START { SU_TYPEOF(a) su__tmp = a; a = b; b = su__tmp; } SU_STMT_END
 
 #define SU_STMT_START do
@@ -278,7 +640,7 @@
         SU_STMT_START { \
             if (SU_UNLIKELY(!(expr))) { \
                 su_log_stderr("%s:%d: assertion '%s' failed", __FILE__, __LINE__, #expr); \
-                abort(); \
+                SU_ABORT(); \
             } \
         } SU_STMT_END
 #else
@@ -377,18 +739,8 @@ SU_STMT_START { \
             (&argv[0][1]) : \
             (argc--, argv++, argv[0])))
 
-#if defined(__cplusplus)
-extern "C" {
-#endif /* defined(__cplusplus) */
-
-/* TODO: remove */
-#if defined(__cplusplus) && (__cplusplus > 199711L)
-    #undef SU_STATIC_ASSERT
-    #define SU_STATIC_ASSERT(x) static_assert(x, "")
-    typedef char32_t su_c32_t;
-#else
-    typedef uint32_t su_c32_t;
-#endif
+/* ? TODO: with message */
+#define SU_STATIC_ASSERT(x) typedef char SU_CONCAT(static_assertion_failed_on_line_, __LINE__)[(x) ? 1 : -1]
 
 #if defined(__BYTE_ORDER__)
     #define SU_BYTE_ORDER_IS_LITTLE_ENDIAN (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
@@ -397,8 +749,13 @@ extern "C" {
     #define SU_BYTE_ORDER_IS_LITTLE_ENDIAN 1
 #endif
 
-SU_STATIC_ASSERT(SU_BYTE_ORDER_IS_LITTLE_ENDIAN); /* TODO: support SU_BYTE_ORDER_BIG_ENDIAN */
+SU_STATIC_ASSERT(SU_BYTE_ORDER_IS_LITTLE_ENDIAN); /* TODO */
 
+#if defined(__cplusplus)
+extern "C" {
+#endif /* defined(__cplusplus) */
+
+/* TODO: own null, i.. , u.. etc types */
 typedef uint32_t su_bool32_t;
 
 typedef struct su_fat_ptr {
@@ -435,6 +792,8 @@ typedef struct su_page_allocator_header {
 #define SU_ARRAY_ALLOCA(dst, alloc_, capacity, alignment) SU_ALLOCCTSA(dst, alloc_, (sizeof(dst[0]) * capacity), alignment)
 /* ? TODO: ARRAY_CPY, ARRAY_RESIZE */
 
+#define SU_CLEAR(dst) SU_MEMSET((dst), 0, sizeof(*(dst)))
+
 typedef struct su_string {
     su_bool32_t free_contents;
     su_bool32_t nul_terminated;
@@ -460,7 +819,7 @@ typedef struct su_file_cache {
     su_string_t key;
     su_bool32_t occupied;
     su_bool32_t tombstone;
-    struct timespec st_mtim;
+    su_timespec_t st_mtim;
     su_fat_ptr_t data;
 } su_file_cache_t;
 
@@ -625,160 +984,173 @@ typedef struct su_json_ast {
 #define su_vsprintfcb stbsp_vsprintfcb
 #define su_printf_set_separators stbsp_set_separators
 
-static SU_ATTRIBUTE_FORMAT_PRINTF(2, 0) void su_log_va(int fd, const char *fmt, va_list args);
-static SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stdout(const char *fmt, ...);
-static SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stderr(const char *fmt, ...);
-static SU_ATTRIBUTE_NORETURN SU_ATTRIBUTE_FORMAT_PRINTF(2, 3) void su_abort(int code, const char *fmt, ...);
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(2, 0) void su_log_va(int fd, const char *fmt, va_list args);
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stdout(const char *fmt, ...);
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stderr(const char *fmt, ...);
+SU_FUNC_DEF SU_ATTRIBUTE_NORETURN SU_ATTRIBUTE_FORMAT_PRINTF(2, 3) void su_abort(int code, const char *fmt, ...);
 
-static inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *literal);
-static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(
+SU_FUNC_DEF inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *literal);
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(
     su_string_t *, const su_allocator_t *, const char *fmt, ...);
-static void su_string_init_len(su_string_t *, const su_allocator_t *,
+SU_FUNC_DEF void su_string_init_len(su_string_t *, const su_allocator_t *,
         const char *s, size_t len, su_bool32_t nul_terminate);
-static void su_string_init_string(su_string_t *, const su_allocator_t *, su_string_t src);
-static void su_string_init(su_string_t *, const su_allocator_t *, const char *src);
-static void su_string_fini(su_string_t *, const su_allocator_t *);
-static su_string_t su_string_view(su_string_t);
-static su_bool32_t su_string_equal(su_string_t str1, su_string_t str2);
-static int su_string_compare(su_string_t str1, su_string_t str2, size_t max);
-static su_bool32_t su_string_find_char(su_string_t, char c, su_string_t *view_out);
-static su_bool32_t su_string_tok(su_string_t *, char delim, su_string_t *token_out, su_string_t *saveptr);
-static su_bool32_t su_string_starts_with(su_string_t, su_string_t prefix);
-static su_bool32_t su_string_ends_with(su_string_t, su_string_t suffix);
-static SU_ATTRIBUTE_PURE uint32_t su_string_hex_16_to_uint16(su_string_t);
-static su_bool32_t su_string_to_uint64(su_string_t, uint64_t *out);
-static su_bool32_t su_string_to_int64(su_string_t, int64_t *out);
+SU_FUNC_DEF void su_string_init_string(su_string_t *, const su_allocator_t *, su_string_t src);
+SU_FUNC_DEF void su_string_init(su_string_t *, const su_allocator_t *, const char *src);
+SU_FUNC_DEF void su_string_fini(su_string_t *, const su_allocator_t *);
+SU_FUNC_DEF su_string_t su_string_view(su_string_t);
+SU_FUNC_DEF su_bool32_t su_string_equal(su_string_t str1, su_string_t str2);
+SU_FUNC_DEF int su_string_compare(su_string_t str1, su_string_t str2, size_t max);
+SU_FUNC_DEF su_bool32_t su_string_find_char(su_string_t, char c, su_string_t *view_out);
+SU_FUNC_DEF su_bool32_t su_string_tok(su_string_t *, char delim, su_string_t *token_out, su_string_t *saveptr);
+SU_FUNC_DEF su_bool32_t su_string_starts_with(su_string_t, su_string_t prefix);
+SU_FUNC_DEF su_bool32_t su_string_ends_with(su_string_t, su_string_t suffix);
+SU_FUNC_DEF SU_ATTRIBUTE_PURE uint32_t su_string_hex_16_to_uint16(su_string_t);
+SU_FUNC_DEF su_bool32_t su_string_hex_to_uint32(su_string_t , uint32_t *out);
+SU_FUNC_DEF su_bool32_t su_string_to_uint64(su_string_t, uint64_t *out);
+SU_FUNC_DEF su_bool32_t su_string_to_int64(su_string_t, int64_t *out);
 
+#if SU_WITH_LIBC
 /* ? TODO: variants without su_allocator_t */
-static void *su_libc_alloc(const su_allocator_t *, size_t size, size_t alignment);
-static void su_libc_free(const su_allocator_t *, void *ptr);
-static void *su_page_alloc(const su_allocator_t *, size_t size, size_t alignment);
-static void su_page_free(const su_allocator_t *, void *ptr);
+SU_FUNC_DEF void *su_libc_alloc(const su_allocator_t *, size_t size, size_t alignment);
+SU_FUNC_DEF void su_libc_free(const su_allocator_t *, void *ptr);
+#endif /* SU_WITH_LIBC */
+SU_FUNC_DEF void *su_page_alloc(const su_allocator_t *, size_t size, size_t alignment);
+SU_FUNC_DEF void su_page_free(const su_allocator_t *, void *ptr);
 
-static void su_arena_init(su_arena_t *, const su_allocator_t *, size_t initial_block_size);
-static void su_arena_fini(su_arena_t *, const su_allocator_t *);
-/* TODO: functions for save and restore state */
-static su_arena_block_t *su_arena_add_block(su_arena_t *, const su_allocator_t *, size_t size);
-static void *su_arena_alloc(su_arena_t *, const su_allocator_t *, size_t size, size_t alignment);
-static size_t su_arena_alloc_get_size(void *ptr);
-static void su_arena_reset(su_arena_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_arena_init(su_arena_t *, const su_allocator_t *, size_t initial_block_size);
+SU_FUNC_DEF void su_arena_fini(su_arena_t *, const su_allocator_t *);
+/* TODO: save and restore state */
+SU_FUNC_DEF su_arena_block_t *su_arena_add_block(su_arena_t *, const su_allocator_t *, size_t size);
+SU_FUNC_DEF void *su_arena_alloc(su_arena_t *, const su_allocator_t *, size_t size, size_t alignment);
+SU_FUNC_DEF size_t su_arena_alloc_get_size(void *ptr);
+SU_FUNC_DEF void su_arena_reset(su_arena_t *, const su_allocator_t *);
 
-static su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b);
+SU_FUNC_DEF su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b);
 
-/* static SU_ATTRIBUTE_PURE size_t su_sdbm_hash(su_string_t); */
-/* static SU_ATTRIBUTE_PURE size_t su_djb2_hash(su_string_t); */
-static SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t);
-static SU_ATTRIBUTE_PURE size_t su_stbds_hash(su_fat_ptr_t);
+/* SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_sdbm_hash(su_string_t); */
+/* SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_djb2_hash(su_string_t); */
+SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t);
+SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_stbds_hash(su_fat_ptr_t);
 
 /* ? TODO: pitch for all surfaces */
-static void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count);
-static void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count);
-static void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count);
-static void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count);
-static void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count);
+SU_FUNC_DEF void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count);
+SU_FUNC_DEF void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count);
+SU_FUNC_DEF void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count);
+SU_FUNC_DEF void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color, int32_t x, int32_t y, uint32_t w, uint32_t h);
-static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
         uint32_t w, uint32_t h);
-static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
+SU_FUNC_DEF void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
     uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
         uint32_t w, uint32_t h);
-static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
-static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
-static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
-static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
-static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
-static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+        uint32_t *src, uint32_t src_w, uint32_t src_h,
+        int32_t dst_x, int32_t dst_y,
+        uint32_t w, uint32_t h);
+SU_FUNC_DEF void su_argb32_bilinear_rotate_blend_argb32( su_rotate_t rotate,
+        uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h);
 
-static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t);
-static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *);
+SU_FUNC_DEF su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t);
+SU_FUNC_DEF su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *);
 
-static void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
+SU_FUNC_DEF void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
         const su_allocator_t *alloc, size_t initial_capacity);
-static void su_file_cache_hash_table_fini(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc);
-static void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc);
-static su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
+SU_FUNC_DEF void su_file_cache_hash_table_fini(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc);
+SU_FUNC_DEF void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc);
+SU_FUNC_DEF su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
         const su_allocator_t *alloc, su_string_t key, su_file_cache_t **out);
-static su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
+SU_FUNC_DEF su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
         su_string_t key, su_file_cache_t *out);
 
-static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
+SU_FUNC_DEF char *su_strchrnul(const char *s, int c);
+SU_FUNC_DEF size_t su_real_path(su_string_t, char output[PATH_MAX]);
+
+SU_FUNC_DEF su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
     const su_allocator_t *, su_file_cache_hash_table_t *);
 
-static su_bool32_t su_fd_set_nonblock(int);
-static su_bool32_t su_fd_set_cloexec(int);
+SU_FUNC_DEF su_bool32_t su_fd_set_nonblock(int);
+SU_FUNC_DEF su_bool32_t su_fd_set_cloexec(int);
 
-static int64_t su_timespec_to_ms(struct timespec);
-static int64_t su_now_ms(clockid_t);
+SU_FUNC_DEF int64_t su_timespec_to_ms(su_timespec_t);
+SU_FUNC_DEF int64_t su_now_msec(int);
+SU_FUNC_DEF int64_t su_now_sec(int clock_id);
 
-static su_bool32_t su_locale_is_utf8(void);
-static void su_nop(void *notused, ...);
+SU_FUNC_DEF void su_nop(void *notused, ...);
 
-/*static void *su_base64_decode(su_string_t, const su_allocator_t *);*/
+/*SU_FUNC_DEF void *su_base64_decode(su_string_t, const su_allocator_t *);*/
 
-static void su_json_writer_init(su_json_writer_t *, const su_allocator_t *, size_t initial_bufsize);
-static void su_json_writer_fini(su_json_writer_t *, const su_allocator_t *);
-static void su_json_writer_reset(su_json_writer_t *);
+SU_FUNC_DEF void su_json_writer_init(su_json_writer_t *, const su_allocator_t *, size_t initial_bufsize);
+SU_FUNC_DEF void su_json_writer_fini(su_json_writer_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_json_writer_reset(su_json_writer_t *);
 
-static void su_json_writer_object_begin(su_json_writer_t *, const su_allocator_t *);
-static void su_json_writer_object_end(su_json_writer_t *, const su_allocator_t *);
-static void su_json_writer_object_key_escape(su_json_writer_t *, const su_allocator_t *, su_string_t);
-static void su_json_writer_object_key(su_json_writer_t *, const su_allocator_t *, su_string_t);
+SU_FUNC_DEF void su_json_writer_object_begin(su_json_writer_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_json_writer_object_end(su_json_writer_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_json_writer_object_key_escape(su_json_writer_t *, const su_allocator_t *, su_string_t);
+SU_FUNC_DEF void su_json_writer_object_key(su_json_writer_t *, const su_allocator_t *, su_string_t);
 
-static void su_json_writer_array_begin(su_json_writer_t *, const su_allocator_t *);
-static void su_json_writer_array_end(su_json_writer_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_json_writer_array_begin(su_json_writer_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_json_writer_array_end(su_json_writer_t *, const su_allocator_t *);
 
-static void su_json_writer_null(su_json_writer_t *, const su_allocator_t *);
-static void su_json_writer_bool(su_json_writer_t *, const su_allocator_t *, su_bool32_t);
-static void su_json_writer_int(su_json_writer_t *, const su_allocator_t *, int64_t);
-static void su_json_writer_uint(su_json_writer_t *, const su_allocator_t *, uint64_t);
-static void su_json_writer_double(su_json_writer_t *, const su_allocator_t *, double);
-static void su_json_writer_string_escape(su_json_writer_t *, const su_allocator_t *, su_string_t);
-static void su_json_writer_string(su_json_writer_t *, const su_allocator_t *, su_string_t);
+SU_FUNC_DEF void su_json_writer_null(su_json_writer_t *, const su_allocator_t *);
+SU_FUNC_DEF void su_json_writer_bool(su_json_writer_t *, const su_allocator_t *, su_bool32_t);
+SU_FUNC_DEF void su_json_writer_int(su_json_writer_t *, const su_allocator_t *, int64_t);
+SU_FUNC_DEF void su_json_writer_uint(su_json_writer_t *, const su_allocator_t *, uint64_t);
+SU_FUNC_DEF void su_json_writer_double(su_json_writer_t *, const su_allocator_t *, double);
+SU_FUNC_DEF void su_json_writer_string_escape(su_json_writer_t *, const su_allocator_t *, su_string_t);
+SU_FUNC_DEF void su_json_writer_string(su_json_writer_t *, const su_allocator_t *, su_string_t);
 
-static void su_json_writer_raw(su_json_writer_t *, const su_allocator_t *, void *data, size_t len);
-static void su_json_writer_token(su_json_writer_t *, const su_allocator_t *, su_json_token_t);
-static void su_json_writer_ast_node(su_json_writer_t *, const su_allocator_t *, su_json_ast_node_t *);
+SU_FUNC_DEF void su_json_writer_raw(su_json_writer_t *, const su_allocator_t *, void *data, size_t len);
+SU_FUNC_DEF void su_json_writer_token(su_json_writer_t *, const su_allocator_t *, su_json_token_t);
+SU_FUNC_DEF void su_json_writer_ast_node(su_json_writer_t *, const su_allocator_t *, su_json_ast_node_t *);
 
-static void su_json_tokener_set_string(su_json_tokener_t *, const su_allocator_t *, su_string_t);
-static su_json_tokener_state_t su_json_tokener_next(su_json_tokener_t *,
+SU_FUNC_DEF void su_json_tokener_set_string(su_json_tokener_t *, const su_allocator_t *, su_string_t);
+SU_FUNC_DEF su_json_tokener_state_t su_json_tokener_next(su_json_tokener_t *,
     const su_allocator_t *, su_json_token_t *out);
-static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *, const su_allocator_t *,
+SU_FUNC_DEF su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *, const su_allocator_t *,
     su_json_ast_t *, uint32_t stop_depth, su_bool32_t check_for_repeating_keys);
-static void su_json_ast_reset(su_json_ast_t *);
+SU_FUNC_DEF void su_json_ast_reset(su_json_ast_t *);
 
-static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *, su_string_t key);
-static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert(su_json_tokener_t *,
+SU_FUNC_DEF su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *, su_string_t key);
+SU_FUNC_DEF SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert(su_json_tokener_t *,
     const su_allocator_t *, su_json_token_t *token_out);
-static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
+SU_FUNC_DEF SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
     su_json_tokener_t *, const su_allocator_t *,
     su_json_token_t *token_out, su_json_token_type_t expected_type);
+
+SU_FUNC_DEF int su_ctz32(unsigned int);
 
 /* ? TODO: strip by default, flag to enable */
 #if defined(SU_STRIP_PREFIXES)
@@ -808,8 +1180,6 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 #define STRNCMP SU_STRNCMP
 #define STRLEN SU_STRLEN
 #define STRNLEN SU_STRNLEN
-#define ABS SU_ABS
-#define FABS SU_FABS
 #define FABSF SU_FABSF
 
 #define OFFSETOF SU_OFFSETOF
@@ -825,11 +1195,7 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 #define ATTRIBUTE_FALLTHROUGH SU_ATTRIBUTE_FALLTHROUGH
 #define ATTRIBUTE_PURE SU_ATTRIBUTE_PURE
 #define ATTRIBUTE_NORETURN SU_ATTRIBUTE_NORETURN
-#define COUNT_TRAILING_ZEROS SU_COUNT_TRAILING_ZEROS
-#define COUNT_LEADING_ZEROS SU_COUNT_LEADING_ZEROS
-#define BSWAP16 SU_BSWAP16
-#define BSWAP32 SU_BSWAP32
-#define BSWAP64 SU_BSWAP64
+#define CTZ32 SU_CTZ32
 
 #define BYTE_ORDER_IS_LITTLE_ENDIAN SU_BYTE_ORDER_IS_LITTLE_ENDIAN
 #define UNREACHABLE SU_UNREACHABLE
@@ -846,6 +1212,7 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 
 #define MIN SU_MIN
 #define MAX SU_MAX
+#define CLAMP SU_CLAMP
 #define SWAP SU_SWAP
 
 #define STRINGIFY SU_STRINGIFY
@@ -873,7 +1240,6 @@ static SU_ATTRIBUTE_ALWAYS_INLINE void su_json_tokener_advance_assert_type(
 #define ARGPARSE_VALUE SU_ARGPARSE_VALUE
 
 typedef su_bool32_t bool32_t;
-typedef su_c32_t c32_t;
 typedef su_fat_ptr_t fat_ptr_t;
 
 typedef su_string_t string_t;
@@ -964,18 +1330,13 @@ typedef su_json_ast_t json_ast_t;
 #define json_tokener_advance_assert su_json_tokener_advance_assert
 #define json_tokener_advance_assert_type su_json_tokener_advance_assert_type
 
-/*#define vsprintf su_vsprintf  */
-/*#define vsnprintf su_vsnprintf  */
-/*#define sprintf su_sprintf  */
-/*#define snprintf su_snprintf  */
-/*#define vsprintfcb su_vsprintfcb  */
+#define ctz32 su_ctz32
+
 #define printf_set_separators su_printf_set_separators
 
 #define log_va su_log_va
 #define log_stdout su_log_stdout
 #define log_stderr su_log_stderr
-
-/*#define abort su_abort*/
 
 #define string su_string_
 #define string_init_format su_string_init_format
@@ -991,6 +1352,7 @@ typedef su_json_ast_t json_ast_t;
 #define string_starts_with su_string_starts_with
 #define string_ends_with su_string_ends_with
 #define string_hex_16_to_uint16 su_string_hex_16_to_uint16
+#define string_hex_to_uint32 su_string_hex_to_uint32
 #define string_to_uint64 su_string_to_uint64
 #define string_to_int64 su_string_to_int64
 
@@ -1005,8 +1367,7 @@ typedef su_json_ast_t json_ast_t;
 #define ARRAY_ALLOCC SU_ARRAY_ALLOCC
 #define ARRAY_ALLOCA SU_ARRAY_ALLOCA
 
-#define libc_alloc su_libc_alloc
-#define libc_free su_libc_free
+#define CLEAR SU_CLEAR
 
 #define page_alloc su_page_alloc
 #define page_free su_page_free
@@ -1037,6 +1398,8 @@ typedef su_json_ast_t json_ast_t;
 #define argb32_mask24_blend_argb32 su_argb32_mask24_blend_argb32
 #define argb32_mask24v_blend_argb32 su_argb32_mask24v_blend_argb32
 #define argb32_mask8_bilinear_blend_argb32 su_argb32_mask8_bilinear_blend_argb32
+#define argb32_bilinear_blend_argb32 su_argb32_bilinear_blend_argb32
+#define argb32_bilinear_rotate_blend_argb32 su_argb32_bilinear_rotate_blend_argb32
 
 #define write_entire_file su_write_entire_file
 #define read_entire_file su_read_entire_file
@@ -1047,19 +1410,103 @@ typedef su_json_ast_t json_ast_t;
 #define file_cache_hash_table_add su_file_cache_hash_table_add
 #define file_cache_hash_table_del su_file_cache_hash_table_del
 
+#define real_path su_real_path
+
 #define read_entire_file_with_cache su_read_entire_file_with_cache
 
 #define fd_set_nonblock su_fd_set_nonblock
 #define fd_set_cloexec su_fd_set_cloexec
 
 #define timespec_to_ms su_timespec_to_ms
-#define now_ms su_now_ms
+#define now_msec su_now_msec
+#define now_sec su_now_sec
 
 /*#define base64_decode su_base64_decode */
 
-#define locale_is_utf8 su_locale_is_utf8
-
 #define nop su_nop
+
+typedef su_timespec_t timespec_t;
+typedef su_stat_t stat_t;
+typedef su_sockaddr_un_t sockaddr_un_t;
+typedef su_sockaddr_t sockaddr_t;
+typedef su_pollfd_t pollfd_t;
+typedef su_sigaction_t sigaction_t;
+typedef su_dirent_t dirent_t;
+typedef su_dir_t dir_t;
+
+#if SU_WITH_LIBC
+    #define libc_alloc su_libc_alloc
+    #define libc_free su_libc_free
+#else
+    #define strchrnul su_strchrnul
+    #define abort su_abort
+    #define vsprintf su_vsprintf
+    #define vsnprintf su_vsnprintf
+    #define sprintf su_sprintf
+    #define snprintf su_snprintf
+    #define vsprintfcb su_vsprintfcb
+#endif /* SU_WITH_LIBC */
+
+#define ABORT SU_ABORT
+#define POSIX_MEMALIGN SU_POSIX_MEMALIGN
+#define FREE_ SU_FREE_
+#define REALLOC SU_REALLOC
+#define GETENV SU_GETENV
+#define ABS SU_ABS
+#define STRTOD SU_STRTOD
+#define QSORT SU_QSORT
+
+#define ERRNO SU_ERRNO
+
+#define CLOCK_GETTIME SU_CLOCK_GETTIME
+
+#define OPEN SU_OPEN
+#define FCNTL SU_FCNTL
+
+#define STAT SU_STAT
+#define FSTAT SU_FSTAT
+#define FSTATAT SU_FSTATAT
+
+#define WRITE SU_WRITE
+#define READ SU_READ
+#define CLOSE SU_CLOSE
+#define EXIT SU_EXIT
+#define READLINK SU_READLINK
+#define GETCWD SU_GETCWD
+#define FTRUNCATE SU_FTRUNCATE
+#define DUP2 SU_DUP2
+#define GETPID SU_GETPID
+#define FORK SU_FORK
+#define SETPGID SU_SETPGID
+#define EXECVP SU_EXECVP
+#define PIPE SU_PIPE
+
+#define MMAP SU_MMAP
+#define MUNMAP SU_MUNMAP
+#define SHM_OPEN SU_SHM_OPEN
+#define SHM_UNLINK SU_SHM_UNLINK
+
+#define SOCKET SU_SOCKET
+#define CONNECT SU_CONNECT
+
+#if SU_WITH_PTHREAD
+#define PTHREAD_CREATE SU_PTHREAD_CREATE
+#define PTHREAD_JOIN SU_PTHREAD_JOIN
+#define PTHREAD_MUTEX_LOCK SU_PTHREAD_MUTEX_LOCK
+#define PTHREAD_MUTEX_UNLOCK SU_PTHREAD_MUTEX_UNLOCK
+#endif /* SU_WITH_PTHREAD */
+
+#define POLL SU_POLL
+
+#define SIGACTION SU_SIGACTION
+#define KILL SU_KILL
+
+#define OPENDIR SU_OPENDIR
+#define CLOSEDIR SU_CLOSEDIR
+#define DIRFD SU_DIRFD
+#define READDIR SU_READDIR
+
+#define WAITPID SU_WAITPID
 
 #endif /* defined(SU_STRIP_PREFIXES) */
 
@@ -1072,24 +1519,14 @@ typedef su_json_ast_t json_ast_t;
 #if defined(SU_IMPLEMENTATION) && !defined(SU__REIMPLEMENTATION_GUARD)
 #define SU__REIMPLEMENTATION_GUARD
 
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <uchar.h>
-#include <sys/mman.h>
-
-#include <limits.h>
-#include <float.h>
-
 #if SU_HAS_FEATURE(address_sanitizer)
     #include <sanitizer/asan_interface.h>
 #endif
 
 #if SU_WITH_SIMD && defined(__x86_64__)
+    #define __MM_MALLOC_H /* to avoid pulling stdlib.h */
     #include <immintrin.h>
+    #undef __MM_MALLOC_H
 #endif /* SU_WITH_SIMD && defined(__x86_64__) */
 
 #define STB_SPRINTF_MIN 128
@@ -1099,7 +1536,8 @@ typedef su_json_ast_t json_ast_t;
 
 #include <stb_sprintf.h>
 
-static void *su_libc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
+#if SU_WITH_LIBC
+SU_FUNC_DEF void *su_libc_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
     void *ptr;
     int s;
 
@@ -1110,21 +1548,22 @@ static void *su_libc_alloc(const su_allocator_t *alloc, size_t size, size_t alig
 
     alignment = SU_MAX(alignment, sizeof(void *));
 
-    s = posix_memalign(&ptr, alignment, (size + alignment - 1) & ~(alignment - 1));
+    s = SU_POSIX_MEMALIGN(&ptr, alignment, (size + alignment - 1) & ~(alignment - 1));
     if ( SU_UNLIKELY(s != 0)) {
-        su_abort(s, "posix_memalign: %s", strerror(s));
+        su_abort(s, "posix_memalign failed: code = %d", s);
     }
 
     SU_ASSERT(((uintptr_t)ptr % alignment) == 0);
     return ptr;
 }
 
-static void su_libc_free(const su_allocator_t *alloc, void *ptr) {
+SU_FUNC_DEF void su_libc_free(const su_allocator_t *alloc, void *ptr) {
     SU_NOTUSED(alloc);
-    free(ptr);
+    SU_FREE_(ptr);
 }
+#endif /* SU_WITH_LIBC */
 
-static void *su_page_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
+SU_FUNC_DEF void *su_page_alloc(const su_allocator_t *alloc, size_t size, size_t alignment) {
     void *ret;
     su_page_allocator_header_t *hdr;
     size_t real_size;
@@ -1135,9 +1574,9 @@ static void *su_page_alloc(const su_allocator_t *alloc, size_t size, size_t alig
     SU_NOTUSED(alloc);
 
     real_size = (size + alignment + sizeof(*hdr));
-    ptr = mmap(NULL, real_size, (PROT_READ | PROT_WRITE), (MAP_ANONYMOUS | MAP_PRIVATE), -1, 0);
+    ptr = SU_MMAP(NULL, real_size, (PROT_READ | PROT_WRITE), (MAP_ANONYMOUS | MAP_PRIVATE), -1, 0);
     if (SU_UNLIKELY(ptr == MAP_FAILED)) {
-        su_abort(errno, "mmap: %s", strerror(errno));
+        su_abort(SU_ERRNO, "mmap: errno = %d", SU_ERRNO);
     }
 
     ret = (void *)((((uintptr_t)ptr + sizeof(*hdr)) + (alignment - 1)) & ~(alignment - 1));
@@ -1149,16 +1588,16 @@ static void *su_page_alloc(const su_allocator_t *alloc, size_t size, size_t alig
     return ret;
 }
 
-static void su_page_free(const su_allocator_t *alloc, void *ptr) {
+SU_FUNC_DEF void su_page_free(const su_allocator_t *alloc, void *ptr) {
     if (ptr) {
         su_page_allocator_header_t *hdr = (su_page_allocator_header_t *)(void *)((uint8_t *)ptr - sizeof(*hdr));
-        int r = munmap(hdr->ptr, hdr->size);
+        int r = SU_MUNMAP(hdr->ptr, hdr->size);
         SU_ASSERT(r == 0);
         SU_NOTUSED(alloc); SU_NOTUSED(r);
     }
 }
 
-static su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b) {
+SU_FUNC_DEF su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b) {
     if (a.len != b.len) {
         return SU_FALSE;
     }
@@ -1166,11 +1605,11 @@ static su_bool32_t su_fat_ptr_equal(su_fat_ptr_t a, su_fat_ptr_t b) {
     return (SU_MEMCMP(a.ptr, b.ptr, a.len) == 0);
 }
 
-static char *su__log_va_stbsp_vsprintfcb(const char *buf, void *data, int len) {
+SU_FUNC_DEF char *su__log_va_stbsp_vsprintfcb(const char *buf, void *data, int len) {
     int fd = (int)(intptr_t)data;
     ssize_t total = 0;
     while (total < len) {
-        ssize_t written_bytes = write(fd, &buf[total], (size_t)(len - total));
+        ssize_t written_bytes = SU_WRITE(fd, &buf[total], (size_t)(len - total));
         if (written_bytes <= 0) {
             return NULL;
         }
@@ -1180,41 +1619,41 @@ static char *su__log_va_stbsp_vsprintfcb(const char *buf, void *data, int len) {
     return (char *)(uintptr_t)buf;
 }
 
-static SU_ATTRIBUTE_FORMAT_PRINTF(2, 0) void su_log_va(int fd, const char *fmt, va_list args) {
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(2, 0) void su_log_va(int fd, const char *fmt, va_list args) {
     /* TODO: format -> buf (scratch alloc) -> write */
     char buf[STB_SPRINTF_MIN];
     ssize_t suppress_warn_unused_result;
     SU_NOTUSED(suppress_warn_unused_result);
 #if defined(SU_LOG_PREFIX)
-    suppress_warn_unused_result = write(fd, SU_LOG_PREFIX, SU_STRING_LITERAL_LENGTH(SU_LOG_PREFIX));
+    suppress_warn_unused_result = SU_WRITE(fd, SU_LOG_PREFIX, SU_STRING_LITERAL_LENGTH(SU_LOG_PREFIX));
 #endif /* defined(SU_LOG_PREFIX) */
     stbsp_vsprintfcb(su__log_va_stbsp_vsprintfcb, (void *)(intptr_t)fd, buf, fmt, args);
-    suppress_warn_unused_result = write(fd, "\n", 1);
+    suppress_warn_unused_result = SU_WRITE(fd, "\n", 1);
 }
 
-static SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stdout(const char *fmt, ...) {
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stdout(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    su_log_va(STDOUT_FILENO, fmt, args);
+    su_log_va(1, fmt, args);
     va_end(args);
 }
 
-static SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stderr(const char *fmt, ...) {
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(1, 2) void su_log_stderr(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    su_log_va(STDERR_FILENO, fmt, args);
+    su_log_va(2, fmt, args);
     va_end(args);
 }
 
-static SU_ATTRIBUTE_NORETURN SU_ATTRIBUTE_FORMAT_PRINTF(2, 3) void su_abort(int code, const char *fmt, ...) {
+SU_FUNC_DEF SU_ATTRIBUTE_NORETURN SU_ATTRIBUTE_FORMAT_PRINTF(2, 3) void su_abort(int code, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    su_log_va(STDERR_FILENO, fmt, args);
+    su_log_va(2, fmt, args);
     va_end(args);
-    exit(code);
+    SU_EXIT(code);
 }
 
-static inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *literal) {
+SU_FUNC_DEF inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *literal) {
     su_string_t s;
     s.s = (char *)(uintptr_t)literal;
     s.len = SU_STRLEN(literal);
@@ -1224,7 +1663,7 @@ static inline SU_ATTRIBUTE_ALWAYS_INLINE su_string_t su_string_(const char *lite
     return s;
 }
 
-static char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, void *data, int len) {
+SU_FUNC_DEF char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, void *data, int len) {
     struct d {
         su_string_t *str;
         const su_allocator_t *alloc;
@@ -1252,7 +1691,7 @@ static char *su__string_init_format_stbsp_vsprintfcb_callback(const char *buf, v
     return &str->s[str->len];
 }
 
-static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *str,
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *str,
         const su_allocator_t *alloc, const char *fmt, ...) {
     struct data {
         su_string_t *str;
@@ -1275,7 +1714,7 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su_string_init_format(su_string_t *
     va_end(args);
 }
 
-static void su_string_init_len(su_string_t *str, const su_allocator_t *alloc,
+SU_FUNC_DEF void su_string_init_len(su_string_t *str, const su_allocator_t *alloc,
         const char *s, size_t len, su_bool32_t nul_terminate) {
     SU_ASSERT((len > 0) || nul_terminate);
     SU_ALLOCTS(str->s, alloc, len + nul_terminate);
@@ -1288,11 +1727,11 @@ static void su_string_init_len(su_string_t *str, const su_allocator_t *alloc,
     str->nul_terminated = nul_terminate;
 }
 
-static void su_string_init_string(su_string_t *str, const su_allocator_t *alloc, su_string_t src) {
+SU_FUNC_DEF void su_string_init_string(su_string_t *str, const su_allocator_t *alloc, su_string_t src) {
     su_string_init_len(str, alloc, src.s, src.len, src.nul_terminated);
 }
 
-static void su_string_init(su_string_t *str, const su_allocator_t *alloc, const char *src) {
+SU_FUNC_DEF void su_string_init(su_string_t *str, const su_allocator_t *alloc, const char *src) {
     str->len = SU_STRLEN(src);
     SU_ALLOCTS(str->s, alloc, str->len + 1);
     SU_MEMCPY(str->s, src, str->len + 1);
@@ -1300,18 +1739,18 @@ static void su_string_init(su_string_t *str, const su_allocator_t *alloc, const 
     str->nul_terminated = SU_TRUE;
 }
 
-static void su_string_fini(su_string_t *str, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_string_fini(su_string_t *str, const su_allocator_t *alloc) {
     if (str->free_contents) {
         SU_FREE(alloc, str->s);
     }
 }
 
-static su_string_t su_string_view(su_string_t str) {
+SU_FUNC_DEF su_string_t su_string_view(su_string_t str) {
     str.free_contents = SU_FALSE;
     return str;
 }
 
-static su_bool32_t su_string_equal(su_string_t str1, su_string_t str2) {
+SU_FUNC_DEF su_bool32_t su_string_equal(su_string_t str1, su_string_t str2) {
     if (str1.len != str2.len) {
         return SU_FALSE;
     }
@@ -1319,7 +1758,7 @@ static su_bool32_t su_string_equal(su_string_t str1, su_string_t str2) {
     return (SU_MEMCMP(str1.s, str2.s, str1.len) == 0);
 }
 
-static int su_string_compare(su_string_t str1, su_string_t str2, size_t max) {
+SU_FUNC_DEF int su_string_compare(su_string_t str1, su_string_t str2, size_t max) {
     size_t len = ((max < str1.len) && (max < str2.len)) ? max : SU_MIN(str1.len, str2.len);
 
     int result = SU_MEMCMP(str1.s, str2.s, len);
@@ -1330,7 +1769,7 @@ static int su_string_compare(su_string_t str1, su_string_t str2, size_t max) {
     return ((str1.len < str2.len) ? -1 : ((str1.len > str2.len) ? 1 : 0));
 }
 
-static su_bool32_t su_string_find_char(su_string_t str, char c, su_string_t *view_out) {
+SU_FUNC_DEF su_bool32_t su_string_find_char(su_string_t str, char c, su_string_t *view_out) {
     char *s = (char *)SU_MEMCHR(str.s, c, str.len);
     if (!s) {
         return SU_FALSE;
@@ -1344,7 +1783,7 @@ static su_bool32_t su_string_find_char(su_string_t str, char c, su_string_t *vie
     return SU_TRUE;
 }
 
-static su_bool32_t su_string_tok(su_string_t *str, char delim, su_string_t *token_out, su_string_t *saveptr) {
+SU_FUNC_DEF su_bool32_t su_string_tok(su_string_t *str, char delim, su_string_t *token_out, su_string_t *saveptr) {
     /* TODO: simd */
 
     if (str) {
@@ -1374,7 +1813,7 @@ static su_bool32_t su_string_tok(su_string_t *str, char delim, su_string_t *toke
     return SU_TRUE;
 }
 
-static su_bool32_t su_string_starts_with(su_string_t str, su_string_t prefix) {
+SU_FUNC_DEF su_bool32_t su_string_starts_with(su_string_t str, su_string_t prefix) {
     if (prefix.len <= str.len) {
         su_string_t s;
         s.s = str.s;
@@ -1387,7 +1826,7 @@ static su_bool32_t su_string_starts_with(su_string_t str, su_string_t prefix) {
     return SU_FALSE;
 }
 
-static su_bool32_t su_string_ends_with(su_string_t str, su_string_t suffix) {
+SU_FUNC_DEF su_bool32_t su_string_ends_with(su_string_t str, su_string_t suffix) {
     if (suffix.len <= str.len) {
         su_string_t s;
         s.s = &str.s[str.len - suffix.len];
@@ -1402,8 +1841,8 @@ static su_bool32_t su_string_ends_with(su_string_t str, su_string_t suffix) {
 
 /* on success, returns u16 in lower bits of u32 result */
 /* on error, returns u32 with high bits set */
-static SU_ATTRIBUTE_PURE uint32_t su_string_hex_16_to_uint16(su_string_t str) {
-    static uint32_t lut[] = {
+SU_FUNC_DEF SU_ATTRIBUTE_PURE uint32_t su_string_hex_16_to_uint16(su_string_t str) {
+    static const uint32_t lut[] = {
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -1556,13 +1995,63 @@ static SU_ATTRIBUTE_PURE uint32_t su_string_hex_16_to_uint16(su_string_t str) {
 
     SU_ASSERT(str.len == 4);
 
-    return  lut[630 + (uint8_t)str.s[0]] |
-            lut[420 + (uint8_t)str.s[1]] |
-            lut[210 + (uint8_t)str.s[2]] |
-            lut[0   + (uint8_t)str.s[3]];
+    return lut[630 + (uint8_t)str.s[0]]
+        | lut[420 + (uint8_t)str.s[1]]
+        | lut[210 + (uint8_t)str.s[2]]
+        | lut[0 + (uint8_t)str.s[3]];
 }
 
-static su_bool32_t su_string_to_uint64(su_string_t str, uint64_t *out) {
+SU_FUNC_DEF su_bool32_t su_string_hex_to_uint32(su_string_t str, uint32_t *out) {
+    static const uint32_t lut[] = {
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0,    1,
+        2,    3,    4,    5,    6,    7,    8,    9,    0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 10,   11,   12,   13,   14,
+        15,   0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 10,   11,   12,
+        13,   14,   15,   0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    };
+
+    uint32_t result;
+    size_t i;
+
+    if (SU_UNLIKELY((str.len == 0) || (str.len > 8))) {
+        return SU_FALSE;
+    }
+
+    result = 0;
+    for ( i = 0; i < str.len; ++i) {
+        uint32_t d;
+        if ((d = lut[(uint32_t)(str.s[i])]) == 0xFF) {
+            return SU_FALSE;
+        }
+        result = ((result << 4) | d);
+    }
+
+    *out = result;
+    return SU_TRUE;
+}
+
+SU_FUNC_DEF su_bool32_t su_string_to_uint64(su_string_t str, uint64_t *out) {
     uint64_t result = 0;
     size_t i = 0;
 
@@ -1575,7 +2064,7 @@ static su_bool32_t su_string_to_uint64(su_string_t str, uint64_t *out) {
         if (SU_UNLIKELY(d > 9)) {
             return SU_FALSE;
         }
-        result = 10 * result + d;
+        result = (10 * result + d);
     }
 
     if (SU_UNLIKELY((str.len == 20) && (str.s[0] == '1') && (result <= (uint64_t)INT64_MAX))) {
@@ -1586,7 +2075,7 @@ static su_bool32_t su_string_to_uint64(su_string_t str, uint64_t *out) {
     return SU_TRUE;
 }
 
-static su_bool32_t su_string_to_int64(su_string_t str, int64_t *out) {
+SU_FUNC_DEF su_bool32_t su_string_to_int64(su_string_t str, int64_t *out) {
     su_bool32_t negative = (str.s[0] == '-');
     uint64_t result = 0;
     size_t i = negative;
@@ -1600,7 +2089,7 @@ static su_bool32_t su_string_to_int64(su_string_t str, int64_t *out) {
         if (SU_UNLIKELY(d > 9)) {
             return SU_FALSE;
         }
-        result = 10 * result + d;
+        result = (10 * result + d);
     }
 
     if (SU_UNLIKELY(result > ((uint64_t)INT64_MAX + negative))) {
@@ -1611,14 +2100,14 @@ static su_bool32_t su_string_to_int64(su_string_t str, int64_t *out) {
     return SU_TRUE;
 }
 
-static void su_arena_init(su_arena_t *arena, const su_allocator_t *alloc, size_t initial_block_size) {
+SU_FUNC_DEF void su_arena_init(su_arena_t *arena, const su_allocator_t *alloc, size_t initial_block_size) {
     arena->blocks_capacity = 8;
     SU_ARRAY_ALLOC(arena->blocks, alloc, arena->blocks_capacity);
     arena->blocks_count = 0;
     su_arena_add_block(arena, alloc, initial_block_size);
 }
 
-static void su_arena_fini(su_arena_t *arena, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_arena_fini(su_arena_t *arena, const su_allocator_t *alloc) {
     size_t i = 0;
     for ( ; i < arena->blocks_count; ++i) {
         su_arena_block_t *block = &arena->blocks[i];
@@ -1630,7 +2119,7 @@ static void su_arena_fini(su_arena_t *arena, const su_allocator_t *alloc) {
     SU_FREE(alloc, arena->blocks);
 }
 
-static su_arena_block_t *su_arena_add_block(su_arena_t *arena, const su_allocator_t *alloc, size_t size) {
+SU_FUNC_DEF su_arena_block_t *su_arena_add_block(su_arena_t *arena, const su_allocator_t *alloc, size_t size) {
     su_arena_block_t block;
 
     size = (size + (4096 - 1)) & (size_t)~(4096 - 1);
@@ -1655,7 +2144,7 @@ static su_arena_block_t *su_arena_add_block(su_arena_t *arena, const su_allocato
     return &arena->blocks[arena->blocks_count - 1];
 }
 
-static void *su_arena_alloc(su_arena_t *arena, const su_allocator_t *alloc, size_t size, size_t alignment) {
+SU_FUNC_DEF void *su_arena_alloc(su_arena_t *arena, const su_allocator_t *alloc, size_t size, size_t alignment) {
     su_arena_block_t *block;
     size_t new_size = size;
     size_t new_ptr;
@@ -1692,13 +2181,13 @@ out:
     return ret;
 }
 
-static size_t su_arena_alloc_get_size(void *ptr) {
+SU_FUNC_DEF size_t su_arena_alloc_get_size(void *ptr) {
     size_t ret;
     SU_MEMCPY(&ret, (uint8_t *)ptr - sizeof(size_t), sizeof(ret));
     return ret;
 }
 
-static void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
     su_arena_block_t *first_block = &arena->blocks[0];
     size_t size = first_block->size;
     size_t i = 1;
@@ -1733,7 +2222,7 @@ static void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
 #endif
 }
 
-/*static SU_ATTRIBUTE_PURE size_t su_sdbm_hash(su_string_t s) {
+/*SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_sdbm_hash(su_string_t s) {
     size_t hash = 0;
     size_t i = 0;
     for ( ; i < s.len; ++i) {
@@ -1743,7 +2232,7 @@ static void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
     return hash;
 }*/
 
-/*static SU_ATTRIBUTE_PURE size_t su_djb2_hash(su_string_t s) {
+/*SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_djb2_hash(su_string_t s) {
     size_t hash = 5381;
     size_t i = 0;
 
@@ -1754,7 +2243,7 @@ static void su_arena_reset(su_arena_t *arena, const su_allocator_t *alloc) {
     return hash;
 }*/
 
-static SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t s) {
+SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t s) {
 #define ROTATE_LEFT(val, n)  (((val) << (n)) | ((val) >> (((sizeof(size_t)) * 8) - (n))))
 #define ROTATE_RIGHT(val, n) (((val) >> (n)) | ((val) << (((sizeof(size_t)) * 8) - (n))))
 
@@ -1777,14 +2266,14 @@ static SU_ATTRIBUTE_PURE size_t su_stbds_hash_string(su_string_t s) {
 #undef ROTATE_RIGHT
 }
 
-static SU_ATTRIBUTE_PURE size_t su_stbds_hash(su_fat_ptr_t data) {
+SU_FUNC_DEF SU_ATTRIBUTE_PURE size_t su_stbds_hash(su_fat_ptr_t data) {
     su_string_t s;
     s.s = (char *)data.ptr;
     s.len = data.len;
     return su_stbds_hash_string(s);
 }
 
-static void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count) {
+SU_FUNC_DEF void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count) {
     size_t i = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
@@ -1793,7 +2282,7 @@ static void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t cou
     __m256i const_257_16x16 = _mm256_set1_epi16(257);
 
     __m256i extract_alpha_mask = _mm256_set_epi8(
-#define ZERO 0x80
+#define ZERO (-128)
         ZERO, 14, ZERO, 14, ZERO, 14, ZERO, 14,
         ZERO, 6, ZERO, 6, ZERO, 6, ZERO, 6,
         ZERO, 30, ZERO, 30, ZERO, 30, ZERO, 30,
@@ -1803,7 +2292,7 @@ static void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t cou
 
     __m256i blend_mask = _mm256_set_epi8(
 #define FROM1 0
-#define FROM2 0x80
+#define FROM2 (-128)
         FROM2, FROM1, FROM1, FROM1,
         FROM2, FROM1, FROM1, FROM1,
         FROM2, FROM1, FROM1, FROM1,
@@ -1841,7 +2330,6 @@ static void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t cou
         _mm256_storeu_si256((__m256i_u *)&dst[i], result_8x32);
     }
 #endif /* SU_WITH_SIMD && __AVX2__ */
-/* TODO: AVX512, WASM, ARM, ?SSE */
 
     for ( ; i < count; ++i) {
         uint32_t p = src[i];
@@ -1859,7 +2347,7 @@ static void su_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t cou
     }
 }
 
-static void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count) {
+SU_FUNC_DEF void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count) {
     size_t i = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
@@ -1875,7 +2363,7 @@ static void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, si
     __m256i const_257_16x16 = _mm256_set1_epi16(257);
 
     __m256i extract_alpha_mask = _mm256_set_epi8(
-#define ZERO 0x80
+#define ZERO (-128)
         ZERO, 14, ZERO, 14, ZERO, 14, ZERO, 14,
         ZERO, 6, ZERO, 6, ZERO, 6, ZERO, 6,
         ZERO, 30, ZERO, 30, ZERO, 30, ZERO, 30,
@@ -1885,7 +2373,7 @@ static void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, si
 
     __m256i blend_mask = _mm256_set_epi8(
 #define FROM1 0
-#define FROM2 0x80
+#define FROM2 (-128)
         FROM2, FROM1, FROM1, FROM1,
         FROM2, FROM1, FROM1, FROM1,
         FROM2, FROM1, FROM1, FROM1,
@@ -1924,7 +2412,6 @@ static void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, si
         _mm256_storeu_si256((__m256i_u *)&dst[i], result_8x32);
     }
 #endif /* SU_WITH_SIMD && __AVX2__ */
-/* TODO: AVX512, WASM, ARM, ?SSE */
 
     for ( ; i < count; ++i) {
         uint32_t p = src[i];
@@ -1942,7 +2429,7 @@ static void su_bswap32_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, si
     }
 }
 
-static void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count) {
+SU_FUNC_DEF void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *src, size_t count) {
     size_t i = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
@@ -1962,7 +2449,7 @@ static void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *
     __m256i const_257_16x16 = _mm256_set1_epi16(257);
 
     __m256i extract_alpha_mask = _mm256_set_epi8(
-#define ZERO 0x80
+#define ZERO (-128)
         ZERO, 14, ZERO, 14, ZERO, 14, ZERO, 14,
         ZERO, 6, ZERO, 6, ZERO, 6, ZERO, 6,
         ZERO, 30, ZERO, 30, ZERO, 30, ZERO, 30,
@@ -1972,7 +2459,7 @@ static void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *
 
     __m256i blend_mask = _mm256_set_epi8(
 #define FROM1 0
-#define FROM2 0x80
+#define FROM2 (-128)
         FROM2, FROM1, FROM1, FROM1,
         FROM2, FROM1, FROM1, FROM1,
         FROM2, FROM1, FROM1, FROM1,
@@ -2011,7 +2498,6 @@ static void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *
         _mm256_storeu_si256((__m256i_u *)&dst[i], result_8x32);
     }
 #endif /* SU_WITH_SIMD && __AVX2__ */
-/* TODO: AVX512, WASM, ARM, ?SSE */
 
     for ( ; i < count; ++i) {
         uint32_t p = src[i];
@@ -2029,7 +2515,7 @@ static void su_abgr32_convert_argb32_premultiply_alpha(uint32_t *dst, uint32_t *
     }
 }
 
-static void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count) {
+SU_FUNC_DEF void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count) {
     size_t i = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
@@ -2050,7 +2536,6 @@ static void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count)
         _mm256_storeu_si256((__m256i_u *)&dst[i], argb32_8x32);
     }
 #endif /* SU_WITH_SIMD && __AVX2__ */
-/* TODO: AVX512, WASM, ARM, ?SSE */
 
     for ( ; i < count; ++i) {
         uint32_t p = src[i];
@@ -2062,7 +2547,7 @@ static void su_abgr32_convert_argb32(uint32_t *dst, uint32_t *src, size_t count)
     }
 }
 
-static void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color, int32_t sx, int32_t sy, uint32_t w, uint32_t h) {
     uint32_t x, y;
     uint32_t sa = ((color >> 24) & 0xFF);
@@ -2080,20 +2565,20 @@ static void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t
 #endif /* SU_WITH_SIMD && __AVX2__ */
 
     if (sx < 0) {
-        uint32_t shift = (uint32_t)(-sx);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)sx;
+        if ((uint64_t)nx >= w) {
             return;
         }
         sx = 0;
-        w -= shift;
+        w -= (uint32_t)nx;
     }
     if (sy < 0) {
-        uint32_t shift = (uint32_t)(-sy);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)sy;
+        if ((uint64_t)ny >= h) {
             return;
         }
         sy = 0;
-        h -= shift;
+        h -= (uint32_t)ny;
     }
 
     if ((sx >= (int32_t)dst_w) || (sy >= (int32_t)dst_h)) {
@@ -2171,7 +2656,7 @@ static void su_argb32_rect_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t
     }
 }
 
-static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
         uint32_t w, uint32_t h) {
@@ -2183,7 +2668,7 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
     __m256i const_257_16x16 = _mm256_set1_epi16(257);
     __m256i const_255_32x8 = _mm256_set1_epi8((char)255);
     __m256i a_mask = _mm256_setr_epi8(
-#define ZERO 0x80
+#define ZERO (-128)
         3,  3,  3,  3,  7,  7,  7,  7,
         11, 11, 11, 11, 15, 15, 15, 15,
         19, 19, 19, 19, 23, 23, 23, 23,
@@ -2193,41 +2678,41 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
 #endif /* SU_WITH_SIMD && __AVX2__ */
 
     if (dst_x < 0) {
-        uint32_t shift = (uint32_t)(-dst_x);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         dst_x = 0;
-        src_x += (int32_t)shift;
-        w -= shift;
+        src_x += (int32_t)nx;
+        w -= (uint32_t)nx;
     }
     if (dst_y < 0) {
-        uint32_t shift = (uint32_t)(-dst_y);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         dst_y = 0;
-        src_y += (int32_t)shift;
-        h -= shift;
+        src_y += (int32_t)ny;
+        h -= (uint32_t)ny;
     }
 
     if (src_x < 0) {
-        uint32_t shift = (uint32_t)(-src_x);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)src_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         src_x = 0;
-        dst_x += (int32_t)shift;
-        w -= shift;
+        dst_x += (int32_t)nx;
+        w -= (uint32_t)nx;
     }
     if (src_y < 0) {
-        uint32_t shift = (uint32_t)(-src_y);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)src_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         src_y = 0;
-        dst_y += (int32_t)shift;
-        h -= shift;
+        dst_y += (int32_t)ny;
+        h -= (uint32_t)ny;
     }
 
     if ((dst_x >= (int32_t)dst_w) || (dst_y >= (int32_t)dst_h)) {
@@ -2328,23 +2813,23 @@ static void su_argb32_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_
     }
 }
 
-static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
+SU_FUNC_DEF void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
         uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y, int32_t src_x, int32_t src_y,
         uint32_t w, uint32_t h) {
+    /* TODO: fast paths */
     int32_t x, y;
     uint32_t *src_ptr;
     int32_t dx, dy;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
-    int32_t dx_mul_8;
     __m256i const_0  = _mm256_setzero_si256();
     __m256i const_128_16x16 = _mm256_set1_epi16(128);
     __m256i const_257_16x16 = _mm256_set1_epi16(257);
     __m256i const_255_32x8 = _mm256_set1_epi8((char)255);
     __m256i a_mask = _mm256_setr_epi8(
-#define ZERO 0x80
+#define ZERO (-128)
         3,  3,  3,  3,  7,  7,  7,  7,
         11, 11, 11, 11, 15, 15, 15, 15,
         19, 19, 19, 19, 23, 23, 23, 23,
@@ -2355,20 +2840,20 @@ static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
     if (dst_x < 0) {
-        int32_t shift = -dst_x;
-        if (shift >= (int32_t)w) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         dst_x = 0;
-        w -= (uint32_t)shift;
+        w -= (uint32_t)nx;
     }
     if (dst_y < 0) {
-        int32_t shift = -dst_y;
-        if (shift >= (int32_t)h) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         dst_y = 0;
-        h -= (uint32_t)shift;
+        h -= (uint32_t)ny;
     }
 
     if (((uint32_t)dst_x >= dst_w) || ((uint32_t)dst_y >= dst_h)) {
@@ -2386,25 +2871,29 @@ static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
     case SU_ROTATE_FLIP:
     case SU_ROTATE_FLIP_180:
         if (src_x < 0) {
-            int32_t shift = -src_x;
-            if (shift >= (int32_t)w) {
+            int64_t nx = -(int64_t)src_x;
+            if ((uint64_t)nx >= w) {
                 return;
             }
             src_x = 0;
-            w -= (uint32_t)shift;
+            w -= (uint32_t)nx;
+        }
+        if ((uint32_t)src_x >= src_w) {
+            w = 0;
+        } else if (((uint32_t)src_x + w) > src_w) {
+            w = (src_w - (uint32_t)src_x);
         }
         if (src_y < 0) {
-            int32_t shift = -src_y;
-            if (shift >= (int32_t)h) {
+            int64_t ny = -(int64_t)src_y;
+            if ((uint64_t)ny >= h) {
                 return;
             }
             src_y = 0;
-            h -= (uint32_t)shift;
+            h -= (uint32_t)ny;
         }
-        if (((uint32_t)src_x + w) > src_w) {
-            w = (src_w - (uint32_t)src_x);
-        }
-        if (((uint32_t)src_y + h) > src_h) {
+        if ((uint32_t)src_y >= src_h) {
+            h = 0;
+        } else if (((uint32_t)src_y + h) > src_h) {
             h = (src_h - (uint32_t)src_y);
         }
         break;
@@ -2413,25 +2902,29 @@ static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
     case SU_ROTATE_FLIP_90:
     case SU_ROTATE_FLIP_270:
         if (src_x < 0) {
-            int32_t shift = -src_x;
-            if (shift >= (int32_t)h) {
+            int64_t nx = -(int64_t)src_x;
+            if ((uint64_t)nx >= h) {
                 return;
             }
             src_x = 0;
-            h -= (uint32_t)shift;
+            h -= (uint32_t)nx;
+        }
+        if ((uint32_t)src_x >= src_w) {
+            h = 0;
+        } else if (((uint32_t)src_x + h) > src_w) {
+            h = (src_w - (uint32_t)src_x);
         }
         if (src_y < 0) {
-            int32_t shift = -src_y;
-            if (shift >= (int32_t)w) {
+            int64_t ny = -(int64_t)src_y;
+            if ((uint64_t)ny >= w) {
                 return;
             }
             src_y = 0;
-            w -= (uint32_t)shift;
+            w -= (uint32_t)ny;
         }
-        if (((uint32_t)src_x + h) > src_w) {
-            h = (src_w - (uint32_t)src_x);
-        }
-        if (((uint32_t)src_y + w) > src_h) {
+        if ((uint32_t)src_y >= src_h) {
+            w = 0;
+        } else if (((uint32_t)src_y + w) > src_h) {
             w = (src_h - (uint32_t)src_y);
         }
         break;
@@ -2487,7 +2980,6 @@ static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
     src_idxs_8x32 = _mm256_setr_epi32(
         dx * 0, dx * 1, dx * 2, dx * 3,
         dx * 4, dx * 5, dx * 6, dx * 7);
-    dx_mul_8 = (dx * 8);
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
     for ( y = 0; y < (int32_t)h; ++y) {
@@ -2505,7 +2997,7 @@ static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
             src_8x32 = _mm256_i32gather_epi32(src_p, src_idxs_8x32, 4);
             src_a_8x32 = _mm256_shuffle_epi8(src_8x32, a_mask);
 
-            src_p += dx_mul_8;
+            src_p += (dx * 8);
 
             if (_mm256_testc_si256(const_0, src_a_8x32)) {
                 continue;
@@ -2574,7 +3066,7 @@ static void su_argb32_rotate_blend_argb32( su_rotate_t rotate,
     }
 }
 
-static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
@@ -2604,7 +3096,7 @@ static void su_argb32_mask8_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
         0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
         4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7);
 
-#define ZERO 0x80
+#define ZERO (-128)
 __m256i src_a_mask = _mm256_setr_epi8(
         6, ZERO, 6, ZERO, 6, ZERO, 6, ZERO,
         14, ZERO, 14, ZERO, 14, ZERO, 14, ZERO,
@@ -2614,22 +3106,22 @@ __m256i src_a_mask = _mm256_setr_epi8(
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
     if (dst_x < 0) {
-        uint32_t shift = (uint32_t)(-dst_x);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         dst_x = 0;
-        mask_x += shift;
-        w -= shift;
+        mask_x += (uint32_t)nx;
+        w -= (uint32_t)nx;
     }
     if (dst_y < 0) {
-        uint32_t shift = (uint32_t)(-dst_y);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         dst_y = 0;
-        mask_y += shift;
-        h -= shift;
+        mask_y += (uint32_t)ny;
+        h -= (uint32_t)ny;
     }
 
     if ((dst_x >= (int32_t)dst_w) || (dst_y >= (int32_t)dst_h)) {
@@ -2855,7 +3347,7 @@ __m256i src_a_mask = _mm256_setr_epi8(
     }
 }
 
-static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
@@ -2887,22 +3379,22 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     }
 
     if (dst_x < 0) {
-        uint32_t shift = (uint32_t)(-dst_x);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         dst_x = 0;
-        mask_x += shift;
-        w -= shift;
+        mask_x += (uint32_t)nx;
+        w -= (uint32_t)nx;
     }
     if (dst_y < 0) {
-        uint32_t shift = (uint32_t)(-dst_y);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         dst_y = 0;
-        mask_y += shift;
-        h -= shift;
+        mask_y += (uint32_t)ny;
+        h -= (uint32_t)ny;
     }
 
     if ((dst_x >= (int32_t)dst_w) || (dst_y >= (int32_t)dst_h)) {
@@ -3005,7 +3497,7 @@ static void su_argb32_mask1_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_
     }
 }
 
-static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
@@ -3028,7 +3520,7 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
     __m256i src_lo_16x16_ = _mm256_unpacklo_epi8(src_8x32, const_0);
     __m256i src_hi_16x16_ = _mm256_unpackhi_epi8(src_8x32, const_0);
     __m128i raw_mask = _mm_setr_epi8(
-#define ZERO 0x80
+#define ZERO (-128)
         2, 1, 0, ZERO, 5, 4, 3, ZERO,
         8, 7, 6, ZERO, 11, 10, 9, ZERO
     );
@@ -3041,7 +3533,7 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
     );
     __m256i blend_mask = _mm256_setr_epi8(
 #define FROM1 0
-#define FROM2 0x80
+#define FROM2 (-128)
         FROM1, FROM1, FROM1, FROM2,
         FROM1, FROM1, FROM1, FROM2,
         FROM1, FROM1, FROM1, FROM2,
@@ -3060,22 +3552,22 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
     }
 
     if (dst_x < 0) {
-        uint32_t shift = (uint32_t)(-dst_x);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         dst_x = 0;
-        mask_x += shift;
-        w -= shift;
+        mask_x += (uint32_t)nx;
+        w -= (uint32_t)nx;
     }
     if (dst_y < 0) {
-        uint32_t shift = (uint32_t)(-dst_y);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         dst_y = 0;
-        mask_y += shift;
-        h -= shift;
+        mask_y += (uint32_t)ny;
+        h -= (uint32_t)ny;
     }
 
     if ((dst_x >= (int32_t)dst_w) || (dst_y >= (int32_t)dst_h)) {
@@ -3188,12 +3680,12 @@ static void su_argb32_mask24_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32
     }
 }
 
-static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t *src, uint32_t src_w, uint32_t src_h,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
-    /* ? TODO: src_x/y, fast paths */
-    int32_t x, y;
+    /* ? TODO: fixedpoint, frame/inner technique, fast paths (a==255/0), src_x/y */
+    uint32_t x, y;
 
     float inv_scale = (1.f / (SU_MIN((float)w / (float)src_w, (float)h / (float)src_h)));
 
@@ -3217,45 +3709,60 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
         27, 27, 27, 27, 31, 31, 31, 31);
     __m256i s_mask = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
     __m256 wy_8x32;
+    __m256i x_8x32 = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
-    int32_t start_x = 0;
-    int32_t start_y = 0;
-    int32_t end_x = (int32_t)w;
-    int32_t end_y = (int32_t)h;
+    uint32_t start_x = 0, start_y = 0;
 
     if (dst_x < 0) {
-        start_x = -dst_x;
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
+            return;
+        }
+        start_x = (uint32_t)nx;
+        w -= start_x;
+        dst_x = 0;
     }
     if (dst_y < 0) {
-        start_y = -dst_y;
-    }
-    if ((dst_x + end_x) > (int32_t)dst_w) {
-        end_x = ((int32_t)dst_w - dst_x);
-    }
-    if ((dst_y + end_y) > (int32_t)dst_h) {
-        end_y = ((int32_t)dst_h - dst_y);
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
+            return;
+        }
+        start_y = (uint32_t)ny;
+        h -= start_y;
+        dst_y = 0;
     }
 
-    if (start_x >= end_x /* || (start_y >= end_y) */) {
+    if ((uint32_t)dst_x >= dst_w) {
+        w = 0;
+    } else if (((uint32_t)dst_x + w) > dst_w) {
+        w = (dst_w - (uint32_t)dst_x);
+    }
+    if ((uint32_t)dst_y >= dst_h) {
+        h = 0;
+    } else if (((uint32_t)dst_y + h) > dst_h) {
+        h = (dst_h - (uint32_t)dst_y);
+    }
+
+    if ((w == 0) || (h == 0)) {
         return;
     }
 
-    for ( y = start_y; y < end_y; ++y) {
-        uint32_t *dst_row = &dst[(dst_y + (int32_t)y) * (int32_t)dst_w + dst_x];
+    for ( y = 0; y < h; ++y) {
+        uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
         uint32_t *row0, *row1;
-        float fy = ((float)y * inv_scale);
-        int32_t y0 = SU_MIN((int32_t)fy, (int32_t)src_h - 1);
+        float fy = ((float)(y + start_y) * inv_scale);
+        int32_t y0 = SU_CLAMP((int32_t)fy, 0, (int32_t)src_h - 1);
         float wy = (fy - (float)y0);
         int32_t y1 = SU_MIN(y0 + 1, (int32_t)src_h - 1);
         row0 = &src[y0 * (int32_t)src_w];
         row1 = &src[y1 * (int32_t)src_w];
 
-        x = start_x;
+        x = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
         wy_8x32 = _mm256_set1_ps(wy);
-        for ( ; (x + 8) <= end_x; x += 8) {
+        for ( ; (x + 8) <= w; x += 8) {
             __m256i src_8x32, src_0123_16x16, src_4567_16x16;
             __m256i ix0_8x32, ix1_8x32;
             __m256 fx0_8x32, wx_8x32;
@@ -3283,12 +3790,13 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
             __m256i src_lo_16x16, src_hi_16x16;
             __m256i dst_8x32, dst_lo_16x16, dst_hi_16x16;
             __m256i result_8x32;
-
-            ix0_8x32 = _mm256_setr_epi32(
-                x + 0, x + 1, x + 2, x + 3, x + 4, x + 5, x + 6, x + 7);
+                
+            ix0_8x32 = _mm256_set1_epi32((int)(x + start_x));
+            ix0_8x32 = _mm256_add_epi32(ix0_8x32, x_8x32);
             fx0_8x32 =_mm256_cvtepi32_ps(ix0_8x32);
             fx0_8x32 = _mm256_mul_ps(fx0_8x32, inv_scale_8x32);
             ix0_8x32 = _mm256_cvttps_epi32(fx0_8x32);
+            ix0_8x32 = _mm256_max_epi32(ix0_8x32, const_0);
             ix0_8x32 = _mm256_min_epi32(ix0_8x32, src_w_minus_1_8x32);
             ix1_8x32 = _mm256_add_epi32(ix0_8x32, const_1_8x32);
             ix1_8x32 = _mm256_min_epi32(ix1_8x32, src_w_minus_1_8x32);
@@ -3429,9 +3937,9 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
         }
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
-        for ( ; x < end_x; ++x) {
-            float fx = ((float)x * inv_scale);
-            int32_t x0 = SU_MIN((int32_t)fx, (int32_t)src_w - 1);
+        for ( ; x < w; ++x) {
+            float fx = ((float)(x + start_x) * inv_scale);
+            int32_t x0 = SU_CLAMP((int32_t)fx, 0, (int32_t)src_w - 1);
             float wx = (fx - (float)x0);
             int32_t x1 = SU_MIN(x0 + 1, (int32_t)src_w - 1);
 
@@ -3440,9 +3948,9 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
             uint32_t c01 = row1[x0];
             uint32_t c11 = row1[x1];
 
-            float w00 = ((1.0f - wx) * (1.0f - wy));
-            float w10 = (wx * (1.0f - wy));
-            float w01 = ((1.0f - wx) * wy);
+            float w00 = ((1.f - wx) * (1.f - wy));
+            float w10 = (wx * (1.f - wy));
+            float w01 = ((1.f - wx) * wy);
             float w11 = (wx * wy);
 
             uint32_t c00a = ((c00 >> 24) & 0xFF);
@@ -3488,13 +3996,682 @@ static void su_argb32_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint
     }
 }
 
-static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_bilinear_rotate_blend_argb32( su_rotate_t rotate,
+        uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+        uint32_t *src, uint32_t src_w, uint32_t src_h,
+        int32_t dst_x, int32_t dst_y,
+        uint32_t w, uint32_t h) {
+    /* ? TODO: fixedpoint, frame/inner technique, fast paths (a==255/0), src_x/y */
+    uint32_t x, y;
+    uint32_t start_x = 0, start_y = 0;
+
+    float scale =
+        SU_MIN( (float)w / (float)src_w,
+                (float)h / (float)src_h);
+    float inv_scale = (1.f / scale);
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+    __m256i const_1_8x32 = _mm256_set1_epi32(1);
+    __m256 const_1f_8x32 = _mm256_set1_ps(1.f);
+    __m256i const_0 = _mm256_setzero_si256();
+    __m256i const_255_32x8 = _mm256_set1_epi8((char)255);
+    __m256i const_128_16x16 = _mm256_set1_epi16(128);
+    __m256i const_257_16x16 = _mm256_set1_epi16(257);
+    __m256i w_mask0 = _mm256_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1);
+    __m256i w_mask1 = _mm256_setr_epi32(2, 2, 2, 2, 3, 3, 3, 3);
+    __m256i w_mask2 = _mm256_setr_epi32(4, 4, 4, 4, 5, 5, 5, 5);
+    __m256i w_mask3 = _mm256_setr_epi32(6, 6, 6, 6, 7, 7, 7, 7);
+    __m256i a_mask = _mm256_setr_epi8(
+        3,  3,  3,  3,  7,  7,  7,  7,
+        11, 11, 11, 11, 15, 15, 15, 15,
+        19, 19, 19, 19, 23, 23, 23, 23,
+        27, 27, 27, 27, 31, 31, 31, 31);
+    __m256i s_mask = _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7);
+    __m256 wx_8x32, wy_8x32;
+    __m256i row0_8x32, row1_8x32;
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+
+    float ax, bx, cx, ay, by, cy;
+    switch (rotate) {
+    case SU_ROTATE_90:
+        ax = 0.f;
+        bx = inv_scale;
+        cx = 0.f;
+        ay = -inv_scale;
+        by = 0.f;
+        cy = ((float)src_h - 1.f);
+        break;
+    case SU_ROTATE_180:
+        ax = -inv_scale;
+        bx = 0.f;
+        cx = ((float)src_w - 1.f);
+        ay = 0.f;
+        by = -inv_scale;
+        cy = ((float)src_h - 1.f);
+        break;
+    case SU_ROTATE_270:
+        ax = 0.f;
+        bx = -inv_scale;
+        cx = ((float)src_w - 1.f);
+        ay = inv_scale;
+        by = 0.f;
+        cy = 0.f;
+        break;
+    case SU_ROTATE_FLIP:
+        ax = -inv_scale;
+        bx = 0.f;
+        cx = ((float)src_w - 1.f);
+        ay = 0.f;
+        by = inv_scale;
+        cy = 0.f;
+        break;
+    case SU_ROTATE_FLIP_90:
+        ax = 0.f;
+        bx = inv_scale;
+        cx = 0.f;
+        ay = inv_scale;
+        by = 0.f;
+        cy = 0.f;
+        break;
+    case SU_ROTATE_FLIP_180:
+        ax = inv_scale;
+        bx = 0.f;
+        cx = 0.f;
+        ay = 0.f;
+        by = -inv_scale;
+        cy = ((float)src_h - 1.f);
+        break;
+    case SU_ROTATE_FLIP_270:
+        ax = 0.f;
+        bx = -inv_scale;
+        cx = ((float)src_w - 1.f);
+        ay = -inv_scale;
+        by = 0.f;
+        cy = ((float)src_h - 1.f);
+        break;
+    default:
+        SU_ASSERT_UNREACHABLE;
+    }
+
+    if (dst_x < 0) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
+            return;
+        }
+        start_x = (uint32_t)nx;
+        w -= start_x;
+        dst_x = 0;
+    }
+    if (dst_y < 0) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
+            return;
+        }
+        start_y = (uint32_t)ny;
+        h -= start_y;
+        dst_y = 0;
+    }
+
+    if ((uint32_t)dst_x >= dst_w) {
+        w = 0;
+    } else if (((uint32_t)dst_x + w) > dst_w) {
+        w = (dst_w - (uint32_t)dst_x);
+    }
+    if ((uint32_t)dst_y >= dst_h) {
+        h = 0;
+    } else if (((uint32_t)dst_y + h) > dst_h) {
+        h = (dst_h - (uint32_t)dst_y);
+    }
+
+    if ((w == 0) || (h == 0)) {
+        return;
+    }
+
+    cx += (ax * (float)start_x + bx * (float)start_y);
+    cy += (ay * (float)start_x + by * (float)start_y);
+
+    if ((ay > 0.f) || (ay < 0.f)) {
+#if SU_WITH_SIMD && defined(__AVX2__)
+        __m256i x0_8x32, x1_8x32;
+        __m256 y_8x32 = _mm256_mul_ps(_mm256_set1_ps(ay), _mm256_setr_ps(0, 1, 2, 3, 4, 5, 6, 7));
+        __m256i src_h_minus_1_8x32 = _mm256_set1_epi32((int)src_h - 1);
+        __m256i src_w_8x32 = _mm256_set1_epi32((int)src_w);
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+        for ( y = 0; y < h; ++y) {
+            uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
+
+            float sx = (cx + bx * (float)y);
+            float sy = (cy + by * (float)y);
+
+            int32_t x0 = SU_CLAMP((int32_t)sx, 0, (int32_t)src_w - 1);
+            int32_t x1 = SU_MIN(x0 + 1, (int32_t)src_w - 1);
+            float wx = (sx - (float)x0);
+
+            x = 0;
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+            x0_8x32 = _mm256_set1_epi32(x0);
+            x1_8x32 = _mm256_set1_epi32(x1);
+            wx_8x32 = _mm256_set1_ps(wx);
+            for ( ; (x + 8) <= w; x += 8) {
+                __m256 sy_8x32;
+                __m256i src_8x32, src_0123_16x16, src_4567_16x16;
+                __m256i iy0_8x32, iy1_8x32;
+                __m256 fy0_8x32;
+                __m256i idx00_8x32, idx10_8x32, idx01_8x32, idx11_8x32;
+                __m256 w00_8x32, w00_01_8x32, w00_23_8x32, w00_45_8x32, w00_67_8x32;
+                __m256 w10_8x32, w10_01_8x32, w10_23_8x32, w10_45_8x32, w10_67_8x32;
+                __m256 w01_8x32, w01_01_8x32, w01_23_8x32, w01_45_8x32, w01_67_8x32;
+                __m256 w11_8x32, w11_01_8x32, w11_23_8x32, w11_45_8x32, w11_67_8x32;
+                __m256i c00_8x32, c10_8x32, c01_8x32, c11_8x32;
+                __m128i c00_lo_4x32, c00_hi_4x32, c10_lo_4x32, c10_hi_4x32;
+                __m128i c01_lo_4x32, c01_hi_4x32, c11_lo_4x32, c11_hi_4x32;
+                __m256 c00_01_8x32, c00_23_8x32, c00_45_8x32, c00_67_8x32;
+                __m256 c10_01_8x32, c10_23_8x32, c10_45_8x32, c10_67_8x32;
+                __m256 c01_01_8x32, c01_23_8x32, c01_45_8x32, c01_67_8x32;
+                __m256 c11_01_8x32, c11_23_8x32, c11_45_8x32, c11_67_8x32;
+                __m256 cw00_01_8x32, cw00_23_8x32, cw00_45_8x32, cw00_67_8x32;
+                __m256 cw10_01_8x32, cw10_23_8x32, cw10_45_8x32, cw10_67_8x32;
+                __m256 cw01_01_8x32, cw01_23_8x32, cw01_45_8x32, cw01_67_8x32;
+                __m256 cw11_01_8x32, cw11_23_8x32, cw11_45_8x32, cw11_67_8x32;
+                __m256 cw0010_01_8x32, cw0010_23_8x32, cw0010_45_8x32, cw0010_67_8x32;
+                __m256 cw0111_01_8x32, cw0111_23_8x32, cw0111_45_8x32, cw0111_67_8x32;
+                __m256 cw00100111_01_8x32, cw00100111_23_8x32, cw00100111_45_8x32, cw00100111_67_8x32;
+                __m256i src_01_8x32, src_23_8x32, src_45_8x32, src_67_8x32;
+                __m256i sa_8x32;
+                __m256i inv_sa_8x32, inv_sa_lo_16x16, inv_sa_hi_16x16;
+                __m256i src_lo_16x16, src_hi_16x16;
+                __m256i dst_8x32, dst_lo_16x16, dst_hi_16x16;
+                __m256i result_8x32;
+
+                sy_8x32 = _mm256_set1_ps(sy);
+                fy0_8x32 = _mm256_add_ps(y_8x32, sy_8x32);
+                iy0_8x32 = _mm256_cvttps_epi32(fy0_8x32);
+                iy0_8x32 = _mm256_max_epi32(iy0_8x32, const_0);
+                iy0_8x32 = _mm256_min_epi32(iy0_8x32, src_h_minus_1_8x32);
+
+                iy1_8x32 = _mm256_add_epi32(iy0_8x32, const_1_8x32);
+                iy1_8x32 = _mm256_min_epi32(iy1_8x32, src_h_minus_1_8x32);
+
+                wy_8x32 = _mm256_sub_ps(fy0_8x32, _mm256_cvtepi32_ps(iy0_8x32));
+
+                row0_8x32 = _mm256_mullo_epi32(iy0_8x32, src_w_8x32);
+                row1_8x32 = _mm256_mullo_epi32(iy1_8x32, src_w_8x32);
+
+                idx00_8x32 = _mm256_add_epi32(row0_8x32, x0_8x32);
+                idx10_8x32 = _mm256_add_epi32(row0_8x32, x1_8x32);
+                idx01_8x32 = _mm256_add_epi32(row1_8x32, x0_8x32);
+                idx11_8x32 = _mm256_add_epi32(row1_8x32, x1_8x32);
+
+                c00_8x32 = _mm256_i32gather_epi32((void *)src, idx00_8x32, 4);
+                c10_8x32 = _mm256_i32gather_epi32((void *)src, idx10_8x32, 4);
+                c01_8x32 = _mm256_i32gather_epi32((void *)src, idx01_8x32, 4);
+                c11_8x32 = _mm256_i32gather_epi32((void *)src, idx11_8x32, 4);
+
+                c00_lo_4x32 = _mm256_extracti128_si256(c00_8x32, 0);
+                c00_hi_4x32 = _mm256_extracti128_si256(c00_8x32, 1);
+                c00_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c00_lo_4x32));
+                c00_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c00_lo_4x32, 8)));
+                c00_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c00_hi_4x32));
+                c00_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c00_hi_4x32, 8)));
+
+                c10_lo_4x32 = _mm256_extracti128_si256(c10_8x32, 0);
+                c10_hi_4x32 = _mm256_extracti128_si256(c10_8x32, 1);
+                c10_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c10_lo_4x32));
+                c10_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c10_lo_4x32, 8)));
+                c10_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c10_hi_4x32));
+                c10_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c10_hi_4x32, 8)));
+
+                c01_lo_4x32 = _mm256_extracti128_si256(c01_8x32, 0);
+                c01_hi_4x32 = _mm256_extracti128_si256(c01_8x32, 1);
+                c01_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c01_lo_4x32));
+                c01_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c01_lo_4x32, 8)));
+                c01_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c01_hi_4x32));
+                c01_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c01_hi_4x32, 8)));
+
+                c11_lo_4x32 = _mm256_extracti128_si256(c11_8x32, 0);
+                c11_hi_4x32 = _mm256_extracti128_si256(c11_8x32, 1);
+                c11_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c11_lo_4x32));
+                c11_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c11_lo_4x32, 8)));
+                c11_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c11_hi_4x32));
+                c11_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c11_hi_4x32, 8)));
+
+
+                w00_8x32 = _mm256_mul_ps(
+                    _mm256_sub_ps(const_1f_8x32, wx_8x32),
+                    _mm256_sub_ps(const_1f_8x32, wy_8x32));
+                w10_8x32 = _mm256_mul_ps(wx_8x32, _mm256_sub_ps(const_1f_8x32, wy_8x32));
+                w01_8x32 = _mm256_mul_ps(_mm256_sub_ps(const_1f_8x32, wx_8x32), wy_8x32);
+                w11_8x32 = _mm256_mul_ps(wx_8x32, wy_8x32);
+
+                w00_01_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask0);
+                w00_23_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask1);
+                w00_45_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask2);
+                w00_67_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask3);
+
+                w10_01_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask0);
+                w10_23_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask1);
+                w10_45_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask2);
+                w10_67_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask3);
+
+                w01_01_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask0);
+                w01_23_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask1);
+                w01_45_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask2);
+                w01_67_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask3);
+
+                w11_01_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask0);
+                w11_23_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask1);
+                w11_45_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask2);
+                w11_67_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask3);
+                
+                cw00_01_8x32 = _mm256_mul_ps(c00_01_8x32, w00_01_8x32);
+                cw00_23_8x32 = _mm256_mul_ps(c00_23_8x32, w00_23_8x32);
+                cw00_45_8x32 = _mm256_mul_ps(c00_45_8x32, w00_45_8x32);
+                cw00_67_8x32 = _mm256_mul_ps(c00_67_8x32, w00_67_8x32);
+
+                cw10_01_8x32 = _mm256_mul_ps(c10_01_8x32, w10_01_8x32);
+                cw10_23_8x32 = _mm256_mul_ps(c10_23_8x32, w10_23_8x32);
+                cw10_45_8x32 = _mm256_mul_ps(c10_45_8x32, w10_45_8x32);
+                cw10_67_8x32 = _mm256_mul_ps(c10_67_8x32, w10_67_8x32);
+
+                cw01_01_8x32 = _mm256_mul_ps(c01_01_8x32, w01_01_8x32);
+                cw01_23_8x32 = _mm256_mul_ps(c01_23_8x32, w01_23_8x32);
+                cw01_45_8x32 = _mm256_mul_ps(c01_45_8x32, w01_45_8x32);
+                cw01_67_8x32 = _mm256_mul_ps(c01_67_8x32, w01_67_8x32);
+
+                cw11_01_8x32 = _mm256_mul_ps(c11_01_8x32, w11_01_8x32);
+                cw11_23_8x32 = _mm256_mul_ps(c11_23_8x32, w11_23_8x32);
+                cw11_45_8x32 = _mm256_mul_ps(c11_45_8x32, w11_45_8x32);
+                cw11_67_8x32 = _mm256_mul_ps(c11_67_8x32, w11_67_8x32);
+
+                cw0010_01_8x32 = _mm256_add_ps(cw00_01_8x32, cw10_01_8x32);
+                cw0010_23_8x32 = _mm256_add_ps(cw00_23_8x32, cw10_23_8x32);
+                cw0010_45_8x32 = _mm256_add_ps(cw00_45_8x32, cw10_45_8x32);
+                cw0010_67_8x32 = _mm256_add_ps(cw00_67_8x32, cw10_67_8x32);
+
+                cw0111_01_8x32 = _mm256_add_ps(cw01_01_8x32, cw11_01_8x32);
+                cw0111_23_8x32 = _mm256_add_ps(cw01_23_8x32, cw11_23_8x32);
+                cw0111_45_8x32 = _mm256_add_ps(cw01_45_8x32, cw11_45_8x32);
+                cw0111_67_8x32 = _mm256_add_ps(cw01_67_8x32, cw11_67_8x32);
+
+                cw00100111_01_8x32 = _mm256_add_ps(cw0010_01_8x32, cw0111_01_8x32);
+                cw00100111_23_8x32 = _mm256_add_ps(cw0010_23_8x32, cw0111_23_8x32);
+                cw00100111_45_8x32 = _mm256_add_ps(cw0010_45_8x32, cw0111_45_8x32);
+                cw00100111_67_8x32 = _mm256_add_ps(cw0010_67_8x32, cw0111_67_8x32);
+
+                src_01_8x32 = _mm256_cvtps_epi32(cw00100111_01_8x32);
+                src_23_8x32 = _mm256_cvtps_epi32(cw00100111_23_8x32);
+                src_45_8x32 = _mm256_cvtps_epi32(cw00100111_45_8x32);
+                src_67_8x32 = _mm256_cvtps_epi32(cw00100111_67_8x32);
+
+                src_0123_16x16 = _mm256_packus_epi32(src_01_8x32, src_23_8x32);
+                src_4567_16x16 = _mm256_packus_epi32(src_45_8x32, src_67_8x32);
+                src_8x32 = _mm256_packus_epi16(src_0123_16x16, src_4567_16x16);
+                src_8x32 = _mm256_permutevar8x32_epi32(src_8x32, s_mask);
+
+                src_lo_16x16 = _mm256_unpacklo_epi8(src_8x32, const_0);
+                src_hi_16x16 = _mm256_unpackhi_epi8(src_8x32, const_0);
+
+                sa_8x32 = _mm256_shuffle_epi8(src_8x32, a_mask);
+
+                inv_sa_8x32 = _mm256_subs_epu8(const_255_32x8, sa_8x32);
+                inv_sa_lo_16x16 = _mm256_unpacklo_epi8(inv_sa_8x32, const_0);
+                inv_sa_hi_16x16 = _mm256_unpackhi_epi8(inv_sa_8x32, const_0);
+
+                dst_8x32 = _mm256_loadu_si256((__m256i_u *)&dst_row[x]);
+                dst_lo_16x16 = _mm256_unpacklo_epi8(dst_8x32, const_0);
+                dst_hi_16x16 = _mm256_unpackhi_epi8(dst_8x32, const_0);
+
+                dst_lo_16x16 = _mm256_mullo_epi16(dst_lo_16x16, inv_sa_lo_16x16);
+                dst_hi_16x16 = _mm256_mullo_epi16(dst_hi_16x16, inv_sa_hi_16x16);
+                dst_lo_16x16 = _mm256_add_epi16(dst_lo_16x16, const_128_16x16);
+                dst_hi_16x16 = _mm256_add_epi16(dst_hi_16x16, const_128_16x16);
+                dst_lo_16x16 = _mm256_mulhi_epu16(dst_lo_16x16, const_257_16x16);
+                dst_hi_16x16 = _mm256_mulhi_epu16(dst_hi_16x16, const_257_16x16);
+                dst_lo_16x16 = _mm256_add_epi16(dst_lo_16x16, src_lo_16x16);
+                dst_hi_16x16 = _mm256_add_epi16(dst_hi_16x16, src_hi_16x16);
+
+                result_8x32 = _mm256_packus_epi16(dst_lo_16x16, dst_hi_16x16);
+
+                _mm256_storeu_si256((__m256i_u *)&dst_row[x], result_8x32);
+
+                sy += (ay * 8);
+            }
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+
+            for ( ; x < w; ++x) {
+                int32_t y0 = SU_CLAMP((int32_t)sy, 0, (int32_t)src_h - 1);
+                int32_t y1 = SU_MIN(y0 + 1, (int32_t)src_h - 1);
+                float wy = (sy - (float)y0);
+
+                uint32_t c00 = src[y0 * (int32_t)src_w + x0];
+                uint32_t c10 = src[y0 * (int32_t)src_w + x1];
+                uint32_t c01 = src[y1 * (int32_t)src_w + x0];
+                uint32_t c11 = src[y1 * (int32_t)src_w + x1];
+
+                float w00 = ((1 - wx) * (1 - wy));
+                float w10 = (wx * (1 - wy));
+                float w01 = ((1 - wx) * wy);
+                float w11 = (wx * wy);
+
+                uint32_t sa = (uint32_t)(
+                    (float)((c00 >> 24) & 255) * w00 +
+                    (float)((c10 >> 24) & 255) * w10 +
+                    (float)((c01 >> 24) & 255) * w01 +
+                    (float)((c11 >> 24) & 255) * w11 +
+                    0.5f);
+                uint32_t sr = (uint32_t)(
+                    (float)((c00 >> 16) & 255) * w00 +
+                    (float)((c10 >> 16) & 255) * w10 +
+                    (float)((c01 >> 16) & 255) * w01 +
+                    (float)((c11 >> 16) & 255) * w11 +
+                    0.5f);
+                uint32_t sg = (uint32_t)(
+                    (float)((c00 >> 8) & 255) * w00 +
+                    (float)((c10 >> 8) & 255) * w10 +
+                    (float)((c01 >> 8) & 255) * w01 +
+                    (float)((c11 >> 8) & 255) * w11 +
+                    0.5f);
+                uint32_t sb = (uint32_t)(
+                    (float)((c00 >> 0) & 255) * w00 +
+                    (float)((c10 >> 0) & 255) * w10 +
+                    (float)((c01 >> 0) & 255) * w01 +
+                    (float)((c11 >> 0) & 255) * w11 +
+                    0.5f);
+
+                uint32_t d = dst_row[x];
+
+                uint32_t da = ((d >> 24) & 255);
+                uint32_t dr = ((d >> 16) & 255);
+                uint32_t dg = ((d >> 8) & 255);
+                uint32_t db = ((d >> 0) & 255);
+
+                uint32_t inv_sa = (255 - sa);
+
+                da = (sa + (((da * inv_sa + 128) * 257) >> 16));
+                dr = (sr + (((dr * inv_sa + 128) * 257) >> 16));
+                dg = (sg + (((dg * inv_sa + 128) * 257) >> 16));
+                db = (sb + (((db * inv_sa + 128) * 257) >> 16));
+
+                dst_row[x] = ((da << 24) | (dr << 16) | (dg << 8) | (db << 0));
+
+                sy += ay;
+            }
+        }
+    } else {
+#if SU_WITH_SIMD && defined(__AVX2__)
+        __m256 x_8x32 = _mm256_mul_ps(_mm256_set1_ps(ax), _mm256_setr_ps(0, 1, 2, 3, 4, 5, 6, 7));
+        __m256i src_w_minus_1_8x32 = _mm256_set1_epi32((int)src_w - 1);
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+        for ( y = 0; y < h; ++y) {
+            uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
+
+            float sx = (cx + bx * (float)y);
+            float sy = (cy + by * (float)y);
+
+            int32_t y0 = SU_CLAMP((int32_t)sy, 0, (int32_t)src_h - 1);
+            int32_t y1 = SU_MIN(y0 + 1, (int32_t)src_h - 1);
+            float wy = (sy - (float)y0);
+
+            x = 0;
+
+#if SU_WITH_SIMD && defined(__AVX2__)
+            row0_8x32 = _mm256_set1_epi32(y0 * (int32_t)src_w);
+            row1_8x32 = _mm256_set1_epi32(y1 * (int32_t)src_w);
+            wy_8x32 = _mm256_set1_ps(wy);
+            
+            for ( ; (x + 8) <= w; x += 8) {
+                __m256 sx_8x32;
+                __m256i src_8x32, src_0123_16x16, src_4567_16x16;
+                __m256i ix0_8x32, ix1_8x32;
+                __m256 fx0_8x32;
+                __m256i idx00_8x32, idx10_8x32, idx01_8x32, idx11_8x32;
+                __m256 w00_8x32, w00_01_8x32, w00_23_8x32, w00_45_8x32, w00_67_8x32;
+                __m256 w10_8x32, w10_01_8x32, w10_23_8x32, w10_45_8x32, w10_67_8x32;
+                __m256 w01_8x32, w01_01_8x32, w01_23_8x32, w01_45_8x32, w01_67_8x32;
+                __m256 w11_8x32, w11_01_8x32, w11_23_8x32, w11_45_8x32, w11_67_8x32;
+                __m256i c00_8x32, c10_8x32, c01_8x32, c11_8x32;
+                __m128i c00_lo_4x32, c00_hi_4x32, c10_lo_4x32, c10_hi_4x32;
+                __m128i c01_lo_4x32, c01_hi_4x32, c11_lo_4x32, c11_hi_4x32;
+                __m256 c00_01_8x32, c00_23_8x32, c00_45_8x32, c00_67_8x32;
+                __m256 c10_01_8x32, c10_23_8x32, c10_45_8x32, c10_67_8x32;
+                __m256 c01_01_8x32, c01_23_8x32, c01_45_8x32, c01_67_8x32;
+                __m256 c11_01_8x32, c11_23_8x32, c11_45_8x32, c11_67_8x32;
+                __m256 cw00_01_8x32, cw00_23_8x32, cw00_45_8x32, cw00_67_8x32;
+                __m256 cw10_01_8x32, cw10_23_8x32, cw10_45_8x32, cw10_67_8x32;
+                __m256 cw01_01_8x32, cw01_23_8x32, cw01_45_8x32, cw01_67_8x32;
+                __m256 cw11_01_8x32, cw11_23_8x32, cw11_45_8x32, cw11_67_8x32;
+                __m256 cw0010_01_8x32, cw0010_23_8x32, cw0010_45_8x32, cw0010_67_8x32;
+                __m256 cw0111_01_8x32, cw0111_23_8x32, cw0111_45_8x32, cw0111_67_8x32;
+                __m256 cw00100111_01_8x32, cw00100111_23_8x32, cw00100111_45_8x32, cw00100111_67_8x32;
+                __m256i src_01_8x32, src_23_8x32, src_45_8x32, src_67_8x32;
+                __m256i sa_8x32;
+                __m256i inv_sa_8x32, inv_sa_lo_16x16, inv_sa_hi_16x16;
+                __m256i src_lo_16x16, src_hi_16x16;
+                __m256i dst_8x32, dst_lo_16x16, dst_hi_16x16;
+                __m256i result_8x32;
+
+                sx_8x32 = _mm256_set1_ps(sx);
+                fx0_8x32 = _mm256_add_ps(x_8x32, sx_8x32);
+                ix0_8x32 = _mm256_cvttps_epi32(fx0_8x32);
+                ix0_8x32 = _mm256_max_epi32(ix0_8x32, const_0);
+                ix0_8x32 = _mm256_min_epi32(ix0_8x32, src_w_minus_1_8x32);
+
+                ix1_8x32 = _mm256_add_epi32(ix0_8x32, const_1_8x32);
+                ix1_8x32 = _mm256_min_epi32(ix1_8x32, src_w_minus_1_8x32);
+
+                wx_8x32 = _mm256_sub_ps(fx0_8x32, _mm256_cvtepi32_ps(ix0_8x32));
+
+                idx00_8x32 = _mm256_add_epi32(row0_8x32, ix0_8x32);
+                idx10_8x32 = _mm256_add_epi32(row0_8x32, ix1_8x32);
+                idx01_8x32 = _mm256_add_epi32(row1_8x32, ix0_8x32);
+                idx11_8x32 = _mm256_add_epi32(row1_8x32, ix1_8x32);
+
+                c00_8x32 = _mm256_i32gather_epi32((void *)src, idx00_8x32, 4);
+                c10_8x32 = _mm256_i32gather_epi32((void *)src, idx10_8x32, 4);
+                c01_8x32 = _mm256_i32gather_epi32((void *)src, idx01_8x32, 4);
+                c11_8x32 = _mm256_i32gather_epi32((void *)src, idx11_8x32, 4);
+
+                c00_lo_4x32 = _mm256_extracti128_si256(c00_8x32, 0);
+                c00_hi_4x32 = _mm256_extracti128_si256(c00_8x32, 1);
+                c00_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c00_lo_4x32));
+                c00_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c00_lo_4x32, 8)));
+                c00_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c00_hi_4x32));
+                c00_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c00_hi_4x32, 8)));
+
+                c10_lo_4x32 = _mm256_extracti128_si256(c10_8x32, 0);
+                c10_hi_4x32 = _mm256_extracti128_si256(c10_8x32, 1);
+                c10_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c10_lo_4x32));
+                c10_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c10_lo_4x32, 8)));
+                c10_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c10_hi_4x32));
+                c10_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c10_hi_4x32, 8)));
+
+                c01_lo_4x32 = _mm256_extracti128_si256(c01_8x32, 0);
+                c01_hi_4x32 = _mm256_extracti128_si256(c01_8x32, 1);
+                c01_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c01_lo_4x32));
+                c01_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c01_lo_4x32, 8)));
+                c01_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c01_hi_4x32));
+                c01_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c01_hi_4x32, 8)));
+
+                c11_lo_4x32 = _mm256_extracti128_si256(c11_8x32, 0);
+                c11_hi_4x32 = _mm256_extracti128_si256(c11_8x32, 1);
+                c11_01_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c11_lo_4x32));
+                c11_23_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c11_lo_4x32, 8)));
+                c11_45_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(c11_hi_4x32));
+                c11_67_8x32 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(c11_hi_4x32, 8)));
+
+
+                w00_8x32 = _mm256_mul_ps(
+                    _mm256_sub_ps(const_1f_8x32, wx_8x32),
+                    _mm256_sub_ps(const_1f_8x32, wy_8x32));
+                w10_8x32 = _mm256_mul_ps(wx_8x32, _mm256_sub_ps(const_1f_8x32, wy_8x32));
+                w01_8x32 = _mm256_mul_ps(_mm256_sub_ps(const_1f_8x32, wx_8x32), wy_8x32);
+                w11_8x32 = _mm256_mul_ps(wx_8x32, wy_8x32);
+
+                w00_01_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask0);
+                w00_23_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask1);
+                w00_45_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask2);
+                w00_67_8x32 = _mm256_permutevar8x32_ps(w00_8x32, w_mask3);
+
+                w10_01_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask0);
+                w10_23_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask1);
+                w10_45_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask2);
+                w10_67_8x32 = _mm256_permutevar8x32_ps(w10_8x32, w_mask3);
+
+                w01_01_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask0);
+                w01_23_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask1);
+                w01_45_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask2);
+                w01_67_8x32 = _mm256_permutevar8x32_ps(w01_8x32, w_mask3);
+
+                w11_01_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask0);
+                w11_23_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask1);
+                w11_45_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask2);
+                w11_67_8x32 = _mm256_permutevar8x32_ps(w11_8x32, w_mask3);
+                
+                cw00_01_8x32 = _mm256_mul_ps(c00_01_8x32, w00_01_8x32);
+                cw00_23_8x32 = _mm256_mul_ps(c00_23_8x32, w00_23_8x32);
+                cw00_45_8x32 = _mm256_mul_ps(c00_45_8x32, w00_45_8x32);
+                cw00_67_8x32 = _mm256_mul_ps(c00_67_8x32, w00_67_8x32);
+
+                cw10_01_8x32 = _mm256_mul_ps(c10_01_8x32, w10_01_8x32);
+                cw10_23_8x32 = _mm256_mul_ps(c10_23_8x32, w10_23_8x32);
+                cw10_45_8x32 = _mm256_mul_ps(c10_45_8x32, w10_45_8x32);
+                cw10_67_8x32 = _mm256_mul_ps(c10_67_8x32, w10_67_8x32);
+
+                cw01_01_8x32 = _mm256_mul_ps(c01_01_8x32, w01_01_8x32);
+                cw01_23_8x32 = _mm256_mul_ps(c01_23_8x32, w01_23_8x32);
+                cw01_45_8x32 = _mm256_mul_ps(c01_45_8x32, w01_45_8x32);
+                cw01_67_8x32 = _mm256_mul_ps(c01_67_8x32, w01_67_8x32);
+
+                cw11_01_8x32 = _mm256_mul_ps(c11_01_8x32, w11_01_8x32);
+                cw11_23_8x32 = _mm256_mul_ps(c11_23_8x32, w11_23_8x32);
+                cw11_45_8x32 = _mm256_mul_ps(c11_45_8x32, w11_45_8x32);
+                cw11_67_8x32 = _mm256_mul_ps(c11_67_8x32, w11_67_8x32);
+
+                cw0010_01_8x32 = _mm256_add_ps(cw00_01_8x32, cw10_01_8x32);
+                cw0010_23_8x32 = _mm256_add_ps(cw00_23_8x32, cw10_23_8x32);
+                cw0010_45_8x32 = _mm256_add_ps(cw00_45_8x32, cw10_45_8x32);
+                cw0010_67_8x32 = _mm256_add_ps(cw00_67_8x32, cw10_67_8x32);
+
+                cw0111_01_8x32 = _mm256_add_ps(cw01_01_8x32, cw11_01_8x32);
+                cw0111_23_8x32 = _mm256_add_ps(cw01_23_8x32, cw11_23_8x32);
+                cw0111_45_8x32 = _mm256_add_ps(cw01_45_8x32, cw11_45_8x32);
+                cw0111_67_8x32 = _mm256_add_ps(cw01_67_8x32, cw11_67_8x32);
+
+                cw00100111_01_8x32 = _mm256_add_ps(cw0010_01_8x32, cw0111_01_8x32);
+                cw00100111_23_8x32 = _mm256_add_ps(cw0010_23_8x32, cw0111_23_8x32);
+                cw00100111_45_8x32 = _mm256_add_ps(cw0010_45_8x32, cw0111_45_8x32);
+                cw00100111_67_8x32 = _mm256_add_ps(cw0010_67_8x32, cw0111_67_8x32);
+
+                src_01_8x32 = _mm256_cvtps_epi32(cw00100111_01_8x32);
+                src_23_8x32 = _mm256_cvtps_epi32(cw00100111_23_8x32);
+                src_45_8x32 = _mm256_cvtps_epi32(cw00100111_45_8x32);
+                src_67_8x32 = _mm256_cvtps_epi32(cw00100111_67_8x32);
+
+                src_0123_16x16 = _mm256_packus_epi32(src_01_8x32, src_23_8x32);
+                src_4567_16x16 = _mm256_packus_epi32(src_45_8x32, src_67_8x32);
+                src_8x32 = _mm256_packus_epi16(src_0123_16x16, src_4567_16x16);
+                src_8x32 = _mm256_permutevar8x32_epi32(src_8x32, s_mask);
+
+                src_lo_16x16 = _mm256_unpacklo_epi8(src_8x32, const_0);
+                src_hi_16x16 = _mm256_unpackhi_epi8(src_8x32, const_0);
+
+                sa_8x32 = _mm256_shuffle_epi8(src_8x32, a_mask);
+
+                inv_sa_8x32 = _mm256_subs_epu8(const_255_32x8, sa_8x32);
+                inv_sa_lo_16x16 = _mm256_unpacklo_epi8(inv_sa_8x32, const_0);
+                inv_sa_hi_16x16 = _mm256_unpackhi_epi8(inv_sa_8x32, const_0);
+
+                dst_8x32 = _mm256_loadu_si256((__m256i_u *)&dst_row[x]);
+                dst_lo_16x16 = _mm256_unpacklo_epi8(dst_8x32, const_0);
+                dst_hi_16x16 = _mm256_unpackhi_epi8(dst_8x32, const_0);
+
+                dst_lo_16x16 = _mm256_mullo_epi16(dst_lo_16x16, inv_sa_lo_16x16);
+                dst_hi_16x16 = _mm256_mullo_epi16(dst_hi_16x16, inv_sa_hi_16x16);
+                dst_lo_16x16 = _mm256_add_epi16(dst_lo_16x16, const_128_16x16);
+                dst_hi_16x16 = _mm256_add_epi16(dst_hi_16x16, const_128_16x16);
+                dst_lo_16x16 = _mm256_mulhi_epu16(dst_lo_16x16, const_257_16x16);
+                dst_hi_16x16 = _mm256_mulhi_epu16(dst_hi_16x16, const_257_16x16);
+                dst_lo_16x16 = _mm256_add_epi16(dst_lo_16x16, src_lo_16x16);
+                dst_hi_16x16 = _mm256_add_epi16(dst_hi_16x16, src_hi_16x16);
+
+                result_8x32 = _mm256_packus_epi16(dst_lo_16x16, dst_hi_16x16);
+
+                _mm256_storeu_si256((__m256i_u *)&dst_row[x], result_8x32);
+
+                sx += (ax * 8);
+            }
+#endif /* SU_WITH_SIMD && defined(__AVX2__) */
+
+            for ( ; x < w; ++x) {
+                int32_t x0 = SU_CLAMP((int32_t)sx, 0, (int32_t)src_w - 1);
+                int32_t x1 = SU_MIN(x0 + 1, (int32_t)src_w - 1);
+                float wx = (sx - (float)x0);
+
+                uint32_t c00 = src[y0 * (int32_t)src_w + x0];
+                uint32_t c10 = src[y0 * (int32_t)src_w + x1];
+                uint32_t c01 = src[y1 * (int32_t)src_w + x0];
+                uint32_t c11 = src[y1 * (int32_t)src_w + x1];
+
+                float w00 = ((1 - wx) * (1 - wy));
+                float w10 = (wx * (1 - wy));
+                float w01 = ((1 - wx) * wy);
+                float w11 = (wx * wy);
+
+                uint32_t sa = (uint32_t)(
+                    (float)((c00 >> 24) & 255) * w00 +
+                    (float)((c10 >> 24) & 255) * w10 +
+                    (float)((c01 >> 24) & 255) * w01 +
+                    (float)((c11 >> 24) & 255) * w11 +
+                    0.5f);
+                uint32_t sr = (uint32_t)(
+                    (float)((c00 >> 16) & 255) * w00 +
+                    (float)((c10 >> 16) & 255) * w10 +
+                    (float)((c01 >> 16) & 255) * w01 +
+                    (float)((c11 >> 16) & 255) * w11 +
+                    0.5f);
+                uint32_t sg = (uint32_t)(
+                    (float)((c00 >> 8) & 255) * w00 +
+                    (float)((c10 >> 8) & 255) * w10 +
+                    (float)((c01 >> 8) & 255) * w01 +
+                    (float)((c11 >> 8) & 255) * w11 +
+                    0.5f);
+                uint32_t sb = (uint32_t)(
+                    (float)((c00 >> 0) & 255) * w00 +
+                    (float)((c10 >> 0) & 255) * w10 +
+                    (float)((c01 >> 0) & 255) * w01 +
+                    (float)((c11 >> 0) & 255) * w11 +
+                    0.5f);
+
+                uint32_t d = dst_row[x];
+
+                uint32_t da = ((d >> 24) & 255);
+                uint32_t dr = ((d >> 16) & 255);
+                uint32_t dg = ((d >> 8) & 255);
+                uint32_t db = ((d >> 0) & 255);
+
+                uint32_t inv_sa = (255 - sa);
+
+                da = (sa + (((da * inv_sa + 128) * 257) >> 16));
+                dr = (sr + (((dr * inv_sa + 128) * 257) >> 16));
+                dg = (sg + (((dg * inv_sa + 128) * 257) >> 16));
+                db = (sb + (((db * inv_sa + 128) * 257) >> 16));
+
+                dst_row[x] = ((da << 24) | (dr << 16) | (dg << 8) | (db << 0));
+
+                sx += ax;
+            }
+        }
+    }
+}
+
+SU_FUNC_DEF void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
         uint32_t w, uint32_t h) {
-    /* ? TODO: mask_x/y, fast paths */
-    int32_t x, y;
+    /* ? TODO: fixedpoint, frame/inner technique, fast paths (a==255/0), mask_x/y */
+    uint32_t x, y;
 
     float inv_scale = (1.f / (SU_MIN((float)w / (float)mask_w, (float)h / (float)mask_h)));
 
@@ -3525,7 +4702,7 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
         16, 16, 16, 16, 20, 20, 20, 20,
         24, 24, 24, 24, 28, 28, 28, 28);
 #define FROM1 0
-#define FROM2 0x80
+#define FROM2 (-128)
     __m256i blend_mask = _mm256_setr_epi8(
         FROM1, FROM1, FROM1, FROM1, FROM1, FROM1, FROM2, FROM2,
         FROM1, FROM1, FROM1, FROM1, FROM1, FROM1, FROM2, FROM2,
@@ -3534,49 +4711,66 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
 #undef FROM1
 #undef FROM2
     __m256 wy_8x32;
+    __m256i x_8x32 = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
-    int32_t start_x = 0;
-    int32_t start_y = 0;
-    int32_t end_x = (int32_t)w;
-    int32_t end_y = (int32_t)h;
+    uint32_t start_x = 0, start_y = 0;
+
+    SU_ASSERT(mask_pitch >= mask_w);
 
     if (color_a == 0) {
         return;
     }
 
     if (dst_x < 0) {
-        start_x = -dst_x;
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
+            return;
+        }
+        start_x = (uint32_t)nx;
+        w -= start_x;
+        dst_x = 0;
     }
     if (dst_y < 0) {
-        start_y = -dst_y;
-    }
-    if ((dst_x + end_x) > (int32_t)dst_w) {
-        end_x = ((int32_t)dst_w - dst_x);
-    }
-    if ((dst_y + end_y) > (int32_t)dst_h) {
-        end_y = ((int32_t)dst_h - dst_y);
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
+            return;
+        }
+        start_y = (uint32_t)ny;
+        h -= start_y;
+        dst_y = 0;
     }
 
-    if (start_x >= end_x /* || (start_y >= end_y) */) {
+    if ((uint32_t)dst_x >= dst_w) {
+        w = 0;
+    } else if (((uint32_t)dst_x + w) > dst_w) {
+        w = (dst_w - (uint32_t)dst_x);
+    }
+    if ((uint32_t)dst_y >= dst_h) {
+        h = 0;
+    } else if (((uint32_t)dst_y + h) > dst_h) {
+        h = (dst_h - (uint32_t)dst_y);
+    }
+
+    if ((w == 0) || (h == 0)) {
         return;
     }
 
-    for ( y = start_y; y < end_y; ++y) {
-        uint32_t *dst_row = &dst[(dst_y + (int32_t)y) * (int32_t)dst_w + dst_x];
+    for ( y = 0; y < h; ++y) {
+        uint32_t *dst_row = &dst[((uint32_t)dst_y + y) * dst_w + (uint32_t)dst_x];
         uint8_t *row0, *row1;
-        float fy = ((float)y * inv_scale);
-        int32_t y0 = SU_MIN((int32_t)fy, (int32_t)mask_h - 1);
+        float fy = ((float)(y + start_y) * inv_scale);
+        int32_t y0 = SU_CLAMP((int32_t)fy, 0, (int32_t)mask_h - 1);
         float wy = (fy - (float)y0);
         int32_t y1 = SU_MIN(y0 + 1, (int32_t)mask_h - 1);
         row0 = &mask[y0 * (int32_t)mask_pitch];
         row1 = &mask[y1 * (int32_t)mask_pitch];
 
-        x = start_x;
+        x = 0;
 
 #if SU_WITH_SIMD && defined(__AVX2__)
         wy_8x32 = _mm256_set1_ps(wy);
-        for ( ; (x + 8) <= end_x; x += 8) {
+        for ( ; (x + 8) <= w; x += 8) {
             __m256i ix0_8x32, ix1_8x32;
             __m256 fx0_8x32, wx_8x32;
             __m256i c00i_8x32, c10i_8x32, c01i_8x32, c11i_8x32;
@@ -3590,12 +4784,12 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
             __m256i dst_8x32, dst_lo_16x16, dst_hi_16x16;
             __m256i result_8x32;
 
-            ix0_8x32 = _mm256_setr_epi32(
-                (int)x + 0, (int)x + 1, (int)x + 2, (int)x + 3,
-                (int)x + 4, (int)x + 5, (int)x + 6, (int)x + 7);
+            ix0_8x32 = _mm256_set1_epi32((int)(x + start_x));
+            ix0_8x32 = _mm256_add_epi32(ix0_8x32, x_8x32);
             fx0_8x32 =_mm256_cvtepi32_ps(ix0_8x32);
             fx0_8x32 = _mm256_mul_ps(fx0_8x32, inv_scale_8x32);
             ix0_8x32 = _mm256_cvttps_epi32(fx0_8x32);
+            ix0_8x32 = _mm256_max_epi32(ix0_8x32, const_0);
             ix0_8x32 = _mm256_min_epi32(ix0_8x32, mask_w_minus_1_8x32);
             ix1_8x32 = _mm256_add_epi32(ix0_8x32, const_1_8x32);
             ix1_8x32 = _mm256_min_epi32(ix1_8x32, mask_w_minus_1_8x32);
@@ -3668,9 +4862,9 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
         }
 #endif /* SU_WITH_SIMD && defined(__AVX2__) */
 
-        for ( ; x < end_x; ++x) {
-            float fx = ((float)x * inv_scale);
-            int32_t x0 = SU_MIN((int32_t)fx, (int32_t)mask_w - 1);
+        for ( ; x < w; ++x) {
+            float fx = ((float)(x + start_x) * inv_scale);
+            int32_t x0 = SU_CLAMP((int32_t)fx, 0, (int32_t)mask_w - 1);
             float wx = (fx - (float)x0);
             int32_t x1 = SU_MIN(x0 + 1, (int32_t)mask_w - 1);
 
@@ -3679,9 +4873,9 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
             float c01 = (float)row1[x0];
             float c11 = (float)row1[x1];
 
-            float w00 = ((1.0f - wx) * (1.0f - wy));
-            float w10 = (wx * (1.0f - wy));
-            float w01 = ((1.0f - wx) * wy);
+            float w00 = ((1.f - wx) * (1.f - wy));
+            float w10 = (wx * (1.f - wy));
+            float w01 = ((1.f - wx) * wy);
             float w11 = (wx * wy);
 
             uint32_t sa = (((uint32_t)((float)color_a *
@@ -3708,7 +4902,7 @@ static void su_argb32_mask8_bilinear_blend_argb32( uint32_t *dst, uint32_t dst_w
     }
 }
 
-static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
+SU_FUNC_DEF void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint32_t dst_h,
         uint32_t color,
         uint8_t *mask, uint32_t mask_w, uint32_t mask_h, uint32_t mask_pitch,
         int32_t dst_x, int32_t dst_y,
@@ -3730,7 +4924,7 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
     __m256i src_8x32 = _mm256_set1_epi32((int)color);
     __m256i src_lo_16x16_ = _mm256_unpacklo_epi8(src_8x32, const_0);
     __m256i src_hi_16x16_ = _mm256_unpackhi_epi8(src_8x32, const_0);
-#define ZERO 0x80
+#define ZERO (-128)
     __m256i a_mask = _mm256_setr_epi8(
         6, ZERO, 6, ZERO, 6, ZERO, 6, ZERO,
         14, ZERO, 14, ZERO, 14, ZERO, 14, ZERO,
@@ -3745,22 +4939,22 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
     }
 
     if (dst_x < 0) {
-        uint32_t shift = (uint32_t)(-dst_x);
-        if (shift >= w) {
+        int64_t nx = -(int64_t)dst_x;
+        if ((uint64_t)nx >= w) {
             return;
         }
         dst_x = 0;
-        mask_x += shift;
-        w -= shift;
+        mask_x += (uint32_t)nx;
+        w -= (uint32_t)nx;
     }
     if (dst_y < 0) {
-        uint32_t shift = (uint32_t)(-dst_y);
-        if (shift >= h) {
+        int64_t ny = -(int64_t)dst_y;
+        if ((uint64_t)ny >= h) {
             return;
         }
         dst_y = 0;
-        mask_y += shift;
-        h -= shift;
+        mask_y += (uint32_t)ny;
+        h -= (uint32_t)ny;
     }
 
     if ((dst_x >= (int32_t)dst_w) || (dst_y >= (int32_t)dst_h)) {
@@ -3871,7 +5065,7 @@ static void su_argb32_mask24v_blend_argb32( uint32_t *dst, uint32_t dst_w, uint3
     }
 }
 
-static size_t su_convert_valid_utf8_to_utf32(su_string_t input, uint32_t *output) {
+SU_FUNC_DEF size_t su_convert_valid_utf8_to_utf32(su_string_t input, uint32_t *output) {
     /* TODO: simd */
 
     size_t pos = 0;
@@ -3926,48 +5120,48 @@ static size_t su_convert_valid_utf8_to_utf32(su_string_t input, uint32_t *output
     return (size_t)(output - start);
 }
 
-static su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t data) {
+SU_FUNC_DEF su_bool32_t su_write_entire_file(su_string_t path, su_fat_ptr_t data) {
     int fd;
     size_t bytes_written;
 
-    SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
+    SU_ASSERT(path.nul_terminated);
 
-    if ((fd = open(path.s, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666)) == -1) {
+    if ((fd = SU_OPEN(path.s, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666)) == -1) {
         return SU_FALSE;
     }
 
     bytes_written = 0;
     do {
-        ssize_t r = write(fd, &((uint8_t *)data.ptr)[bytes_written], data.len - bytes_written);
+        ssize_t r = SU_WRITE(fd, &((uint8_t *)data.ptr)[bytes_written], data.len - bytes_written);
         if (r <= 0) {
-            if ((r == -1) && (errno == EINTR)) {
+            if ((r == -1) && (SU_ERRNO == EINTR)) {
                 continue;
             }
             /* ? TODO: delete file */
-            close(fd);
+            SU_CLOSE(fd);
             return SU_FALSE;
         }
         bytes_written += (size_t)r;
     } while (bytes_written < data.len);
 
-    close(fd);
+    SU_CLOSE(fd);
 
     return SU_TRUE;
 }
 
-static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *alloc) {
+SU_FUNC_DEF su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, const su_allocator_t *alloc) {
     int fd;
-    struct stat sb;
+    su_stat_t sb;
     su_fat_ptr_t data;
     size_t bytes_read;
 
-    SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
+    SU_ASSERT(path.nul_terminated);
 
-    if ((fd = open(path.s, O_RDONLY | O_CLOEXEC)) == -1) {
+    if ((fd = SU_OPEN(path.s, O_RDONLY | O_CLOEXEC)) == -1) {
         return SU_FALSE;
     }
 
-    if (fstat(fd, &sb) == -1) {
+    if (SU_FSTAT(fd, &sb) == -1) {
         goto error;
     }
 
@@ -3976,9 +5170,9 @@ static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, cons
 
     bytes_read = 0;
     do {
-        ssize_t r = read(fd, &((uint8_t *)data.ptr)[bytes_read], data.len - bytes_read);
+        ssize_t r = SU_READ(fd, &((uint8_t *)data.ptr)[bytes_read], data.len - bytes_read);
         if (r <= 0) {
-            if ((r == -1) && (errno == EINTR)) {
+            if ((r == -1) && (SU_ERRNO == EINTR)) {
                 continue;
             }
             SU_FREE(alloc, data.ptr);
@@ -3987,16 +5181,16 @@ static su_bool32_t su_read_entire_file(su_string_t path, su_fat_ptr_t *out, cons
         bytes_read += (size_t)r;
     } while (bytes_read < data.len); 
 
-    close(fd);
+    SU_CLOSE(fd);
     *out = data;
 
     return SU_TRUE;
 error:
-    close(fd);
+    SU_CLOSE(fd);
     return SU_FALSE;
 }
 
-static void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
+SU_FUNC_DEF void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
         const su_allocator_t *alloc, size_t initial_capacity) {
     /* must be power of 2 */
     SU_ASSERT((initial_capacity > 1) && ((initial_capacity & (initial_capacity - 1)) == 0));
@@ -4005,11 +5199,11 @@ static void su_file_cache_hash_table_init(su_file_cache_hash_table_t *ht,
     SU_ARRAY_ALLOCC(ht->items, alloc, initial_capacity);
 }
 
-static void su_file_cache_hash_table_fini(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_file_cache_hash_table_fini(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc) {
     SU_FREE(alloc, ht->items);
 }
 
-static void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const su_allocator_t *alloc) {
     const size_t max_capacity = 32768;
 
     if (SU_LIKELY(ht->capacity < max_capacity)) {
@@ -4037,7 +5231,7 @@ static void su_file_cache_hash_table_grow(su_file_cache_hash_table_t *ht, const 
     }
 }
 
-static su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
+SU_FUNC_DEF su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
         const su_allocator_t *alloc, su_string_t key, su_file_cache_t **out) {
     size_t h = (su_stbds_hash_string(key) & (ht->capacity - 1));
     su_file_cache_t *it = &ht->items[h];
@@ -4065,7 +5259,7 @@ static su_bool32_t su_file_cache_hash_table_add(su_file_cache_hash_table_t *ht,
     }
 }
 
-static su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
+SU_FUNC_DEF su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
         su_string_t key, su_file_cache_t *out) {
     size_t h = (su_stbds_hash_string(key) & (ht->capacity - 1));
     su_file_cache_t *it = &ht->items[h];
@@ -4088,24 +5282,186 @@ static su_bool32_t su_file_cache_hash_table_del(su_file_cache_hash_table_t *ht,
     }
 }
 
-static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
+SU_FUNC_DEF char *su_strchrnul(const char *s, int c) {
+    /* TODO: simd */
+
+	c = (unsigned char)c;
+	if (!c) {
+        return ((char *)(uintptr_t)s + SU_STRLEN(s));
+    }
+
+	for ( ; *s && *(unsigned char *)(uintptr_t)s != c; s++);
+
+	return (char *)(uintptr_t)s;
+}
+
+SU_FUNC_DEF size_t su_real_path(su_string_t filename, char output[PATH_MAX]) {
+    /* musl implementation */
+
+	char stack[PATH_MAX + 1];
+	size_t p, q, l, l0, cnt = 0, nup = 0;
+	int check_dir = 0;
+
+    l = filename.len;
+    if ((l == 0) || (l >= PATH_MAX)) {
+        return 0;
+    }
+	p = (sizeof(stack) - l - 1);
+	q = 0;
+	SU_MEMCPY(stack + p, filename.s, l);
+    stack[p + l] = 0;
+
+restart:
+	for (;;) {
+        char *z;
+        su_bool32_t up;
+        ssize_t k;
+
+		if (stack[p] == '/') {
+			check_dir = 0;
+			nup = 0;
+			q = 0;
+			output[q++] = '/';
+			p++;
+			if ((stack[p] == '/') && (stack[p + 1] != '/')) {
+                output[q++] = '/';
+            }
+			goto cont;
+		}
+
+		z = su_strchrnul(stack + p, '/');
+		l0 = l = (size_t)(z - (stack + p));
+
+		if (!l && !check_dir) {
+            break;
+        }
+
+		if ((l == 1) && stack[p] == '.') {
+			p += l;
+			goto cont;
+		}
+
+		if (q && (output[q - 1] != '/')) {
+			if (!p) {
+                return 0;
+            }
+			stack[--p] = '/';
+			l++;
+		}
+		if ((q + l) >= PATH_MAX) {
+            return 0;
+        }
+		SU_MEMCPY(output + q, stack + p, l);
+		output[q + l] = 0;
+		p += l;
+
+		up = SU_FALSE;
+		if ((l0 == 2) && (stack[p - 2] == '.') && (stack[p - 1] == '.')) {
+			up = SU_TRUE;
+			if (q <= (3 * nup)) {
+				nup++;
+				q += l;
+				goto cont;
+			}
+			if (!check_dir) {
+                goto skip_readlink;
+            }
+		}
+		k = SU_READLINK(output, stack, p);
+		if (((size_t)k == p) || !k) {
+            return 0;
+        }
+		if (k < 0) {
+			if (SU_ERRNO != EINVAL) {
+                return 0;
+            }
+skip_readlink:
+			check_dir = 0;
+			if (up) {
+				while(q && (output[q - 1] != '/')) {
+                    q--;
+                }
+				if ((q > 1) && (q > 2 || (output[0] != '/'))) {
+                    q--;
+                }
+				goto cont;
+			}
+			if (l0) {
+                q += l;
+            }
+			check_dir = stack[p];
+			goto cont;
+		}
+		if (++cnt == SYMLOOP_MAX) {
+			return 0;
+		}
+
+		if (stack[k - 1] == '/') {
+            while (stack[p] == '/') {
+                p++;
+            }
+        }
+		p -= (size_t)k;
+		SU_MEMMOVE(stack + p, stack, (size_t)k);
+
+        goto restart;
+cont:
+        while (stack[p] == '/') {
+            p++;
+        }
+	}
+
+ 	output[q] = 0;
+
+	if (output[0] != '/') {
+		if (!SU_GETCWD(stack, sizeof(stack))) {
+            return 0;
+        }
+		l = SU_STRLEN(stack);
+		p = 0;
+		while (nup--) {
+			while((l > 1) && (stack[l - 1] != '/')) {
+                l--;
+            }
+			if (l > 1) {
+                l--;
+            }
+			p += 2;
+			if (p < q) {
+                p++;
+            }
+		}
+		if ((q - p) && (stack[l - 1] != '/')) {
+            stack[l++] = '/';
+        }
+		if ((l + (q - p) + 1) >= PATH_MAX) {
+            return 0;
+        }
+		SU_MEMMOVE(output + l, output + p, q - p + 1);
+		SU_MEMCPY(output, stack, l);
+        q = (l + q - p);
+	}
+
+    return q;
+}
+
+SU_FUNC_DEF su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t *out,
         const su_allocator_t *alloc, su_file_cache_hash_table_t *ht) {
     su_file_cache_t *e = NULL;
     static char buf[PATH_MAX];
-    struct stat sb;
+    su_stat_t sb;
 
-    SU_ASSERT(path.nul_terminated); /* TODO: handle properly */
-
-    if (realpath(path.s, buf) == NULL) {
+    size_t len = su_real_path(path, buf);
+    if (len == 0) {
         goto error;
     }
 
     path.s = buf;
-    path.len = SU_STRLEN(buf);
+    path.len = len;
     path.nul_terminated = SU_TRUE;
     path.free_contents = SU_FALSE;
 
-    if (stat(path.s, &sb) == -1) {
+    if (SU_STAT(path.s, &sb) == -1) {
         goto error;
     }
 
@@ -4114,7 +5470,7 @@ static su_bool32_t su_read_entire_file_with_cache(su_string_t path, su_fat_ptr_t
             goto out;
         }
         SU_FREE(alloc, e->data.ptr);
-        SU_MEMSET(&e->data, 0, sizeof(e->data));
+        SU_CLEAR(&e->data);
     } else {
         su_string_init_string(&e->key, alloc, path);
     }
@@ -4138,62 +5494,57 @@ error: {
     }
 }
 
-static su_bool32_t su_fd_set_nonblock(int fd) {
-    int flags = fcntl(fd, F_GETFL);
+SU_FUNC_DEF su_bool32_t su_fd_set_nonblock(int fd) {
+    int flags = SU_FCNTL(fd, F_GETFL);
     if (flags == -1) {
         return SU_FALSE;
     }
 
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    if (SU_FCNTL(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
         return SU_FALSE;
     }
 
     return SU_TRUE;
 }
 
-static su_bool32_t su_fd_set_cloexec(int fd) {
-    int flags = fcntl(fd, F_GETFD);
+SU_FUNC_DEF su_bool32_t su_fd_set_cloexec(int fd) {
+    int flags = SU_FCNTL(fd, F_GETFD);
     if (flags == -1) {
         return SU_FALSE;
     }
 
-    if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
+    if (SU_FCNTL(fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
         return SU_FALSE;
     }
 
     return SU_TRUE;
 }
 
-static int64_t su_timespec_to_ms(struct timespec timespec) {
+SU_FUNC_DEF int64_t su_timespec_to_ms(su_timespec_t timespec) {
     return (timespec.tv_sec * 1000) + (timespec.tv_nsec / 1000000);
 }
 
-static int64_t su_now_ms(clockid_t clock_id) {
-    struct timespec ts;
-    int c = clock_gettime(clock_id, &ts);
+SU_FUNC_DEF int64_t su_now_msec(int clock_id) {
+    su_timespec_t ts;
+    int c = SU_CLOCK_GETTIME(clock_id, &ts);
     SU_NOTUSED(c);
     SU_ASSERT(c == 0);
     return su_timespec_to_ms(ts);
 }
 
-static su_bool32_t su_locale_is_utf8(void) {
-    su_c32_t w;
-    mbstate_t s;
-    
-    SU_MEMSET(&s, 0, sizeof(s));
-
-    if (mbrtoc32(&w, "\xC3\xB6", 2, &s) != 2) {
-        return SU_FALSE;
-    }
-
-    return (w == 0xF6);
+SU_FUNC_DEF int64_t su_now_sec(int clock_id) {
+    su_timespec_t ts;
+    int c = SU_CLOCK_GETTIME(clock_id, &ts);
+    SU_NOTUSED(c);
+    SU_ASSERT(c == 0);
+    return ts.tv_sec;
 }
 
-static void su_nop(void *notused, ...) {
+SU_FUNC_DEF void su_nop(void *notused, ...) {
     SU_NOTUSED(notused);
 }
 
-/*static void *su_base64_decode(su_string_t text, const su_allocator_t *alloc) {
+/*SU_FUNC_DEF void *su_base64_decode(su_string_t text, const su_allocator_t *alloc) {
     uint8_t *ret;
     size_t i = 0, o = 0;
 
@@ -4204,7 +5555,7 @@ static void su_nop(void *notused, ...) {
     SU_ALLOCTS(ret, alloc, text.len / 4 * 3);
 
     for ( ; i < text.len; i += 4, o += 3) {
-        static uint8_t rlut[] = {
+        static const uint8_t rlut[] = {
             255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
             255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
             255,255,255,255,255,255,255,255,255,255,255, 62,255,255,255, 63,
@@ -4254,7 +5605,7 @@ error:
     return NULL;
 }*/
 
-static void su__json_buffer_add_char(su_json_buffer_t *buffer, const su_allocator_t *alloc, char c) {
+SU_FUNC_DEF void su__json_buffer_add_char(su_json_buffer_t *buffer, const su_allocator_t *alloc, char c) {
     if (SU_UNLIKELY(buffer->size == buffer->idx)) {
         char *new_data;
         buffer->size = ((buffer->size + 1) * 2);
@@ -4266,21 +5617,21 @@ static void su__json_buffer_add_char(su_json_buffer_t *buffer, const su_allocato
     buffer->data[buffer->idx++] = c;
 }
 
-static void su__json_buffer_add_char_nocheck(su_json_buffer_t *buffer, char c) {
+SU_FUNC_DEF void su__json_buffer_add_char_nocheck(su_json_buffer_t *buffer, char c) {
     buffer->data[buffer->idx++] = c;
 }
 
-static void su__json_buffer_put_char_nocheck(su_json_buffer_t *buffer, size_t *idx, char c) {
+SU_FUNC_DEF void su__json_buffer_put_char_nocheck(su_json_buffer_t *buffer, size_t *idx, char c) {
     buffer->data[*idx] = c;
     *idx += 1;
 }
 
-static void su__json_buffer_put_string_nocheck(su_json_buffer_t *buffer, size_t *idx, su_string_t str) {
+SU_FUNC_DEF void su__json_buffer_put_string_nocheck(su_json_buffer_t *buffer, size_t *idx, su_string_t str) {
     SU_MEMCPY(&buffer->data[*idx], str.s, str.len);
     *idx += str.len;
 }
 
-static void su__json_buffer_add_string(su_json_buffer_t *buffer, const su_allocator_t *alloc, su_string_t str) {
+SU_FUNC_DEF void su__json_buffer_add_string(su_json_buffer_t *buffer, const su_allocator_t *alloc, su_string_t str) {
     if (SU_UNLIKELY((buffer->idx + str.len) > buffer->size)) {
         char *new_data;
         buffer->size = ((buffer->size + str.len) * 2);
@@ -4293,12 +5644,12 @@ static void su__json_buffer_add_string(su_json_buffer_t *buffer, const su_alloca
     buffer->idx += str.len;
 }
 
-static void su__json_buffer_add_string_nocheck(su_json_buffer_t *buffer, su_string_t str) {
+SU_FUNC_DEF void su__json_buffer_add_string_nocheck(su_json_buffer_t *buffer, su_string_t str) {
     SU_MEMCPY(&buffer->data[buffer->idx], str.s, str.len);
     buffer->idx += str.len;
 }
 
-static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su__json_buffer_add_format(su_json_buffer_t *buffer,
+SU_FUNC_DEF SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su__json_buffer_add_format(su_json_buffer_t *buffer,
         const su_allocator_t *alloc, const char *fmt, ...) {
     char buf[512];
     size_t len;
@@ -4321,7 +5672,7 @@ static SU_ATTRIBUTE_FORMAT_PRINTF(3, 4) void su__json_buffer_add_format(su_json_
     va_end(args);
 }
 
-static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, const su_allocator_t *alloc, su_string_t str) {
+SU_FUNC_DEF void su__json_buffer_add_string_escape(su_json_buffer_t *buf, const su_allocator_t *alloc, su_string_t str) {
     /* TODO: simd */
 
     size_t i = 0;
@@ -4333,7 +5684,7 @@ static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, const su_al
         case '\n':
         case '\f':
         case '\r': {
-            static char specials[] = { 'b', 't', 'n', '_'/* unreachable */, 'f', 'r' };
+            static const char specials[] = { 'b', 't', 'n', '_'/* unreachable */, 'f', 'r' };
             su__json_buffer_add_char(buf, alloc, '\\');
             su__json_buffer_add_char(buf, alloc, specials[c - '\b']);
             break;
@@ -4345,7 +5696,7 @@ static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, const su_al
             break;
         default:
             if (c <= 0x1F) {
-                static char hex_chars[] = "0123456789abcdef";
+                static const char hex_chars[] = "0123456789abcdef";
                 su__json_buffer_add_string(buf, alloc, su_string_("\\u00"));
                 su__json_buffer_add_char(buf, alloc, hex_chars[c >> 4]);
                 su__json_buffer_add_char(buf, alloc, hex_chars[c & 0xF]);
@@ -4357,7 +5708,7 @@ static void su__json_buffer_add_string_escape(su_json_buffer_t *buf, const su_al
     }
 }
 
-static su__json_writer_state_t su__json_writer_get_state(su_json_writer_t *writer) {
+SU_FUNC_DEF su__json_writer_state_t su__json_writer_get_state(su_json_writer_t *writer) {
     if (writer->state_count > 0) {
         return writer->state[writer->state_count - 1];
     }
@@ -4365,7 +5716,7 @@ static su__json_writer_state_t su__json_writer_get_state(su_json_writer_t *write
     return SU__JSON_WRITER_STATE_ROOT;
 }
 
-static void su__json_writer_add_state(su_json_writer_t *writer, const su_allocator_t *alloc, su__json_writer_state_t state) {
+SU_FUNC_DEF void su__json_writer_add_state(su_json_writer_t *writer, const su_allocator_t *alloc, su__json_writer_state_t state) {
     if (SU_UNLIKELY(writer->state_capacity == writer->state_count)) {
         su__json_writer_state_t *new_state;
         writer->state_capacity *= 2;
@@ -4377,7 +5728,7 @@ static void su__json_writer_add_state(su_json_writer_t *writer, const su_allocat
     writer->state[writer->state_count++] = state;
 }
 
-static void su__json_writer_element(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su__json_writer_element(su_json_writer_t *writer, const su_allocator_t *alloc) {
     switch (su__json_writer_get_state(writer)) {
     case SU__JSON_WRITER_STATE_ROOT:
         break;
@@ -4399,7 +5750,7 @@ static void su__json_writer_element(su_json_writer_t *writer, const su_allocator
     }
 }
 
-static void su_json_writer_init(su_json_writer_t *writer, const su_allocator_t *alloc, size_t initial_bufsize) {
+SU_FUNC_DEF void su_json_writer_init(su_json_writer_t *writer, const su_allocator_t *alloc, size_t initial_bufsize) {
     writer->state_capacity = initial_bufsize;
     SU_ARRAY_ALLOC(writer->state, alloc, writer->state_capacity);
     SU_ALLOCTS(writer->buf.data, alloc, initial_bufsize);
@@ -4408,17 +5759,17 @@ static void su_json_writer_init(su_json_writer_t *writer, const su_allocator_t *
     writer->buf.idx = 0;
 }
 
-static void su_json_writer_fini(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_json_writer_fini(su_json_writer_t *writer, const su_allocator_t *alloc) {
     SU_FREE(alloc, writer->buf.data);
     SU_FREE(alloc, writer->state);
 }
 
-static void su_json_writer_reset(su_json_writer_t *writer) {
+SU_FUNC_DEF void su_json_writer_reset(su_json_writer_t *writer) {
     writer->buf.idx = 0;
     writer->state_count = 0;
 }
 
-static void su_json_writer_object_begin(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_json_writer_object_begin(su_json_writer_t *writer, const su_allocator_t *alloc) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4427,7 +5778,7 @@ static void su_json_writer_object_begin(su_json_writer_t *writer, const su_alloc
     su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_OBJECT);
 }
 
-static void su_json_writer_object_end(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_json_writer_object_end(su_json_writer_t *writer, const su_allocator_t *alloc) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4435,7 +5786,7 @@ static void su_json_writer_object_end(su_json_writer_t *writer, const su_allocat
     writer->state_count--;
 }
 
-static void su_json_writer_object_key_escape(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t key) {
+SU_FUNC_DEF void su_json_writer_object_key_escape(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t key) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4447,7 +5798,7 @@ static void su_json_writer_object_key_escape(su_json_writer_t *writer, const su_
     su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
-static void su_json_writer_object_key(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t key) {
+SU_FUNC_DEF void su_json_writer_object_key(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t key) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state == SU__JSON_WRITER_STATE_OBJECT) || (state == SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4459,7 +5810,7 @@ static void su_json_writer_object_key(su_json_writer_t *writer, const su_allocat
     su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_KEY);
 }
 
-static void su_json_writer_array_begin(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_json_writer_array_begin(su_json_writer_t *writer, const su_allocator_t *alloc) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4468,7 +5819,7 @@ static void su_json_writer_array_begin(su_json_writer_t *writer, const su_alloca
     su__json_writer_add_state(writer, alloc, SU__JSON_WRITER_STATE_ARRAY);
 }
 
-static void su_json_writer_array_end(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_json_writer_array_end(su_json_writer_t *writer, const su_allocator_t *alloc) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state == SU__JSON_WRITER_STATE_ARRAY) || (state == SU__JSON_WRITER_STATE_ARRAY_EXPECTING_COMMA));
@@ -4476,7 +5827,7 @@ static void su_json_writer_array_end(su_json_writer_t *writer, const su_allocato
     writer->state_count--;
 }
 
-static void su_json_writer_null(su_json_writer_t *writer, const su_allocator_t *alloc) {
+SU_FUNC_DEF void su_json_writer_null(su_json_writer_t *writer, const su_allocator_t *alloc) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4484,7 +5835,7 @@ static void su_json_writer_null(su_json_writer_t *writer, const su_allocator_t *
     su__json_buffer_add_string(&writer->buf, alloc, su_string_("null"));
 }
 
-static void su_json_writer_bool(su_json_writer_t *writer, const su_allocator_t *alloc, su_bool32_t b) {
+SU_FUNC_DEF void su_json_writer_bool(su_json_writer_t *writer, const su_allocator_t *alloc, su_bool32_t b) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4496,7 +5847,7 @@ static void su_json_writer_bool(su_json_writer_t *writer, const su_allocator_t *
     }
 }
 
-static void su_json_writer_int(su_json_writer_t *writer, const su_allocator_t *alloc, int64_t i) {
+SU_FUNC_DEF void su_json_writer_int(su_json_writer_t *writer, const su_allocator_t *alloc, int64_t i) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4504,7 +5855,7 @@ static void su_json_writer_int(su_json_writer_t *writer, const su_allocator_t *a
     su__json_buffer_add_format(&writer->buf, alloc, "%ld", i);
 }
 
-static void su_json_writer_uint(su_json_writer_t *writer, const su_allocator_t *alloc, uint64_t u) {
+SU_FUNC_DEF void su_json_writer_uint(su_json_writer_t *writer, const su_allocator_t *alloc, uint64_t u) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4512,20 +5863,16 @@ static void su_json_writer_uint(su_json_writer_t *writer, const su_allocator_t *
     su__json_buffer_add_format(&writer->buf, alloc, "%lu", u);
 }
 
-static void su_json_writer_double(su_json_writer_t *writer, const su_allocator_t *alloc, double d) {
+SU_FUNC_DEF void su_json_writer_double(su_json_writer_t *writer, const su_allocator_t *alloc, double d) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
     su__json_writer_element(writer, alloc);
     /* TODO: isnan(d) || isinf(d) -> null */
-    if (SU_FABS(d) > DBL_EPSILON) {
-        su__json_buffer_add_format(&writer->buf, alloc, "%.17g", d);
-    } else {
-        su__json_buffer_add_format(&writer->buf, alloc, "%.1f", d);
-    }
+    su__json_buffer_add_format(&writer->buf, alloc, ((d > 0.) || (d < 0.)) ? "%.17g" : "%.1f", d);
 }
 
-static void su_json_writer_string_escape(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t str) {
+SU_FUNC_DEF void su_json_writer_string_escape(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t str) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4535,7 +5882,7 @@ static void su_json_writer_string_escape(su_json_writer_t *writer, const su_allo
     su__json_buffer_add_char(&writer->buf, alloc, '"');
 }
 
-static void su_json_writer_string(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t str) {
+SU_FUNC_DEF void su_json_writer_string(su_json_writer_t *writer, const su_allocator_t *alloc, su_string_t str) {
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
     SU_ASSERT((state != SU__JSON_WRITER_STATE_OBJECT) && (state != SU__JSON_WRITER_STATE_OBJECT_EXPECTING_COMMA));
@@ -4545,7 +5892,7 @@ static void su_json_writer_string(su_json_writer_t *writer, const su_allocator_t
     su__json_buffer_add_char(&writer->buf, alloc, '"');
 }
 
-static void su_json_writer_raw(su_json_writer_t *writer, const su_allocator_t *alloc, void *data, size_t len) {
+SU_FUNC_DEF void su_json_writer_raw(su_json_writer_t *writer, const su_allocator_t *alloc, void *data, size_t len) {
     su_string_t s;
     su__json_writer_state_t state = su__json_writer_get_state(writer);
     SU_NOTUSED(state);
@@ -4558,7 +5905,7 @@ static void su_json_writer_raw(su_json_writer_t *writer, const su_allocator_t *a
     su__json_buffer_add_string(&writer->buf, alloc, s);
 }
 
-static void su_json_writer_token(su_json_writer_t *writer, const su_allocator_t *alloc, su_json_token_t token) {
+SU_FUNC_DEF void su_json_writer_token(su_json_writer_t *writer, const su_allocator_t *alloc, su_json_token_t token) {
     switch (token.type) {
     case SU_JSON_TOKEN_TYPE_OBJECT_START:
         su_json_writer_object_begin(writer, alloc);
@@ -4598,8 +5945,7 @@ static void su_json_writer_token(su_json_writer_t *writer, const su_allocator_t 
     }
 }
 
-static void su_json_writer_ast_node(su_json_writer_t *writer, const su_allocator_t *alloc, su_json_ast_node_t *node) {
-    /* TODO: remove recursion */
+SU_FUNC_DEF void su_json_writer_ast_node(su_json_writer_t *writer, const su_allocator_t *alloc, su_json_ast_node_t *node) {
     switch (node->type) {
     case SU_JSON_AST_NODE_TYPE_OBJECT: {
         size_t i = 0;
@@ -4646,7 +5992,7 @@ static void su_json_writer_ast_node(su_json_writer_t *writer, const su_allocator
     }
 }
 
-static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener_t *tokener,
+SU_FUNC_DEF su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener_t *tokener,
         const su_allocator_t *alloc, su_string_t *out) {
     static uint8_t escape_lut[256] = {
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -4674,12 +6020,12 @@ static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener
     SU_ALLOCTS(out->s, alloc, tokener->buf.idx + 32);
     out->len = tokener->buf.idx;
     out->free_contents = SU_FALSE;
-    out->nul_terminated = SU_TRUE; /* TODO: remove */
+    out->nul_terminated = SU_TRUE;
     for ( ;;) {
         __m256i v = _mm256_loadu_si256((__m256i_u *)&tokener->buf.data[buf_idx]);
         __m256i backslash_cmp = _mm256_cmpeq_epi8(v, backslash);
         uint32_t backslash_mask = (uint32_t)_mm256_movemask_epi8(backslash_cmp);
-        size_t backslash_idx = (size_t)SU_COUNT_TRAILING_ZEROS(backslash_mask, 32);
+        size_t backslash_idx = (size_t)SU_CTZ32(backslash_mask, 32);
         _mm256_storeu_si256((__m256i_u *)&out->s[str_idx], v);
         str_idx += backslash_idx;
         buf_idx += backslash_idx;
@@ -4756,12 +6102,11 @@ static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener
             }
         }
     }
-/* TODO: AVX512, WASM, ARM, ?SSE */
 #else
     SU_ALLOCTS(out->s, alloc, tokener->buf.idx + 32);
     out->len = tokener->buf.idx;
     out->free_contents = SU_FALSE;
-    out->nul_terminated = SU_TRUE; /* TODO: remove */
+    out->nul_terminated = SU_TRUE;
     SU_MEMCPY(out->s, tokener->buf.data, tokener->buf.idx);
     for ( ;;) {
         char *backslash = (char *)SU_MEMCHR(&tokener->buf.data[buf_idx], '\\', tokener->buf.idx - buf_idx);
@@ -4845,12 +6190,12 @@ static su_json_tokener_state_t su__json_tokener_buffer_to_string(su_json_tokener
 #endif
 
     out->len -= (buf_idx - str_idx);
-    out->s[out->len] = '\0'; /* TODO: remove */
+    out->s[out->len] = '\0';
     tokener->buf.idx = 0;
     return SU_JSON_TOKENER_STATE_SUCCESS;
 }
 
-static void su_json_tokener_set_string(su_json_tokener_t *tokener, const su_allocator_t *alloc, su_string_t str) {
+SU_FUNC_DEF void su_json_tokener_set_string(su_json_tokener_t *tokener, const su_allocator_t *alloc, su_string_t str) {
     if (str.len >= (tokener->buf.size - tokener->buf.idx)) {
         char *new_data;
         tokener->buf.size = ((str.len + tokener->buf.size) * 2);
@@ -4872,7 +6217,7 @@ static void su_json_tokener_set_string(su_json_tokener_t *tokener, const su_allo
     tokener->str = str;
 }
 
-static su__json_tokener_state_t su__json_tokener_get_state(su_json_tokener_t *tokener) {
+SU_FUNC_DEF su__json_tokener_state_t su__json_tokener_get_state(su_json_tokener_t *tokener) {
     if (tokener->state_count > 0) {
         return tokener->state[tokener->state_count - 1];
     }
@@ -4880,7 +6225,7 @@ static su__json_tokener_state_t su__json_tokener_get_state(su_json_tokener_t *to
     return SU__JSON_TOKENER_STATE_ROOT;
 }
 
-static void su__json_tokener_value_end(su_json_tokener_t *tokener) {
+SU_FUNC_DEF void su__json_tokener_value_end(su_json_tokener_t *tokener) {
     tokener->state_count--;
     switch (su__json_tokener_get_state(tokener)) {
     case SU__JSON_TOKENER_STATE_VALUE:
@@ -4909,7 +6254,7 @@ static void su__json_tokener_value_end(su_json_tokener_t *tokener) {
     tokener->buf.idx = 0;
 }
 
-static su_json_tokener_state_t su_json_tokener_next(su_json_tokener_t *tokener,
+SU_FUNC_DEF su_json_tokener_state_t su_json_tokener_next(su_json_tokener_t *tokener,
         const su_allocator_t *alloc, su_json_token_t *out) {
     su__json_tokener_state_t state = su__json_tokener_get_state(tokener);
     switch (state) {
@@ -4943,7 +6288,7 @@ _string: {
                 uint32_t backslash_mask = (uint32_t)_mm256_movemask_epi8(backslash_cmp);
                 _mm256_storeu_si256((__m256i_u *)&tokener->buf.data[tokener->buf.idx], v);
                 if (SU_LIKELY((backslash_mask - 1) & quote_mask)) {
-                    size_t quote_idx = (size_t)SU_COUNT_TRAILING_ZEROS(quote_mask, 0);
+                    size_t quote_idx = (size_t)SU_CTZ32(quote_mask, 0);
                     tokener->buf.idx += quote_idx;
                     tokener->pos += quote_idx + 1;
                     if (SU_LIKELY(tokener->last_escape_idx != (tokener->buf.idx - 1))) {
@@ -4951,7 +6296,7 @@ _string: {
                     }
                     tokener->buf.idx += 1;
                 } else if (SU_UNLIKELY((quote_mask - 1) & backslash_mask)) {
-                    size_t backslash_idx = (size_t)SU_COUNT_TRAILING_ZEROS(backslash_mask, 0);
+                    size_t backslash_idx = (size_t)SU_CTZ32(backslash_mask, 0);
                     tokener->buf.idx += backslash_idx;
                     tokener->pos += backslash_idx + 1;
                     if (SU_LIKELY(tokener->last_escape_idx != (tokener->buf.idx - 1))) {
@@ -4965,7 +6310,6 @@ _string: {
             } while (SU_LIKELY((tokener->pos + 32) <= tokener->str.len));
         }
 #endif /* SU_WITH_SIMD && __AVX2__ */
-/* TODO: AVX512, WASM, ARM, ?SSE */
 
         for ( ;;) {
             char c;
@@ -5039,7 +6383,7 @@ _number: {
             );
             _mm256_storeu_si256((__m256i_u *)&tokener->buf.data[tokener->buf.idx], v);
             if (SU_LIKELY(mask)) {
-                size_t idx = (size_t)SU_COUNT_TRAILING_ZEROS(mask, 0);
+                size_t idx = (size_t)SU_CTZ32(mask, 0);
                 str.s = tokener->buf.data;
                 str.len = idx;
                 tokener->pos += idx;
@@ -5049,7 +6393,6 @@ _number: {
             }
         }
 #endif /* SU_WITH_SIMD && __AVX2__ */
-/* TODO: AVX512, WASM, ARM, ?SSE */
 
         for ( ;;) {
             char c;
@@ -5080,12 +6423,11 @@ _parse_number:
         } else if (su_string_to_int64(str, &out->value.i)) {
             out->type = SU_JSON_TOKEN_TYPE_INT;
         } else {
-            /* TODO: string to double conversion function with length */
             char *end = NULL;
             su__json_buffer_add_char_nocheck(&tokener->buf, '\0');
-            errno = 0;
-            out->value.d = strtod(str.s, &end);
-            if (SU_LIKELY((end == &tokener->buf.data[tokener->buf.idx - 1]) && (errno == 0))) {
+            SU_ERRNO = 0;
+            out->value.d = SU_STRTOD(str.s, &end);
+            if (SU_LIKELY((end == &tokener->buf.data[tokener->buf.idx - 1]) && (SU_ERRNO == 0))) {
                 out->type = SU_JSON_TOKEN_TYPE_DOUBLE;
             } else {
                 return SU_JSON_TOKENER_STATE_ERROR;
@@ -5444,12 +6786,12 @@ _false: {
         : SU_JSON_TOKENER_STATE_MORE_DATA_EXPECTED);
 }
 
-static void su_json_ast_reset(su_json_ast_t *ast) {
-    SU_MEMSET(&ast->root, 0, sizeof(ast->root));
+SU_FUNC_DEF void su_json_ast_reset(su_json_ast_t *ast) {
+    SU_CLEAR(&ast->root);
     ast->current = &ast->root;
 }
 
-static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, const su_allocator_t *alloc,
+SU_FUNC_DEF su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, const su_allocator_t *alloc,
         su_json_ast_t *ast, uint32_t stop_depth, su_bool32_t check_for_repeating_keys) {
     /* ? TODO: min/max depth */
     su_json_tokener_state_t state;
@@ -5463,11 +6805,11 @@ static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, c
         switch (token.type) {
         case SU_JSON_TOKEN_TYPE_OBJECT_START:
             node.type = SU_JSON_AST_NODE_TYPE_OBJECT;
-            SU_MEMSET(&node.value.o, 0, sizeof(node.value.o));
+            SU_CLEAR(&node.value.o);
             break;
         case SU_JSON_TOKEN_TYPE_ARRAY_START:
             node.type = SU_JSON_AST_NODE_TYPE_ARRAY;
-            SU_MEMSET(&node.value.a, 0, sizeof(node.value.a));
+            SU_CLEAR(&node.value.a);
             break;
         case SU_JSON_TOKEN_TYPE_OBJECT_END:
         case SU_JSON_TOKEN_TYPE_ARRAY_END:
@@ -5554,7 +6896,7 @@ static su_json_tokener_state_t su_json_tokener_ast(su_json_tokener_t *tokener, c
     return state;
 }
 
-static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *node, su_string_t key) {
+SU_FUNC_DEF su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *node, su_string_t key) {
     size_t i = 0;
     
     SU_ASSERT(node->type == SU_JSON_AST_NODE_TYPE_OBJECT);
@@ -5569,19 +6911,29 @@ static su_json_ast_node_t *su_json_ast_node_object_get(su_json_ast_node_t *node,
     return NULL;
 }
 
-static SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert(su_json_tokener_t *tokener,
+SU_FUNC_DEF SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert(su_json_tokener_t *tokener,
         const su_allocator_t *alloc, su_json_token_t *token_out) {
     su_json_tokener_state_t s = su_json_tokener_next(tokener, alloc, token_out);
     SU_NOTUSED(s);
     SU_ASSERT(s == SU_JSON_TOKENER_STATE_SUCCESS);
 }
 
-static SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert_type(
+SU_FUNC_DEF SU_ATTRIBUTE_ALWAYS_INLINE inline void su_json_tokener_advance_assert_type(
         su_json_tokener_t *tokener, const su_allocator_t *alloc,
         su_json_token_t *token_out, su_json_token_type_t expected_type) {
     SU_NOTUSED(expected_type);
     su_json_tokener_advance_assert(tokener, alloc, token_out);
     SU_ASSERT(token_out->type == expected_type);
+}
+
+SU_FUNC_DEF int su_ctz32(unsigned int x) {
+    static const int lut[] = {
+        0, 1, 28, 2, 29, 14, 24, 3,
+        30, 22, 20, 15, 25, 17, 4, 8,
+        31, 27, 13, 23, 21, 19, 16, 7,
+        26, 12, 18, 6, 11, 5, 10, 9
+    };
+    return lut[((x & -x) * 0x077CB531u) >> 27];
 }
 
 #endif /* defined(SU_IMPLEMENTATION) && !defined(SU__REIMPLEMENTATION_GUARD) */

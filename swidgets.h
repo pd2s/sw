@@ -1,7 +1,7 @@
+/* #define SW_IMPLEMENTATION */ /* TODO: remove */
+
 #if !defined(SW_HEADER)
 #define SW_HEADER
-
-#define SW_IMPLEMENTATION
 
 #if !defined(SW_WITH_DEBUG)
     #define SW_WITH_DEBUG 1
@@ -76,8 +76,6 @@ typedef struct sw_layout_block sw_layout_block_t;
 #define SW__PRIVATE_FIELDS(size) size_t sw__private[size / sizeof(size_t)] /* ASSERT((size % sizeof(size_t)) == 0) */
 
 #if SW_WITH_WAYLAND_BACKEND
-
-#include <poll.h>
 
 typedef enum sw_wayland_pointer_button_state {
     SW_WAYLAND_POINTER_BUTTON_STATE_RELEASED = 0,
@@ -836,7 +834,7 @@ typedef struct sw_wayland_seats {
 } sw_wayland_seats_t;
 
 typedef struct sw_backend_wayland_out {
-    struct pollfd *fds; /* TODO: generic structure to support select, epoll, kqueue etc */
+    su_pollfd_t *fds; /* TODO: generic structure to support select, epoll, kqueue etc */
     size_t fds_count;
     sw_wayland_outputs_t outputs;
     sw_wayland_seats_t seats;
@@ -1457,22 +1455,15 @@ static void *sw__realloc_sized_stbi(void *ptr, size_t old_size, size_t new_size)
 #if !SW_WITH_PNM
     #define STBI_NO_PNM
 #endif /* !SW_WITH_PNM */
+#if SU_WITH_SIMD == 0
+    #define STBI_NO_SIMD
+#endif
 
-#define memcpy SU_MEMCPY
-#define memset SU_MEMSET
-#define strcmp SU_STRCMP
-#define strncmp SU_STRNCMP
 #include <stb_image.h>
-#undef memcpy
-#undef memset
-#undef strcmp
-#undef strncmp
 
 #endif /* SW_WITH_PNG || SW_WITH_JPG || SW_WITH_TGA || SW_WITH_BMP || SW_WITH_PSD || SW_WITH_GIF || SW_WITH_HDR || SW_WITH_PIC || SW_WITH_PNM */
 
 #if SW_WITH_WAYLAND_BACKEND
-
-#include <sys/mman.h>
 
 SU_IGNORE_WARNINGS_START
 
@@ -1497,10 +1488,10 @@ SU_IGNORE_WARNING("-Wcast-qual")
 #include <xdg-decoration-unstable-v1.c>
 
 #if SW_WITH_WAYLAND_KEYBOARD
-    #if SU_HAS_INCLUDE(<xkbcommon/xkbcommon.h>)
-        #include <xkbcommon/xkbcommon.h>
-    #else
+    #if SU_HAS_INCLUDE(<xkbcommon.h>)
         #include <xkbcommon.h>
+    #else
+        #include <xkbcommon/xkbcommon.h>
     #endif
 #endif /* SW_WITH_WAYLAND_KEYBOARD */
 
@@ -1540,7 +1531,7 @@ typedef struct sw__wayland_keyboard {
 #if SW_WITH_WAYLAND_CLIPBOARD
 typedef struct sw__wayland_data_device_paste {
     struct wl_data_offer *wl_data_offer;
-    struct pollfd pfd;
+    su_pollfd_t pfd;
     su_string_t mime_type;
     uint32_t dnd_enter_serial;
     sw_wayland_data_device_dnd_action_mask_t dnd_actions;
@@ -1553,7 +1544,7 @@ typedef struct sw__wayland_data_device_paste {
 typedef struct sw__wayland_data_device_copy {
     struct wl_data_source *wl_data_source;
     su_string_t mime_type;
-    struct pollfd pfd;
+    su_pollfd_t pfd;
     size_t buf_idx;
     su_fat_ptr_t data;
 } sw__wayland_data_device_copy_t;
@@ -1841,7 +1832,7 @@ static sw_event_out__t *sw__event(sw_event_type_t type, void *data) { /* TODO: r
     }
 
     event = &sw__context->out.events[sw__context->out.events_count++];
-    SU_MEMSET(event, 0, sizeof(*event));
+    SU_CLEAR(event);
     event->out.type = type;
     event->out._.data = data;
 
@@ -2143,7 +2134,7 @@ static pixman_image_t *sw__load_png(const su_allocator_t *gp_alloc, const su_all
     pixman_image_t *image = NULL;
     stbi__result_info ri;
     stbi__context ctx;
-    SU_MEMSET(&ri, 0, sizeof(ri));
+    SU_CLEAR(&ri);
     ri.bits_per_channel = 8;
     stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
 
@@ -2238,7 +2229,7 @@ static pixman_image_t *sw__load_psd(const su_allocator_t *gp_alloc, const su_all
     pixman_image_t *image = NULL;
     stbi__result_info ri;
     stbi__context ctx;
-    SU_MEMSET(&ri, 0, sizeof(ri));
+    SU_CLEAR(&ri);
     ri.bits_per_channel = 8;
     stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
 
@@ -2298,7 +2289,7 @@ static pixman_image_t *sw__load_gif(const su_allocator_t *gp_alloc, const su_all
             SU_ASSERT(data->gif_frame_idx < gif->frames_count);
             gif->frame_idx = data->gif_frame_idx;
             frame = gif->frames[gif->frame_idx];
-            gif->frame_end = (data->gif_static ? INT64_MAX : (su_now_ms(CLOCK_MONOTONIC) + frame.delay));
+            gif->frame_end = (data->gif_static ? INT64_MAX : (su_now_msec(CLOCK_MONOTONIC) + frame.delay));
             image = frame.image;
         } else {
             sw__image_data_t *image_data;
@@ -2366,7 +2357,7 @@ static pixman_image_t *sw__load_pnm(const su_allocator_t *gp_alloc, const su_all
     pixman_image_t *image = NULL;
     stbi__result_info ri;
     stbi__context ctx;
-    SU_MEMSET(&ri, 0, sizeof(ri));
+    SU_CLEAR(&ri);
     ri.bits_per_channel = 8;
     stbi__start_mem(&ctx, (stbi_uc *)data.ptr, (int)data.len);
 
@@ -2390,8 +2381,6 @@ static pixman_image_t *sw__load_pnm(const su_allocator_t *gp_alloc, const su_all
 #endif /* SW_WITH_PNM */
 
 static su_bool32_t sw__layout_block_fini(sw_layout_block_t *block, su_bool32_t destroy_children) {
-    /* TODO: remove recursion */
-
     sw__layout_block_t *block_priv = (sw__layout_block_t *)&block->sw__private;
     su_bool32_t ret = (block_priv->state != SW__LAYOUT_BLOCK_STATE_DESTROYED);
 
@@ -2413,8 +2402,8 @@ static su_bool32_t sw__layout_block_fini(sw_layout_block_t *block, su_bool32_t d
         pixman_image_unref(block_priv->content_image);
     }
 
-    SU_MEMSET(block_priv, 0 , sizeof(*block_priv));
-    SU_MEMSET(&block->out, 0, sizeof(block->out));
+    SU_CLEAR(block_priv);
+    SU_CLEAR(&block->out);
 
     block_priv->state = SW__LAYOUT_BLOCK_STATE_DESTROYED;
     return ret;
@@ -2588,8 +2577,6 @@ static su_bool32_t sw__text_run_cache_hash_table_get(sw__text_run_cache_hash_tab
 #endif /* SW_WITH_TEXT */
 
 static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
-    /* TODO: remove recursion */
-
     sw__context_t *sw_priv = (sw__context_t *)&sw__context->sw__private;
     sw__layout_block_t *block_priv = (sw__layout_block_t *)&block->sw__private;
     const su_allocator_t *gp_alloc = sw__context->in.gp_alloc;
@@ -2646,29 +2633,12 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
         }
 
         if (text_run == NULL) {
-            su_c32_t *c32;
-            size_t c32_count = 0;
-            size_t consumed = 0;
-            mbstate_t s;
+            size_t c32_count;
+            uint32_t *c32;
+            SU_ARRAY_ALLOC(c32, scratch_alloc, text.text.len);
 
-            SU_MEMSET(&s, 0, sizeof(s));
-            SU_ARRAY_ALLOC(c32, scratch_alloc, (text.text.len + 1));
-
-            while (consumed < text.text.len) {
-                size_t ret = mbrtoc32(&c32[c32_count++], &text.text.s[consumed],
-                        text.text.len - consumed, &s);
-                switch (ret) {
-                case 0: /* ? TODO: do not treat as error */
-                case (size_t)-1:
-                case (size_t)-2:
-                case (size_t)-3:
-                    SU_FREE(scratch_alloc, c32);
-                    error = SW_EVENT_LAYOUT_BLOCK_ERROR_INVALID_TEXT;
-                    goto error;
-                default:
-                    consumed += ret;
-                }
-            }
+            /* ? TODO: validate utf8 */
+            c32_count = su_convert_valid_utf8_to_utf32(text.text, c32);
 
             text_run = fcft_rasterize_text_run_utf32(font, c32_count, (uint32_t *)c32, FCFT_SUBPIXEL_NONE);
             SU_FREE(scratch_alloc, c32);
@@ -2745,7 +2715,7 @@ static su_bool32_t sw__layout_block_init(sw_layout_block_t *block) {
                     gif->frame_idx = image.gif_frame_idx;
                 } else if (gif->frame_end == INT64_MAX) {
                     gif->frame_idx = image.gif_frame_idx;
-                    gif->frame_end = (su_now_ms(CLOCK_MONOTONIC) + gif->frames[gif->frame_idx].delay);
+                    gif->frame_end = (su_now_msec(CLOCK_MONOTONIC) + gif->frames[gif->frame_idx].delay);
                 }
                 block_priv->content_image = pixman_image_ref(gif->frames[gif->frame_idx].image);
             } else
@@ -2963,8 +2933,6 @@ static su_bool32_t sw__layout_block_fill(sw_layout_block_t *block, int32_t avail
 }
 
 static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_block_dimensions_t *overrides) {
-    /* TODO: remove recursion */
-
     sw__layout_block_t *block_priv = (sw__layout_block_t *)&block->sw__private;
     sw_layout_block_dimensions_t *dim;
 
@@ -3184,9 +3152,9 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
     if (block_priv->content_image) {
         sw__image_data_t *image_data = (sw__image_data_t *)pixman_image_get_destroy_data(block_priv->content_image);
         if (image_data->type == SW__IMAGE_DATA_TYPE_MULTIFRAME_GIF) {
-            int64_t now_msec = su_now_ms(CLOCK_MONOTONIC);
+            int64_t now_msecec = su_now_msec(CLOCK_MONOTONIC);
             sw__image_multiframe_gif_t *gif = (sw__image_multiframe_gif_t *)image_data->data;
-            if (now_msec >= gif->frame_end) {
+            if (now_msecec >= gif->frame_end) {
                 sw__image_gif_frame_t frame;
                 if (++gif->frame_idx >= gif->frames_count) {
                     gif->frame_idx = 0;
@@ -3194,7 +3162,7 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
                 frame = gif->frames[gif->frame_idx];
                 pixman_image_unref(block_priv->content_image);
                 block_priv->content_image = pixman_image_ref(frame.image);
-                gif->frame_end = (now_msec + frame.delay);
+                gif->frame_end = (now_msecec + frame.delay);
             }
             sw__update_t(gif->frame_end);
             block->out._.gif.frame_idx = gif->frame_idx;
@@ -3210,8 +3178,6 @@ static su_bool32_t sw__layout_block_prepare(sw_layout_block_t *block, sw_layout_
 }
 
 static void sw__layout_block_render(sw_layout_block_t *block, pixman_image_t *dest) {
-    /* TODO: remove recursion */
-
     sw__layout_block_t *block_priv = (sw__layout_block_t *)&block->sw__private;
     sw_layout_block_dimensions_t dim = block->out.dim;
     const su_allocator_t *scratch_alloc = sw__context->in.scratch_alloc;
@@ -3397,15 +3363,13 @@ static void sw__wayland_surface_buffer_fini(sw__wayland_surface_buffer_t *buffer
         wl_buffer_destroy(buffer->wl_buffer);
     }
     if (buffer->pixels) {
-        munmap(buffer->pixels, buffer->size);
+        SU_MUNMAP(buffer->pixels, buffer->size);
     }
 
-    SU_MEMSET(buffer, 0, sizeof(*buffer));
+    SU_CLEAR(buffer);
 }
 
 static su_bool32_t sw__wayland_surface_fini(sw_wayland_surface_t *surface, su_bool32_t destroy_root_block) {
-    /* TODO: remove recursion */
-
     sw__wayland_surface_t *surface_priv = (sw__wayland_surface_t *)&surface->sw__private;
     su_bool32_t ret = (surface_priv->state != SW__WAYLAND_SURFACE_STATE_DESTROYED);
     sw_wayland_seat_t *seat;
@@ -3479,8 +3443,8 @@ static su_bool32_t sw__wayland_surface_fini(sw_wayland_surface_t *surface, su_bo
         }
     }
 
-    SU_MEMSET(surface_priv, 0, sizeof(*surface_priv));
-    SU_MEMSET(&surface->out, 0, sizeof(surface->out));
+    SU_CLEAR(surface_priv);
+    SU_CLEAR(&surface->out);
 
     surface_priv->state = SW__WAYLAND_SURFACE_STATE_DESTROYED;
     return ret;
@@ -3657,8 +3621,7 @@ static void sw__wayland_surface_buffer_handle_release(void *data, struct wl_buff
 static su_bool32_t sw__wayland_surface_buffer_init(sw__wayland_surface_buffer_t *buffer,
         sw_wayland_surface_t *surface, int32_t width, int32_t height) {
     sw__context_t *sw_priv = (sw__context_t *)&sw__context->sw__private;
-    struct timespec ts;
-    pid_t pid = getpid();
+    su_timespec_t ts;
     char shm_name[NAME_MAX];
     int shm_fd, c;
     int32_t stride = (width * 4);
@@ -3671,35 +3634,35 @@ static su_bool32_t sw__wayland_surface_buffer_init(sw__wayland_surface_buffer_t 
     SU_ASSERT(width > 0);
     SU_ASSERT(height > 0);
 
-    SU_MEMSET(buffer, 0, sizeof(*buffer));
+    SU_CLEAR(buffer);
 
 /* TODO: limit retry count */
 generate_shm_name:
-    c = clock_gettime(CLOCK_MONOTONIC, &ts);
+    c = SU_CLOCK_GETTIME(CLOCK_MONOTONIC, &ts);
     SU_NOTUSED(c);
     SU_ASSERT(c == 0);
-    su_snprintf(shm_name, sizeof(shm_name),"/sw-%d-%ld-%ld", pid, ts.tv_sec, ts.tv_nsec);
+    su_snprintf(shm_name, sizeof(shm_name),"/sw-%ld-%ld", ts.tv_sec, ts.tv_nsec);
 
-    shm_fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    shm_fd = SU_SHM_OPEN(shm_name, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (SU_UNLIKELY(shm_fd == -1)) {
-        if (errno == EEXIST) {
+        if (SU_ERRNO == EEXIST) {
             goto generate_shm_name;
         } else {
             goto error;
         }
     }
-    shm_unlink(shm_name);
+    SU_SHM_UNLINK(shm_name);
 
     buffer->size = ((uint32_t)stride * (uint32_t)height);
-    while (SU_UNLIKELY(ftruncate(shm_fd, buffer->size) == -1)) {
-        if (errno == EINTR) {
+    while (SU_UNLIKELY(SU_FTRUNCATE(shm_fd, buffer->size) == -1)) {
+        if (SU_ERRNO == EINTR) {
             continue;
         } else {
             goto error;
         }
     }
 
-    buffer->pixels = (uint32_t *)mmap( NULL,
+    buffer->pixels = (uint32_t *)SU_MMAP( NULL,
             buffer->size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (SU_UNLIKELY(buffer->pixels == MAP_FAILED)) {
         goto error;
@@ -3713,7 +3676,7 @@ generate_shm_name:
         wl_shm_pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
     wl_buffer_add_listener(buffer->wl_buffer, &wl_buffer_listener, surface);
     wl_shm_pool_destroy(wl_shm_pool);
-    close(shm_fd);
+    SU_CLOSE(shm_fd);
 
     buffer->busy = SU_FALSE;
 
@@ -4123,8 +4086,6 @@ static void sw__wayland_surface_cursor_image_init(sw_wayland_surface_t *surface)
 }
 
 static void sw__wayland_surface_prepare(sw_wayland_surface_t *surface, sw_wayland_surface_t *parent) {
-    /* TODO: remove recursion */
-    
     sw__context_t *sw_priv = (sw__context_t *)&sw__context->sw__private;
     sw__wayland_surface_t *surface_priv = (sw__wayland_surface_t *)&surface->sw__private;
     sw_wayland_cursor_shape_t cursor_shape = ((surface->in.cursor_shape == SW_WAYLAND_CURSOR_SHAPE_DEFAULT)
@@ -4467,8 +4428,8 @@ static void sw__wayland_output_fini(sw_wayland_output_t *output) {
     su_string_fini(&output->out.make, gp_alloc);
     su_string_fini(&output->out.model, gp_alloc);
 
-    SU_MEMSET(&output->out, 0, sizeof(output->out));
-    SU_MEMSET(output_priv, 0, sizeof(*output_priv));
+    SU_CLEAR(&output->out);
+    SU_CLEAR(output_priv);
 }
 
 static void sw__wayland_output_init(sw_event_t *event) {
@@ -4509,12 +4470,12 @@ static void sw__wayland_output_handle_geometry(void *data, struct wl_output *wl_
     if ((len = SU_STRLEN(make)) > 0) {
         su_string_init_len(&output->out.make, gp_alloc, make, len, SU_TRUE);
     } else {
-        SU_MEMSET(&output->out.make, 0, sizeof(output->out.make));
+        SU_CLEAR(&output->out.make);
     }
     if ((len = SU_STRLEN(model)) > 0) {
         su_string_init_len(&output->out.model, gp_alloc, model, len, SU_TRUE);
     } else {
-        SU_MEMSET(&output->out.model, 0, sizeof(output->out.model));
+        SU_CLEAR(&output->out.model);
     }
 
     output->out.x = x;
@@ -4579,7 +4540,7 @@ static void sw__wayland_output_handle_description(void *data, struct wl_output *
     if (len > 0) {
         su_string_init_len(&output->out.description, sw__context->in.gp_alloc, description, len, SU_TRUE);
     } else {
-        SU_MEMSET(&output->out.description, 0, sizeof(output->out.description));
+        SU_CLEAR(&output->out.description);
     }
 }
 
@@ -4713,8 +4674,8 @@ static void sw__wayland_pointer_fini(sw_wayland_pointer_t *pointer) {
         wl_pointer_destroy(pointer_priv->wl_pointer);
     }
 
-    SU_MEMSET(&pointer->out, 0, sizeof(pointer->out));
-    SU_MEMSET(pointer_priv, 0, sizeof(*pointer_priv));
+    SU_CLEAR(&pointer->out);
+    SU_CLEAR(pointer_priv);
 }
 
 static void sw__wayland_pointer_init(sw_event_t *event) {
@@ -4753,7 +4714,7 @@ static void sw__wayland_keyboard_handle_keymap(void *data, struct wl_keyboard *w
     xkb_keymap_unref(keyboard_priv->xkb_keymap);
     keyboard_priv->xkb_state = NULL;
     keyboard_priv->xkb_keymap = NULL;
-    SU_MEMSET(&keyboard->out.key, 0, sizeof(keyboard->out.key));
+    SU_CLEAR(&keyboard->out.key);
     keyboard->out.mods = 0;
     /* TODO: reset t */
     keyboard_priv->repeat_cp = 0;
@@ -4762,14 +4723,14 @@ static void sw__wayland_keyboard_handle_keymap(void *data, struct wl_keyboard *w
     switch ((enum wl_keyboard_keymap_format)format) {
     case WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1: {
         /* ? TODO: warn on errors */
-        char *buffer = (char *)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        char *buffer = (char *)SU_MMAP(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
         if (SU_UNLIKELY(buffer == MAP_FAILED)) {
             goto out;
         }
         keyboard_priv->xkb_keymap = xkb_keymap_new_from_buffer(
             keyboard_priv->xkb_context, buffer, size,
             XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
-        munmap(buffer, size);
+        SU_MUNMAP(buffer, size);
         if (SU_UNLIKELY(!keyboard_priv->xkb_keymap)) {
             goto out;
         }
@@ -4784,7 +4745,7 @@ static void sw__wayland_keyboard_handle_keymap(void *data, struct wl_keyboard *w
 
 out:
     /* TODO: event */
-    close(fd);
+    SU_CLOSE(fd);
 }
 
 static void sw__wayland_keyboard_handle_enter(void *data, struct wl_keyboard *wl_keyboard,
@@ -4860,7 +4821,7 @@ static void sw__wayland_keyboard_handle_key(void *data, struct wl_keyboard *wl_k
             xkb_keymap_key_repeats(keyboard_priv->xkb_keymap, code)) {
         keyboard_priv->repeat_cp = keyboard->out.key.cp;
         keyboard_priv->repeat_next =
-            (su_now_ms(CLOCK_MONOTONIC) + keyboard->out.repeat_delay);
+            (su_now_msec(CLOCK_MONOTONIC) + keyboard->out.repeat_delay);
         sw__update_t(keyboard_priv->repeat_next);
     }
 }
@@ -4883,7 +4844,7 @@ static void sw__wayland_keyboard_handle_modifiers(void *data, struct wl_keyboard
     if (0 != xkb_state_update_mask( keyboard_priv->xkb_state,
             mods_depressed, mods_latched, mods_locked, 0, 0, group)) {
         sw_event_out__t *event = sw__event(SW_EVENT_WAYLAND_KEYBOARD_MOD, keyboard);
-        static char *mods[] = {
+        static const char *mods[] = {
             XKB_MOD_NAME_SHIFT,
             XKB_MOD_NAME_CAPS,
             XKB_MOD_NAME_CTRL,
@@ -4906,7 +4867,7 @@ static void sw__wayland_keyboard_handle_modifiers(void *data, struct wl_keyboard
         for ( i = 1; i < (SU_LENGTH(mods) + 1); ++i) {
             if (xkb_state_mod_name_is_active( keyboard_priv->xkb_state,
                     mods[i - 1], XKB_STATE_MODS_EFFECTIVE) == 1) {
-                keyboard->out.mods |= (1 << i);
+                keyboard->out.mods |= (1u << i);
             }
         }
         /* ? TODO: layouts, leds, consumed */
@@ -4934,8 +4895,8 @@ static void sw__wayland_keyboard_fini(sw_wayland_keyboard_t *keyboard) {
     xkb_keymap_unref(keyboard_priv->xkb_keymap);
     xkb_context_unref(keyboard_priv->xkb_context);
 
-    SU_MEMSET(&keyboard->out, 0, sizeof(keyboard->out));
-    SU_MEMSET(keyboard_priv, 0, sizeof(*keyboard_priv));
+    SU_CLEAR(&keyboard->out);
+    SU_CLEAR(keyboard_priv);
 }
 
 static void sw__wayland_keyboard_init(sw_event_t *event) {
@@ -4970,7 +4931,7 @@ static void sw__wayland_data_device_fini_paste(sw_wayland_data_device_t *data_de
     sw__wayland_data_device_t *data_device_priv = (sw__wayland_data_device_t *)data_device->sw__private;
     size_t i;
     if (data_device_priv->paste.pfd.fd > 0) {
-        close(data_device_priv->paste.pfd.fd);
+        SU_CLOSE(data_device_priv->paste.pfd.fd);
     }
     if (data_device_priv->paste.wl_data_offer) {
         if (data_device->out.paste.dnd && data_device_priv->paste.dnd_got_action) {
@@ -4986,14 +4947,14 @@ static void sw__wayland_data_device_fini_paste(sw_wayland_data_device_t *data_de
 
     SU_FREE(sw__context->in.gp_alloc, data_device->out.paste.data.ptr);
 
-    SU_MEMSET(&data_device->out.paste, 0, sizeof(data_device->out.paste));
-    SU_MEMSET(&data_device_priv->paste, 0, sizeof(data_device_priv->paste));
+    SU_CLEAR(&data_device->out.paste);
+    SU_CLEAR(&data_device_priv->paste);
 }
 
 static void sw__wayland_data_device_fini_copy(sw_wayland_data_device_t *data_device) {
     sw__wayland_data_device_t *data_device_priv = (sw__wayland_data_device_t *)data_device->sw__private;
     if (data_device_priv->copy.pfd.fd > 0) {
-        close(data_device_priv->copy.pfd.fd);
+        SU_CLOSE(data_device_priv->copy.pfd.fd);
     }
     if (data_device_priv->copy.wl_data_source) {
         wl_data_source_destroy(data_device_priv->copy.wl_data_source);
@@ -5001,8 +4962,8 @@ static void sw__wayland_data_device_fini_copy(sw_wayland_data_device_t *data_dev
     su_string_fini(&data_device_priv->copy.mime_type, sw__context->in.gp_alloc);
     SU_FREE(sw__context->in.gp_alloc, data_device_priv->copy.data.ptr);
 
-    SU_MEMSET(&data_device_priv->copy, 0, sizeof(data_device_priv->copy));
-    SU_MEMSET(&data_device->out.copy, 0, sizeof(data_device->out.copy));
+    SU_CLEAR(&data_device_priv->copy);
+    SU_CLEAR(&data_device->out.copy);
 }
 
 static void sw__wayland_data_device_fini(sw_wayland_data_device_t *data_device) {
@@ -5014,7 +4975,7 @@ static void sw__wayland_data_device_fini(sw_wayland_data_device_t *data_device) 
     }
 
     data_device->out.seat = NULL;
-    SU_MEMSET(data_device_priv, 0, sizeof(*data_device_priv));
+    SU_CLEAR(data_device_priv);
 }
 
 static void sw__wayland_data_device_init(sw_event_t *event) {
@@ -5080,8 +5041,8 @@ static void sw__wayland_seat_fini(sw_wayland_seat_t *seat) {
     }
     su_string_fini(&seat->out.name, sw__context->in.gp_alloc);
 
-    SU_MEMSET(&seat->out, 0, sizeof(seat->out));
-    SU_MEMSET(seat_priv, 0, sizeof(*seat_priv));
+    SU_CLEAR(&seat->out);
+    SU_CLEAR(seat_priv);
 }
 
 static void sw__wayland_seat_init(sw_event_t *event) {
@@ -5269,9 +5230,11 @@ static void sw__wayland_data_offer_handle_offer(void *data,
             su_string_t *new_;
             data_device_priv->paste.offered_mime_types_capacity = ((data_device_priv->paste.offered_mime_types_capacity * 2) + 8);
             SU_ARRAY_ALLOC(new_, sw__context->in.gp_alloc, data_device_priv->paste.offered_mime_types_capacity);
-            SU_MEMCPY(new_, data_device->out.paste.offered_mime_types,
-                data_device->out.paste.offered_mime_types_count * sizeof(data_device->out.paste.offered_mime_types[0]));
-            SU_FREE(sw__context->in.gp_alloc, data_device->out.paste.offered_mime_types);
+            if (data_device->out.paste.offered_mime_types) {
+                SU_MEMCPY(new_, data_device->out.paste.offered_mime_types,
+                    data_device->out.paste.offered_mime_types_count * sizeof(data_device->out.paste.offered_mime_types[0]));
+                SU_FREE(sw__context->in.gp_alloc, data_device->out.paste.offered_mime_types);
+            }
             data_device->out.paste.offered_mime_types = new_;
         }
         su_string_init_len(&data_device->out.paste.offered_mime_types[data_device->out.paste.offered_mime_types_count++],
@@ -5585,11 +5548,9 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
     sw_layout_block_t *block;
     su_bool32_t update_and_render = sw->in.update_and_render;
 
-    SU_ASSERT(su_locale_is_utf8());
-
     sw__context = sw;
 
-    if ((sw->out.t > 0) && (su_now_ms(CLOCK_MONOTONIC) >= sw->out.t)) {
+    if ((sw->out.t > 0) && (su_now_msec(CLOCK_MONOTONIC) >= sw->out.t)) {
         sw->out.t = -1;
         update_and_render = SU_TRUE; /* TODO: rework */
     }
@@ -5807,8 +5768,8 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
         events_count = sw->out.events_count;
         events_capacity = sw_priv->events_capacity;
 
-        SU_MEMSET(&sw->out, 0, sizeof(sw->out));
-        SU_MEMSET(sw_priv, 0, sizeof(*sw_priv));
+        SU_CLEAR(&sw->out);
+        SU_CLEAR(sw_priv);
 
         sw->out.events = events;
         sw->out.events_count = events_count;
@@ -5914,7 +5875,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                 wayland_priv->fds_capacity = ((wayland_out->seats.count + 1) * 2);
                 SU_ARRAY_ALLOC(wayland_out->fds, gp_alloc, wayland_priv->fds_capacity);
 #else
-                static struct pollfd pfd;
+                static su_pollfd_t pfd;
                 wayland_out->fds = &pfd;
 #endif /* SW_WITH_WAYLAND_CLIPBOARD */
                 wayland_out->fds_count = 1;
@@ -5969,18 +5930,19 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                     }
                     if (!su_string_equal(data_device_priv->paste.mime_type, data_device->in.paste.mime_type)) {
                         if (data_device_priv->paste.pfd.fd > 0) {
-                            close(data_device_priv->paste.pfd.fd);
+                            SU_CLOSE(data_device_priv->paste.pfd.fd);
                             data_device_priv->paste.pfd.fd = 0;
                         }
                         su_string_fini(&data_device_priv->paste.mime_type, sw__context->in.gp_alloc);
                         if (data_device->in.paste.mime_type.len > 0) {
                             int pipe_fd[2];
                             SU_ASSERT(data_device->in.paste.mime_type.nul_terminated); /* TODO: handle properly */
-                            if ((pipe(pipe_fd) == 0) && su_fd_set_cloexec(pipe_fd[0]) && su_fd_set_nonblock(pipe_fd[0])) {
+                            if ((SU_PIPE(pipe_fd) == 0) && su_fd_set_cloexec(pipe_fd[0])
+                                    && su_fd_set_nonblock(pipe_fd[0])) {
                                 /* TODO: error check mime string */
                                 wl_data_offer_receive(data_device_priv->paste.wl_data_offer,
                                     data_device->in.paste.mime_type.s, pipe_fd[1]);
-                                close(pipe_fd[1]);
+                                SU_CLOSE(pipe_fd[1]);
                                 data_device->out.paste.data.len = 0;
                                 if (SU_UNLIKELY(!data_device->out.paste.data.ptr)) {
                                     data_device_priv->paste.data_capacity = 1024;
@@ -5999,7 +5961,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                                 /* ? TODO: wl_data_offer_accept(, , NULL); */
                                 sw__wayland_data_device_fini_paste(data_device);
                             } else {
-                                SU_MEMSET(&data_device_priv->paste.mime_type, 0, sizeof(data_device_priv->paste.mime_type));
+                                SU_CLEAR(&data_device_priv->paste.mime_type);
                             }
                         }
                     }
@@ -6078,7 +6040,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
             if (seat->out.keyboard) {
                 sw_wayland_keyboard_t *keyboard = seat->out.keyboard;
                 sw__wayland_keyboard_t *keyboard_priv = (sw__wayland_keyboard_t *)&keyboard->sw__private;
-                int64_t ms_now = su_now_ms(CLOCK_MONOTONIC);
+                int64_t ms_now = su_now_msec(CLOCK_MONOTONIC);
                 if (ms_now >= keyboard_priv->repeat_next) {
                     if (keyboard->out.focused_surface && keyboard_priv->repeat_cp) {
                         sw_event_out__t *event = sw__event(SW_EVENT_WAYLAND_KEYBOARD_KEY_REPEAT, keyboard);
@@ -6102,7 +6064,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
 
         wayland_out->fds[0].events = POLLIN;
         if (wl_display_flush(sw_priv->backend.wayland.display) == -1) {
-            if (errno == EAGAIN) {
+            if (SU_ERRNO == EAGAIN) {
                 wayland_out->fds[0].events = (POLLIN | POLLOUT);
             } else {
                 ret = SU_FALSE;
@@ -6120,9 +6082,9 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
             }
             data_device_priv = (sw__wayland_data_device_t *)data_device->sw__private;
             if (data_device_priv->paste.pfd.fd > 0) {
-                struct pollfd *pfd = &data_device_priv->paste.pfd;
+                su_pollfd_t *pfd = &data_device_priv->paste.pfd;
                 for (;;) {
-                    ssize_t read_bytes = read( pfd->fd,
+                    ssize_t read_bytes = SU_READ( pfd->fd,
                         &((uint8_t *)data_device->out.paste.data.ptr)[data_device->out.paste.data.len],
                         data_device_priv->paste.data_capacity - data_device->out.paste.data.len);
                     if (read_bytes == 0) {
@@ -6130,13 +6092,13 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                             sw_event_out__t *event = sw__event(SW_EVENT_WAYLAND_DATA_DEVICE_PASTE_NEW_DATA, data_device);
                             SU_MEMCPY(&event->wayland_data_device.paste_state, &data_device->out.paste, sizeof(data_device->out.paste));
                         }
-                        close(pfd->fd);
-                        SU_MEMSET(pfd, 0, sizeof(*pfd));
+                        SU_CLOSE(pfd->fd);
+                        SU_CLEAR(pfd);
                         break;
                     } else if (read_bytes == -1) {
-                        if (errno == EAGAIN) {
+                        if (SU_ERRNO == EAGAIN) {
                             if (SU_UNLIKELY(wayland_priv->fds_capacity == wayland_out->fds_count)) {
-                                struct pollfd *new_fds;
+                                su_pollfd_t *new_fds;
                                 wayland_priv->fds_capacity *= 2;
                                 SU_ARRAY_ALLOC(new_fds, gp_alloc, wayland_priv->fds_capacity);
                                 SU_MEMCPY(new_fds, wayland_out->fds,
@@ -6146,7 +6108,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                             }
                             wayland_out->fds[wayland_out->fds_count++] = *pfd;
                             break;
-                        } else if (errno == EINTR) {
+                        } else if (SU_ERRNO == EINTR) {
                             continue;
                         } else {
                             break;
@@ -6165,15 +6127,15 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                 }
             }
             if (data_device_priv->copy.pfd.fd > 0) {
-                struct pollfd *pfd = &data_device_priv->copy.pfd;
+                su_pollfd_t *pfd = &data_device_priv->copy.pfd;
                 for (;;) {
-                    ssize_t written_bytes = write( pfd->fd,
+                    ssize_t written_bytes = SU_WRITE( pfd->fd,
                             &((uint8_t *)data_device->in.copy.data.ptr)[data_device_priv->copy.buf_idx],
                             data_device->in.copy.data.len - data_device_priv->copy.buf_idx);
                     if (written_bytes <= 0) {
-                        if (errno == EAGAIN) {
+                        if (SU_ERRNO == EAGAIN) {
                             if (SU_UNLIKELY(wayland_priv->fds_capacity == wayland_out->fds_count)) {
-                                struct pollfd *new_fds;
+                                su_pollfd_t *new_fds;
                                 wayland_priv->fds_capacity *= 2;
                                 SU_ARRAY_ALLOC(new_fds, gp_alloc, wayland_priv->fds_capacity);
                                 SU_MEMCPY(new_fds, wayland_out->fds,
@@ -6183,7 +6145,7 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                             }
                             wayland_out->fds[wayland_out->fds_count++] = *pfd;
                             break;
-                        } else if (errno == EINTR) {
+                        } else if (SU_ERRNO == EINTR) {
                             continue;
                         } else {
                             break;
@@ -6191,8 +6153,8 @@ SW_FUNC_DEF su_bool32_t sw_set(sw_context_t *sw) {
                     }
                     data_device_priv->copy.buf_idx += (size_t)written_bytes;
                     if (data_device->in.copy.data.len == data_device_priv->copy.buf_idx) {
-                        close(pfd->fd);
-                        SU_MEMSET(pfd, 0, sizeof(*pfd));
+                        SU_CLOSE(pfd->fd);
+                        SU_CLEAR(pfd);
                         data_device_priv->copy.buf_idx = 0;
                         break;
                     }

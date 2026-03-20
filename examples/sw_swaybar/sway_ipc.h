@@ -1,18 +1,6 @@
 #if !defined(SWAY_IPC_H)
 #define SWAY_IPC_H
 
-#include <stdlib.h>
-#include <sys/types.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <errno.h>
-
-#include <stddef.h>
-#include <stdint.h>
-#include <limits.h>
-
 #if !defined(SU_IMPLEMENTATION)
     #define SU_IMPLEMENTATION
 #endif /* !defined(SU_IMPLEMENTATION) */
@@ -78,7 +66,7 @@ static char sway_ipc__magic[] = {'i', '3', '-', 'i', 'p', 'c'};
 #define SWAY_IPC__HEADER_SIZE (sizeof(sway_ipc__magic) + sizeof(uint32_t) + sizeof(uint32_t))
 
 static bool32_t sway_ipc_get_socket_path(char out[PATH_MAX]) {
-    char *sock = getenv("SWAYSOCK");
+    char *sock = GETENV("SWAYSOCK");
     if (sock && *sock) {
         size_t len = STRLEN(sock) + 1;
         if (len < PATH_MAX) {
@@ -87,7 +75,7 @@ static bool32_t sway_ipc_get_socket_path(char out[PATH_MAX]) {
         }
     }
     /* TODO: sway --get-socketpath 2>/dev/null */
-    sock = getenv("I3SOCK");
+    sock = GETENV("I3SOCK");
     if (sock && *sock) {
         size_t len = STRLEN(sock) + 1;
         if (len < PATH_MAX) {
@@ -100,9 +88,9 @@ static bool32_t sway_ipc_get_socket_path(char out[PATH_MAX]) {
 }
 
 static int sway_ipc_connect(char socket_path[PATH_MAX]) {
-    struct sockaddr_un addr;
+    sockaddr_un_t addr;
     size_t len;
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = SOCKET(AF_UNIX, SOCK_STREAM, 0);
     if (fd == -1) {
         return -1;
     }
@@ -110,7 +98,7 @@ static int sway_ipc_connect(char socket_path[PATH_MAX]) {
     len = MIN((sizeof(addr.sun_path) - 1), STRLEN(socket_path));
     STRNCPY(addr.sun_path, socket_path, len);
     addr.sun_path[len] = '\0';
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) == -1) {
+    if (CONNECT(fd, (sockaddr_t *)&addr, sizeof(sockaddr_un_t)) == -1) {
         return -1;
     }
     fd_set_cloexec(fd);
@@ -127,7 +115,7 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
     MEMCPY(header + sizeof(sway_ipc__magic) + sizeof(len), &type, sizeof(type));
 
     while (total < sizeof(header)) {
-        ssize_t written_bytes = write(fd, &header[total], sizeof(header) - total);
+        ssize_t written_bytes = WRITE(fd, &header[total], sizeof(header) - total);
         if (written_bytes <= 0) {
             return -1;
         }
@@ -136,7 +124,7 @@ static int sway_ipc_send(int fd, sway_ipc_message_type_t type, string_t *payload
 
     total = 0;
     while (total < len) {
-        ssize_t written_bytes = write(fd, &payload->s[total], len - total);
+        ssize_t written_bytes = WRITE(fd, &payload->s[total], len - total);
         if (written_bytes <= 0) {
             return -1;
         }
@@ -158,13 +146,13 @@ static sway_ipc_response_t *sway_ipc_receive(int fd, const allocator_t *alloc) {
     
     size_t total = 0;
     while (total < sizeof(header)) {
-        ssize_t read_bytes = read(fd, &header[total], sizeof(header) - total);
+        ssize_t read_bytes = READ(fd, &header[total], sizeof(header) - total);
         switch (read_bytes) {
         case 0:
-            errno = EPIPE;
+            ERRNO = EPIPE;
             return NULL;
         case -1:
-            if (errno == EINTR) {
+            if (ERRNO == EINTR) {
                 continue;
             }
             return NULL;
@@ -185,13 +173,13 @@ static sway_ipc_response_t *sway_ipc_receive(int fd, const allocator_t *alloc) {
 
     total = 0;
     while (total < len) {
-        ssize_t read_bytes = read(fd, &response->payload.s[total], len - total);
+        ssize_t read_bytes = READ(fd, &response->payload.s[total], len - total);
         switch (read_bytes) {
         case 0:
-            errno = EPIPE;
+            ERRNO = EPIPE;
             ATTRIBUTE_FALLTHROUGH;
         case -1:
-            if (errno == EINTR) {
+            if (ERRNO == EINTR) {
                 continue;
             }
             sway_ipc_response_free(response, alloc);
